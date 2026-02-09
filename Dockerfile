@@ -14,7 +14,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PGDATA=/var/lib/postgresql/data
 
 # Install PostgreSQL 16 + Python 3 + supervisor + cron
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     postgresql-16 \
     postgresql-client-16 \
     python3 \
@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-venv \
     supervisor \
     cron \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Install geoipupdate from MaxMind
@@ -37,9 +38,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
 
-# Install Python dependencies
+# Install Python dependencies then remove pip (not needed at runtime)
 COPY receiver/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt \
+    && pip uninstall -y pip setuptools \
+    && rm -rf /app/venv/lib/python*/ensurepip
 
 # Copy application code
 COPY receiver/ /app/
