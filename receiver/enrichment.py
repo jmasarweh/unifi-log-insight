@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 # ── Private/reserved IP detection ─────────────────────────────────────────────
 
 _PRIVATE_NETWORKS = [
+    ipaddress.ip_network('0.0.0.0/8'),       # "this" network
     ipaddress.ip_network('10.0.0.0/8'),
     ipaddress.ip_network('172.16.0.0/12'),
     ipaddress.ip_network('192.168.0.0/16'),
@@ -176,14 +177,29 @@ class AbuseIPDBEnricher:
         self._rate_limit_remaining = None
         self._rate_limit_reset = None  # UTC ISO string
 
+        # Pause until this UTC timestamp on 429
+        self._paused_until = 0.0
+
+        # IPs to exclude from lookups (e.g. our own WAN IP)
+        self._excluded_ips = set()
+
         if self.enabled:
             logger.info("AbuseIPDB enrichment enabled (daily limit: %d)", self.DAILY_LIMIT)
         else:
             logger.warning("AbuseIPDB API key not set — threat enrichment disabled")
 
+    def exclude_ip(self, ip_str: str):
+        """Add an IP to the exclusion list (e.g. our own WAN IP)."""
+        if ip_str:
+            self._excluded_ips.add(ip_str)
+            logger.info("AbuseIPDB: excluding IP %s from lookups", ip_str)
+
     def _check_rate_limit(self) -> bool:
-        """Check if we're within daily rate limit."""
+        """Check if we're within daily rate limit and not paused from 429."""
         with self._lock:
+            # Check if paused due to 429
+            if time.time() < self._paused_until:
+                return False
             # Reset counter daily
             if time.time() - self._daily_reset > 86400:
                 self._daily_count = 0
@@ -197,6 +213,7 @@ class AbuseIPDBEnricher:
                 'limit': self._rate_limit_limit,
                 'remaining': self._rate_limit_remaining,
                 'reset_at': self._rate_limit_reset,
+                'paused_until': self._paused_until if self._paused_until > time.time() else None,
                 'updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
             }
             with open(self.STATS_FILE, 'w') as f:
@@ -209,14 +226,17 @@ class AbuseIPDBEnricher:
         if not self.enabled:
             return {}
 
+        # Skip excluded IPs (our WAN IP)
+        if ip_str in self._excluded_ips:
+            return {}
+
         # Check cache first
         cached = self.cache.get(ip_str)
         if cached is not None:
             return cached
 
-        # Check rate limit
+        # Check rate limit and pause state
         if not self._check_rate_limit():
-            logger.debug("AbuseIPDB daily limit reached, skipping %s", ip_str)
             return {}
 
         try:
@@ -229,6 +249,29 @@ class AbuseIPDBEnricher:
                 'maxAgeInDays': 90,
             }
             resp = requests.get(self.API_URL, headers=headers, params=params, timeout=5)
+
+            # Handle 429 — pause until AbuseIPDB tells us to retry
+            if resp.status_code == 429:
+                with self._lock:
+                    retry_after = resp.headers.get('Retry-After')
+                    reset_ts = resp.headers.get('X-RateLimit-Reset')
+                    if retry_after:
+                        self._paused_until = time.time() + int(retry_after)
+                    elif reset_ts:
+                        try:
+                            from datetime import datetime as _dt
+                            reset_dt = _dt.fromisoformat(reset_ts.replace('Z', '+00:00'))
+                            self._paused_until = reset_dt.timestamp()
+                        except Exception:
+                            self._paused_until = time.time() + 3600
+                    else:
+                        self._paused_until = time.time() + 3600  # fallback: 1h
+                    self._rate_limit_remaining = 0
+                logger.warning("AbuseIPDB rate limited (429) — paused until %s",
+                             time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self._paused_until)))
+                self._write_stats()
+                return {}
+
             resp.raise_for_status()
             data = resp.json().get('data', {})
 
@@ -304,15 +347,23 @@ class Enricher:
         self.geoip = GeoIPEnricher()
         self.abuseipdb = AbuseIPDBEnricher()
         self.rdns = RDNSEnricher()
+        self._known_wan_ip = None
 
     def enrich(self, parsed: dict) -> dict:
         """Enrich a parsed log entry with GeoIP, ASN, threat, and rDNS data.
         
         Strategy:
         - GeoIP + ASN: all public IPs (local lookups, fast)
-        - AbuseIPDB: only blocked firewall events with public IPs
+        - AbuseIPDB: only blocked firewall events with public IPs (not our WAN)
         - rDNS: all public IPs
         """
+        # Auto-exclude WAN IP from AbuseIPDB as it's learned
+        from parsers import get_wan_ip
+        wan_ip = get_wan_ip()
+        if wan_ip and wan_ip != self._known_wan_ip:
+            self._known_wan_ip = wan_ip
+            self.abuseipdb.exclude_ip(wan_ip)
+
         # Determine which IP to enrich (the public one)
         ip_to_enrich = None
         src_ip = parsed.get('src_ip')
