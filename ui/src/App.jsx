@@ -19,6 +19,16 @@ function formatShortDate(isoStr) {
 
 function formatAbuseIPDB(abuseipdb) {
   if (!abuseipdb) return '—'
+
+  // Check if paused (429 rate limited)
+  if (abuseipdb.paused_until) {
+    const pausedDate = new Date(abuseipdb.paused_until * 1000)
+    if (pausedDate > new Date()) {
+      const resumeStr = pausedDate.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+      return `⏸ Paused · Resumes ${resumeStr}`
+    }
+  }
+
   const limit = abuseipdb.limit
   const remaining = abuseipdb.remaining
   if (limit == null || remaining == null) return '—'
