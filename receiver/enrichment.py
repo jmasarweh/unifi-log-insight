@@ -168,16 +168,15 @@ class AbuseIPDBEnricher:
         self.cache = TTLCache(ttl_seconds=86400)  # 24h in-memory hot cache
         self.db = db  # Database instance for persistent threat cache
         self.enabled = bool(self.api_key)
-        self._daily_count = 0
-        self._daily_reset = time.time()
         self._lock = threading.Lock()
-        self.DAILY_LIMIT = 900  # Stay under 1000 free tier
         self.STALE_DAYS = 4  # Refresh from API after this many days
+        self.SAFETY_BUFFER = 20  # Stop this many calls before hard limit
 
-        # Rate limit info from AbuseIPDB headers (source of truth)
-        self._rate_limit_limit = None
-        self._rate_limit_remaining = None
-        self._rate_limit_reset = None  # UTC ISO string
+        # Rate limit state — None means unknown (not yet bootstrapped)
+        # After first API call, these are set from response headers
+        self._rate_limit_limit = None      # e.g. 1000
+        self._rate_limit_remaining = None  # e.g. 743
+        self._rate_limit_reset = None      # Unix timestamp (seconds)
 
         # Pause until this UTC timestamp on 429
         self._paused_until = 0.0
@@ -186,7 +185,8 @@ class AbuseIPDBEnricher:
         self._excluded_ips = set()
 
         if self.enabled:
-            logger.info("AbuseIPDB enrichment enabled (daily limit: %d)", self.DAILY_LIMIT)
+            logger.info("AbuseIPDB enrichment enabled (safety buffer: %d)", self.SAFETY_BUFFER)
+            self._write_stats()
         else:
             logger.warning("AbuseIPDB API key not set — threat enrichment disabled")
 
@@ -197,19 +197,63 @@ class AbuseIPDBEnricher:
             logger.info("AbuseIPDB: excluding IP %s from lookups", ip_str)
 
     def _check_rate_limit(self) -> bool:
-        """Check if we're within daily rate limit and not paused from 429."""
+        """Check if we can make an API call.
+        
+        Uses AbuseIPDB's own headers as the single source of truth.
+        On first call after startup, remaining is None → allow it to bootstrap.
+        """
         with self._lock:
-            # Check if paused due to 429
+            # Hard pause from 429
             if time.time() < self._paused_until:
                 return False
-            # Reset counter daily
-            if time.time() - self._daily_reset > 86400:
-                self._daily_count = 0
-                self._daily_reset = time.time()
-            return self._daily_count < self.DAILY_LIMIT
+
+            # Check if quota has reset (reset_at has passed)
+            if self._rate_limit_reset is not None:
+                try:
+                    reset_ts = float(self._rate_limit_reset)
+                    if time.time() > reset_ts:
+                        # Quota has renewed — clear state, allow calls
+                        logger.info("AbuseIPDB quota reset (reset_at %s has passed)", self._rate_limit_reset)
+                        self._rate_limit_remaining = None  # Will re-learn from next call
+                        self._rate_limit_reset = None
+                        self._paused_until = 0.0
+                except (ValueError, TypeError):
+                    pass
+
+            # Unknown state (startup or after reset) → allow one call to bootstrap
+            if self._rate_limit_remaining is None:
+                return True
+
+            # Gate on real remaining with safety buffer
+            return self._rate_limit_remaining > self.SAFETY_BUFFER
+
+    @property
+    def remaining_budget(self) -> int:
+        """How many API calls we can still make this period.
+        
+        Used by backfill to limit orphan lookups.
+        Returns 0 if unknown or exhausted.
+        """
+        with self._lock:
+            if self._rate_limit_remaining is None:
+                return 0  # Unknown — don't let backfill guess
+            return max(0, self._rate_limit_remaining - self.SAFETY_BUFFER)
+
+    def _update_rate_limits(self, resp_headers):
+        """Update rate limit state from AbuseIPDB response headers."""
+        with self._lock:
+            limit = resp_headers.get('X-RateLimit-Limit')
+            remaining = resp_headers.get('X-RateLimit-Remaining')
+            reset_ts = resp_headers.get('X-RateLimit-Reset')
+            if limit is not None:
+                self._rate_limit_limit = int(limit)
+            if remaining is not None:
+                self._rate_limit_remaining = int(remaining)
+            if reset_ts is not None:
+                self._rate_limit_reset = reset_ts
 
     def _write_stats(self):
-        """Write rate limit stats to shared file for API process to read."""
+        """Write rate limit stats to shared file for API/UI to read."""
         try:
             stats = {
                 'limit': self._rate_limit_limit,
@@ -253,7 +297,7 @@ class AbuseIPDBEnricher:
             except Exception as e:
                 logger.debug("DB threat cache lookup failed for %s: %s", ip_str, e)
 
-        # 3. Check rate limit and pause state
+        # 3. Check rate limit before API call
         if not self._check_rate_limit():
             return {}
 
@@ -268,7 +312,7 @@ class AbuseIPDBEnricher:
             }
             resp = requests.get(self.API_URL, headers=headers, params=params, timeout=5)
 
-            # Handle 429 — pause until AbuseIPDB tells us to retry
+            # Handle 429 — pause until reset
             if resp.status_code == 429:
                 with self._lock:
                     retry_after = resp.headers.get('Retry-After')
@@ -277,15 +321,13 @@ class AbuseIPDBEnricher:
                         self._paused_until = time.time() + int(retry_after)
                     elif reset_ts:
                         try:
-                            from datetime import datetime as _dt
-                            reset_dt = _dt.fromisoformat(reset_ts.replace('Z', '+00:00'))
-                            self._paused_until = reset_dt.timestamp()
-                        except Exception:
+                            self._paused_until = float(reset_ts)
+                        except (ValueError, TypeError):
                             self._paused_until = time.time() + 3600
                     else:
                         self._paused_until = time.time() + 3600  # fallback: 1h
                     self._rate_limit_remaining = 0
-                logger.warning("AbuseIPDB rate limited (429) — paused until %s",
+                logger.warning("AbuseIPDB 429 — paused until %s",
                              time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self._paused_until)))
                 self._write_stats()
                 return {}
@@ -298,18 +340,8 @@ class AbuseIPDBEnricher:
                 'threat_categories': [str(c) for c in data.get('categories', [])],
             }
 
-            with self._lock:
-                self._daily_count += 1
-                # Capture rate limit headers from AbuseIPDB
-                limit = resp.headers.get('X-RateLimit-Limit')
-                remaining = resp.headers.get('X-RateLimit-Remaining')
-                reset_ts = resp.headers.get('X-RateLimit-Reset')
-                if limit is not None:
-                    self._rate_limit_limit = int(limit)
-                if remaining is not None:
-                    self._rate_limit_remaining = int(remaining)
-                if reset_ts is not None:
-                    self._rate_limit_reset = reset_ts
+            # Update rate limits from response headers (source of truth)
+            self._update_rate_limits(resp.headers)
 
             # Persist to DB and memory cache
             if self.db:
@@ -323,7 +355,7 @@ class AbuseIPDBEnricher:
             return result
 
         except requests.Timeout:
-            logger.debug("AbuseIPDB timeout for %s", ip_str)
+            logger.warning("AbuseIPDB timeout for %s", ip_str)
         except requests.RequestException as e:
             logger.warning("AbuseIPDB error for %s: %s", ip_str, e)
         except Exception as e:
@@ -333,8 +365,11 @@ class AbuseIPDBEnricher:
 
     @property
     def daily_usage(self) -> int:
+        """Derived from API headers: limit - remaining."""
         with self._lock:
-            return self._daily_count
+            if self._rate_limit_limit is None or self._rate_limit_remaining is None:
+                return 0
+            return self._rate_limit_limit - self._rate_limit_remaining
 
 
 # ── Reverse DNS ───────────────────────────────────────────────────────────────

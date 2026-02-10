@@ -20,3 +20,6 @@ ui/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+#Temp sql
+queries.sql

@@ -102,7 +102,7 @@ def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str 
     if iface_in == 'ppp0' and 'WAN_LOCAL' in (rule_name or '') and dst_ip:
         try:
             ip = ipaddress.ip_address(dst_ip)
-            if ip.is_global and str(ip) != _wan_ip:
+            if ip.is_global and not ip.is_multicast and str(ip) != _wan_ip:
                 _wan_ip = str(ip)
                 logger.info("Auto-detected WAN IP: %s", _wan_ip)
         except ValueError:

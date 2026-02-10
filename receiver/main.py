@@ -22,6 +22,7 @@ import schedule
 from parsers import parse_log
 from db import Database
 from enrichment import Enricher
+from backfill import BackfillTask
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
@@ -251,6 +252,10 @@ def main():
     # Start scheduler in background thread
     scheduler_thread = threading.Thread(target=run_scheduler, args=(db, enricher), daemon=True)
     scheduler_thread.start()
+
+    # Start backfill daemon (patches NULL threat scores every 30 min)
+    backfill = BackfillTask(db, enricher.abuseipdb)
+    backfill.start()
 
     # Start receiving (blocks)
     try:
