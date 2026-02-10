@@ -384,4 +384,14 @@ def parse_log(raw_log: str) -> dict | None:
     parsed['timestamp'] = timestamp
     parsed['raw_log'] = original_raw
 
+    # Validate IP fields — reject invalid inet values before DB insert
+    for ip_field in ('src_ip', 'dst_ip'):
+        ip_val = parsed.get(ip_field)
+        if ip_val:
+            try:
+                ipaddress.ip_address(ip_val)
+            except ValueError:
+                logger.debug("Invalid %s '%s', setting to None", ip_field, ip_val)
+                parsed[ip_field] = None
+
     return parsed

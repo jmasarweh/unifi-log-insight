@@ -107,7 +107,10 @@ class Database:
                 cur.execute(INSERT_SQL, values)
 
     def insert_logs_batch(self, logs: list[dict]):
-        """Insert multiple parsed log entries in a single transaction."""
+        """Insert multiple parsed log entries in a single transaction.
+        
+        If batch insert fails, falls back to row-by-row to isolate bad data.
+        """
         if not logs:
             return
 
@@ -116,11 +119,26 @@ class Database:
             for log in logs
         ]
 
-        with self.get_conn() as conn:
-            with conn.cursor() as cur:
-                extras.execute_batch(cur, INSERT_SQL, rows, page_size=100)
-
-        logger.debug("Batch inserted %d logs", len(logs))
+        try:
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    extras.execute_batch(cur, INSERT_SQL, rows, page_size=100)
+            logger.debug("Batch inserted %d logs", len(logs))
+        except Exception as batch_err:
+            logger.warning("Batch insert failed (%s), falling back to row-by-row for %d logs",
+                          batch_err, len(logs))
+            inserted = 0
+            dropped = 0
+            for row in rows:
+                try:
+                    with self.get_conn() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(INSERT_SQL, row)
+                    inserted += 1
+                except Exception as row_err:
+                    dropped += 1
+                    logger.warning("Dropped bad log row: %s — raw: %.200s", row_err, row[-1] if row else '?')
+            logger.info("Row-by-row fallback: %d inserted, %d dropped", inserted, dropped)
 
     def run_retention_cleanup(self):
         """Run the retention cleanup function. Returns number of deleted rows."""

@@ -152,12 +152,7 @@ class SyslogReceiver:
             self.stats['inserted'] += len(to_insert)
         except Exception as e:
             logger.error("Failed to insert batch of %d logs: %s", len(to_insert), e)
-            # Re-add to batch for retry (up to a limit)
-            if len(self.batch) < BATCH_SIZE * 5:
-                self.batch = to_insert + self.batch
-            else:
-                logger.error("Dropping %d logs due to persistent DB errors", len(to_insert))
-                self.stats['failed'] += len(to_insert)
+            self.stats['failed'] += len(to_insert)
 
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
