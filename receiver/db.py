@@ -25,6 +25,9 @@ INSERT_COLUMNS = [
     'geo_country', 'geo_city', 'geo_lat', 'geo_lon',
     'asn_number', 'asn_name',
     'threat_score', 'threat_categories', 'rdns',
+    'abuse_usage_type', 'abuse_hostnames',
+    'abuse_total_reports', 'abuse_last_reported',
+    'abuse_is_whitelisted', 'abuse_is_tor',
     'raw_log',
 ]
 
@@ -69,6 +72,20 @@ class Database:
                 looked_up_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_ip_threats_looked_up ON ip_threats (looked_up_at)",
+            # AbuseIPDB detail columns on logs (Phase 10)
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS abuse_usage_type TEXT",
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS abuse_hostnames TEXT",
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS abuse_total_reports INTEGER",
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS abuse_last_reported TIMESTAMPTZ",
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS abuse_is_whitelisted BOOLEAN",
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS abuse_is_tor BOOLEAN",
+            # AbuseIPDB detail columns on ip_threats cache (Phase 10)
+            "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_usage_type TEXT",
+            "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_hostnames TEXT",
+            "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_total_reports INTEGER",
+            "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_last_reported TIMESTAMPTZ",
+            "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_is_whitelisted BOOLEAN",
+            "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_is_tor BOOLEAN",
         ]
         try:
             with self.get_conn() as conn:
@@ -171,28 +188,97 @@ class Database:
         with self.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT threat_score, threat_categories FROM ip_threats "
+                    "SELECT threat_score, threat_categories, "
+                    "abuse_usage_type, abuse_hostnames, abuse_total_reports, "
+                    "abuse_last_reported, abuse_is_whitelisted, abuse_is_tor "
+                    "FROM ip_threats "
                     "WHERE ip = %s AND looked_up_at > NOW() - INTERVAL '%s days'",
                     [ip, max_age_days]
                 )
                 row = cur.fetchone()
                 if row:
-                    return {
+                    result = {
                         'threat_score': row[0],
                         'threat_categories': row[1] or [],
                     }
+                    # Include extra fields if present
+                    if row[2]: result['abuse_usage_type'] = row[2]
+                    if row[3]: result['abuse_hostnames'] = row[3]
+                    if row[4] is not None: result['abuse_total_reports'] = row[4]
+                    if row[5]: result['abuse_last_reported'] = row[5].isoformat() if hasattr(row[5], 'isoformat') else row[5]
+                    if row[6]: result['abuse_is_whitelisted'] = row[6]
+                    if row[7]: result['abuse_is_tor'] = row[7]
+                    return result
         return None
 
-    def upsert_threat(self, ip: str, threat_score: int, threat_categories: list):
-        """Insert or update a threat score for an IP."""
+    def upsert_threat(self, ip: str, threat_data: dict):
+        """Insert or update a threat entry for an IP.
+        
+        threat_data should contain at minimum: threat_score, threat_categories.
+        May also contain: abuse_usage_type, abuse_hostnames, abuse_total_reports,
+        abuse_last_reported, abuse_is_whitelisted, abuse_is_tor.
+        """
         with self.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO ip_threats (ip, threat_score, threat_categories, looked_up_at) "
-                    "VALUES (%s, %s, %s, NOW()) "
+                    "INSERT INTO ip_threats (ip, threat_score, threat_categories, "
+                    "abuse_usage_type, abuse_hostnames, abuse_total_reports, "
+                    "abuse_last_reported, abuse_is_whitelisted, abuse_is_tor, "
+                    "looked_up_at) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()) "
                     "ON CONFLICT (ip) DO UPDATE SET "
                     "  threat_score = EXCLUDED.threat_score, "
                     "  threat_categories = EXCLUDED.threat_categories, "
+                    "  abuse_usage_type = COALESCE(EXCLUDED.abuse_usage_type, ip_threats.abuse_usage_type), "
+                    "  abuse_hostnames = COALESCE(EXCLUDED.abuse_hostnames, ip_threats.abuse_hostnames), "
+                    "  abuse_total_reports = COALESCE(EXCLUDED.abuse_total_reports, ip_threats.abuse_total_reports), "
+                    "  abuse_last_reported = COALESCE(EXCLUDED.abuse_last_reported, ip_threats.abuse_last_reported), "
+                    "  abuse_is_whitelisted = COALESCE(EXCLUDED.abuse_is_whitelisted, ip_threats.abuse_is_whitelisted), "
+                    "  abuse_is_tor = COALESCE(EXCLUDED.abuse_is_tor, ip_threats.abuse_is_tor), "
                     "  looked_up_at = NOW()",
-                    [ip, threat_score, threat_categories]
+                    [
+                        ip,
+                        threat_data.get('threat_score', 0),
+                        threat_data.get('threat_categories', []),
+                        threat_data.get('abuse_usage_type'),
+                        threat_data.get('abuse_hostnames'),
+                        threat_data.get('abuse_total_reports'),
+                        threat_data.get('abuse_last_reported'),
+                        threat_data.get('abuse_is_whitelisted'),
+                        threat_data.get('abuse_is_tor'),
+                    ]
                 )
+
+    def bulk_upsert_threats(self, entries: list[tuple]) -> int:
+        """Bulk upsert threat scores. entries = [(ip, score, categories), ...].
+        
+        Uses execute_batch for efficiency. Returns number of rows upserted.
+        Only updates existing rows if the new score is >= the existing score,
+        so a check-API result with categories won't be overwritten by a
+        blacklist entry with just ["blacklist"].
+        """
+        if not entries:
+            return 0
+
+        sql = (
+            "INSERT INTO ip_threats (ip, threat_score, threat_categories, looked_up_at) "
+            "VALUES (%s, %s, %s, NOW()) "
+            "ON CONFLICT (ip) DO UPDATE SET "
+            "  threat_score = GREATEST(ip_threats.threat_score, EXCLUDED.threat_score), "
+            "  threat_categories = CASE "
+            "    WHEN array_length(ip_threats.threat_categories, 1) > 1 "
+            "      THEN ip_threats.threat_categories "  # keep richer categories from check API
+            "    ELSE EXCLUDED.threat_categories "
+            "  END, "
+            "  looked_up_at = NOW()"
+        )
+
+        try:
+            with self.get_conn() as conn:
+                with conn.cursor() as cur:
+                    extras.execute_batch(cur, sql, entries, page_size=500)
+            logger.info("Bulk upserted %d threat entries", len(entries))
+            return len(entries)
+        except Exception as e:
+            logger.error("Bulk upsert failed: %s", e)
+            return 0

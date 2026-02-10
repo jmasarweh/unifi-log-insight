@@ -23,6 +23,7 @@ from parsers import parse_log
 from db import Database
 from enrichment import Enricher
 from backfill import BackfillTask
+from blacklist import BlacklistFetcher
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
@@ -157,8 +158,8 @@ class SyslogReceiver:
 
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
-def run_scheduler(db: Database, enricher: Enricher):
-    """Background thread for scheduled tasks (retention cleanup, stats)."""
+def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: BlacklistFetcher = None):
+    """Background thread for scheduled tasks (retention cleanup, stats, blacklist)."""
 
     def log_stats():
         try:
@@ -175,11 +176,23 @@ def run_scheduler(db: Database, enricher: Enricher):
         except Exception as e:
             logger.error("Retention cleanup failed: %s", e)
 
+    def pull_blacklist():
+        if blacklist_fetcher:
+            try:
+                blacklist_fetcher.fetch_and_store()
+            except Exception as e:
+                logger.error("Blacklist pull failed: %s", e)
+
     schedule.every(STATS_INTERVAL_MINUTES).minutes.do(log_stats)
     schedule.every().day.at(RETENTION_HOUR).do(retention_cleanup)
+    schedule.every().day.at("04:00").do(pull_blacklist)
 
-    logger.info("Scheduler started — stats every %dm, retention daily at %s",
+    logger.info("Scheduler started — stats every %dm, retention daily at %s, blacklist daily at 04:00",
                  STATS_INTERVAL_MINUTES, RETENTION_HOUR)
+
+    # Initial blacklist pull after 30s startup delay
+    time.sleep(30)
+    pull_blacklist()
 
     while True:
         schedule.run_pending()
@@ -245,7 +258,8 @@ def main():
     signal.signal(signal.SIGUSR1, reload_geoip)
 
     # Start scheduler in background thread
-    scheduler_thread = threading.Thread(target=run_scheduler, args=(db, enricher), daemon=True)
+    blacklist_fetcher = BlacklistFetcher(db)
+    scheduler_thread = threading.Thread(target=run_scheduler, args=(db, enricher, blacklist_fetcher), daemon=True)
     scheduler_thread.start()
 
     # Start backfill daemon (patches NULL threat scores every 30 min)

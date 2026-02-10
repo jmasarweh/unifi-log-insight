@@ -27,6 +27,8 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
+from parsers import get_wan_ip
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
@@ -227,7 +229,7 @@ def get_logs(
         for row in rows:
             log = dict(row)
             # Convert types for JSON
-            for key in ['timestamp', 'created_at']:
+            for key in ['timestamp', 'created_at', 'abuse_last_reported']:
                 if log.get(key):
                     log[key] = log[key].isoformat()
             for key in ['src_ip', 'dst_ip', 'mac_address']:
@@ -260,14 +262,33 @@ def get_log(log_id: int):
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT * FROM logs WHERE id = %s", [log_id])
+            # Join ip_threats on both src and dst to fill abuse fields
+            # for logs not yet patched by the backfill daemon
+            cur.execute("""
+                SELECT l.*,
+                    COALESCE(l.abuse_usage_type, t1.abuse_usage_type, t2.abuse_usage_type) as abuse_usage_type,
+                    COALESCE(l.abuse_hostnames, t1.abuse_hostnames, t2.abuse_hostnames) as abuse_hostnames,
+                    COALESCE(l.abuse_total_reports, t1.abuse_total_reports, t2.abuse_total_reports) as abuse_total_reports,
+                    COALESCE(l.abuse_last_reported, t1.abuse_last_reported, t2.abuse_last_reported) as abuse_last_reported,
+                    COALESCE(l.abuse_is_whitelisted, t1.abuse_is_whitelisted, t2.abuse_is_whitelisted) as abuse_is_whitelisted,
+                    COALESCE(l.abuse_is_tor, t1.abuse_is_tor, t2.abuse_is_tor) as abuse_is_tor,
+                    COALESCE(
+                        CASE WHEN array_length(l.threat_categories, 1) > 0 THEN l.threat_categories END,
+                        CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END,
+                        CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
+                    ) as threat_categories
+                FROM logs l
+                LEFT JOIN ip_threats t1 ON t1.ip = l.src_ip
+                LEFT JOIN ip_threats t2 ON t2.ip = l.dst_ip
+                WHERE l.id = %s
+            """, [log_id])
             row = cur.fetchone()
 
         if not row:
             raise HTTPException(status_code=404, detail="Log not found")
 
         log = dict(row)
-        for key in ['timestamp', 'created_at']:
+        for key in ['timestamp', 'created_at', 'abuse_last_reported']:
             if log.get(key):
                 log[key] = log[key].isoformat()
         for key in ['src_ip', 'dst_ip', 'mac_address']:
@@ -337,29 +358,44 @@ def get_stats(
             )
             top_blocked_countries = [dict(r) for r in cur.fetchall()]
 
-            # Top blocked IPs
+            # Top blocked IPs (exclude WAN IP and non-routable)
+            wan_ip = get_wan_ip()
+            exclude_ips = ['0.0.0.0']
+            if wan_ip:
+                exclude_ips.append(wan_ip)
             cur.execute(
-                "SELECT src_ip::text as ip, COUNT(*) as count, "
+                "SELECT host(src_ip) as ip, COUNT(*) as count, "
                 "MAX(geo_country) as country, MAX(asn_name) as asn, "
                 "MAX(threat_score) as threat_score "
                 "FROM logs "
                 "WHERE timestamp >= %s AND rule_action = 'block' AND src_ip IS NOT NULL "
+                "AND host(src_ip) != ALL(%s) "
                 "GROUP BY src_ip ORDER BY count DESC LIMIT 10",
-                [cutoff]
+                [cutoff, exclude_ips]
             )
             top_blocked_ips = [dict(r) for r in cur.fetchall()]
 
-            # Top threat IPs
+            # Top threat IPs (enriched — categories from ip_threats for reliability)
             cur.execute(
-                "SELECT src_ip::text as ip, COUNT(*) as count, "
-                "MAX(geo_country) as country, MAX(asn_name) as asn, "
-                "MAX(threat_score) as threat_score "
-                "FROM logs "
-                "WHERE timestamp >= %s AND threat_score > 50 AND src_ip IS NOT NULL "
-                "GROUP BY src_ip ORDER BY max(threat_score) DESC LIMIT 10",
-                [cutoff]
+                "SELECT host(l.src_ip) as ip, COUNT(*) as count, "
+                "MAX(l.geo_country) as country, MAX(l.asn_name) as asn, "
+                "MAX(l.geo_city) as city, MAX(l.rdns) as rdns, "
+                "MAX(l.threat_score) as threat_score, "
+                "COALESCE(MAX(l.threat_categories), MAX(t.threat_categories)) as threat_categories, "
+                "MAX(l.timestamp) as last_seen "
+                "FROM logs l "
+                "LEFT JOIN ip_threats t ON l.src_ip = t.ip "
+                "WHERE l.timestamp >= %s AND l.threat_score > 50 AND l.src_ip IS NOT NULL "
+                "AND host(l.src_ip) != ALL(%s) "
+                "GROUP BY l.src_ip ORDER BY max(l.threat_score) DESC, count DESC LIMIT 10",
+                [cutoff, exclude_ips]
             )
-            top_threat_ips = [dict(r) for r in cur.fetchall()]
+            top_threat_ips = []
+            for r in cur.fetchall():
+                row = dict(r)
+                if row.get('last_seen'):
+                    row['last_seen'] = row['last_seen'].isoformat()
+                top_threat_ips.append(row)
 
             # Logs per hour (last 24h)
             cur.execute(
@@ -441,7 +477,10 @@ def export_csv(
         'dst_ip', 'dst_port', 'protocol', 'rule_name', 'rule_desc',
         'rule_action', 'interface_in', 'interface_out', 'mac_address',
         'hostname', 'dns_query', 'dns_type', 'dns_answer',
-        'geo_country', 'geo_city', 'asn_name', 'threat_score', 'rdns',
+        'geo_country', 'geo_city', 'asn_name', 'threat_score',
+        'threat_categories', 'rdns',
+        'abuse_usage_type', 'abuse_total_reports', 'abuse_last_reported',
+        'abuse_is_tor',
     ]
 
     conn = get_conn()

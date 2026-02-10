@@ -17,12 +17,16 @@ Built for home network monitoring — runs as a single Docker container with zer
 ## Features
 
 - **Syslog Receiver** — Listens on UDP 514, parses iptables firewall rules, DHCP leases, Wi-Fi events, and system messages
-- **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat scores, reverse DNS
+- **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat intelligence (score, 23 attack categories, usage type, Tor/whitelist detection, report counts), reverse DNS
 - **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, or local with automatic WAN IP learning
 - **DNS Ready** — Parser supports DNS query/answer logging (requires additional Unifi configuration — see [DNS Logging](#dns-logging) below)
 - **Live UI** — Auto-refreshing log stream with expandable detail rows, intelligent pause/resume when inspecting logs
 - **Filters** — Filter by log type, time range, action (allow/block/redirect), direction, IP address, rule name, and raw text search
-- **Dashboard** — Traffic breakdown by type and direction, logs-per-hour chart, top blocked countries/IPs, top threat IPs, top DNS queries
+- **Dashboard** — Traffic breakdown by type and direction, logs-per-hour chart, top blocked countries/IPs (WAN IP and non-routable excluded), top threat IPs (enriched with ASN, city, rDNS, decoded categories, last seen), top DNS queries
+- **AbuseIPDB Blacklist** — Daily pull of 10,000 highest-risk IPs pre-seeded into the threat cache for instant scoring without API calls (separate quota: 5 calls/day)
+- **Persistent Threat Cache** — `ip_threats` table stores AbuseIPDB results (score, categories, usage type, Tor status, report counts) for 4-day reuse, surviving container rebuilds. Three-tier lookup: in-memory → PostgreSQL → API call
+- **Backfill Daemon** — Automatically patches historical logs that have NULL threat scores against the persistent cache
+- **Batch Insert Resilience** — Row-by-row fallback on batch failures; IP validation at parse time prevents bad data from blocking ingestion
 - **Network Path Display** — Color-coded interface labels (Main, IoT, Hotspot, WAN) showing traffic flow direction
 - **CSV Export** — Download filtered results up to 100K rows
 - **Auto-Retention** — 60-day retention for firewall/DHCP/Wi-Fi, 10-day for DNS
@@ -111,12 +115,12 @@ Everything runs inside a single Docker container, managed by supervisord:
 │  │             │   │  rDNS        │   │          │  │
 │  └─────────────┘   └──────────────┘   └────┬─────┘  │
 │                                            │        │
-│  ┌─────────────┐                     ┌─────┴──────┐  │
-│  │    Cron      │                     │  FastAPI    │  │
-│  │  MaxMind    │                     │  REST API   │  │
-│  │  Updates    │                     │  + React UI │  │
-│  └─────────────┘                     │  :8000      │  │
-│                                      └────────────┘  │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────┴──────┐  │
+│  │    Cron      │   │  Scheduler   │   │  FastAPI    │  │
+│  │  MaxMind    │   │  Blacklist   │   │  REST API   │  │
+│  │  Updates    │   │  Retention   │   │  + React UI │  │
+│  │             │   │  Backfill    │   │  :8000      │  │
+│  └─────────────┘   └─────────────┘   └────────────┘  │
 └──────────────────────────────────────────────────────┘
         UDP :514                        HTTP :8090
       (syslog in)                     (UI + API out)
@@ -126,10 +130,11 @@ Everything runs inside a single Docker container, managed by supervisord:
 
 1. **Receive** — Raw syslog UDP packets from Unifi
 2. **Parse** — Extract fields from iptables, hostapd, dhclient, and dnsmasq messages (when DNS logging is enabled)
-3. **Classify** — Determine direction (inbound/outbound/inter-VLAN/local) based on interfaces and WAN IP
-4. **Enrich** — GeoIP country/city/coords, ASN org name, AbuseIPDB threat score, reverse DNS
-5. **Store** — Batched inserts into PostgreSQL with performance indexes
-6. **Serve** — REST API with pagination, filtering, sorting, and CSV export
+3. **Validate** — IP address validation rejects malformed data before DB insert
+4. **Classify** — Determine direction (inbound/outbound/inter-VLAN/local) based on interfaces and WAN IP
+5. **Enrich** — GeoIP country/city/coords, ASN org name, AbuseIPDB threat score + categories + detail fields (verbose mode), reverse DNS
+6. **Store** — Batched inserts into PostgreSQL with row-by-row fallback on failure
+7. **Serve** — REST API with pagination, filtering, sorting, and CSV export
 
 ---
 
@@ -140,7 +145,7 @@ Everything runs inside a single Docker container, managed by supervisord:
 | Variable | Required | Description |
 |---|---|---|
 | `POSTGRES_PASSWORD` | Yes | PostgreSQL password for the `unifi` user |
-| `ABUSEIPDB_API_KEY` | No | Enables threat scoring on blocked inbound IPs. Free tier: 1,000 lookups/day |
+| `ABUSEIPDB_API_KEY` | No | Enables threat scoring on blocked inbound IPs. Free tier: 1,000 check lookups/day + 5 blacklist pulls/day |
 | `MAXMIND_ACCOUNT_ID` | No | Enables GeoIP auto-update. Without it, manually place `.mmdb` files |
 | `MAXMIND_LICENSE_KEY` | No | Paired with account ID for auto-update |
 | `TZ` | No | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York` |
@@ -183,6 +188,40 @@ docker exec unifi-log-insight cat /var/log/geoip-update.log
 
 ---
 
+## AbuseIPDB Integration
+
+When `ABUSEIPDB_API_KEY` is configured, the system provides multi-layered threat intelligence:
+
+### Threat Scoring
+
+Blocked firewall events trigger a lookup against AbuseIPDB using verbose mode, returning:
+- **Confidence score** (0–100%) with severity classification (Clean/Low/Medium/High/Critical)
+- **Attack categories** — Decoded from 23 category codes (Port Scan, SSH, Brute-Force, DDoS, etc.)
+- **Usage type** — Data Center, Residential, VPN, etc.
+- **Tor exit node** detection
+- **Whitelist** status
+- **Report count** and last reported date
+
+### Three-Tier Cache
+
+To minimise API usage, lookups follow a cache hierarchy:
+
+1. **In-memory cache** — Hot path, zero I/O
+2. **PostgreSQL `ip_threats` table** — Persistent across container rebuilds, 4-day TTL
+3. **AbuseIPDB API** — Only called on cache miss, results written back to both tiers
+
+### Blacklist Pre-seeding
+
+A daily pull of the AbuseIPDB blacklist (10,000 highest-risk IPs at 100% confidence) is bulk-inserted into the threat cache. Any blocked IP matching the blacklist gets an instant score from cache — no API call consumed. Uses a separate quota (5 calls/day) independent of the check quota.
+
+The blacklist runs on startup (30-second delay) and then daily at 04:00.
+
+### Rate Limiting
+
+The system uses AbuseIPDB response headers (`X-RateLimit-Remaining`, `Retry-After`) as the single source of truth — no internal counters that desync on container rebuilds. On 429 responses, the enricher pauses automatically until the limit resets.
+
+---
+
 ## UI Guide
 
 ### Log Stream
@@ -195,7 +234,7 @@ The main view shows a live-updating table of parsed logs:
 - **Direction filters** — Inbound, outbound, VLAN, NAT
 - **Text search** — Filter by IP, rule name, or raw log content
 
-Click any row to expand full details including enrichment data, parsed rule breakdown, and raw log.
+Click any row to expand full details including enrichment data, parsed rule breakdown, AbuseIPDB intelligence (score, decoded attack categories, usage type, hostnames, report count, last reported date, Tor/whitelist status), and raw log.
 
 The stream auto-pauses when a row is expanded and shows a count of new logs received. It resumes on collapse.
 
@@ -205,7 +244,8 @@ Aggregated views with configurable time range:
 - Total logs, blocked count, high-threat count
 - Traffic direction breakdown
 - Logs-per-hour bar chart
-- Top blocked countries, IPs, threat IPs
+- Top blocked countries and IPs (WAN IP and 0.0.0.0 auto-excluded)
+- Top threat IPs — enriched with ASN, city, rDNS, decoded attack categories, last seen
 - Top DNS queries (when DNS logging is enabled)
 
 ---

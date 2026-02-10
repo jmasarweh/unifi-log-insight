@@ -2,11 +2,11 @@ import React from 'react'
 import {
   formatTime, getFlag, isPrivateIP, getInterfaceName,
   LOG_TYPE_STYLES, ACTION_STYLES,
-  DIRECTION_ICONS, DIRECTION_COLORS,
+  DIRECTION_ICONS, DIRECTION_COLORS, decodeThreatCategories,
 } from '../utils'
 import LogDetail from './LogDetail'
 
-function ThreatBadge({ score }) {
+function ThreatBadge({ score, categories }) {
   if (score === null || score === undefined) return <span className="text-gray-700">—</span>
 
   let dotColor = 'bg-emerald-400'
@@ -15,8 +15,10 @@ function ThreatBadge({ score }) {
   else if (score >= 25) { dotColor = 'bg-yellow-400' }
   else if (score > 0) { dotColor = 'bg-blue-400' }
 
+  const catText = decodeThreatCategories(categories)
+
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-1" title={catText || `Threat score: ${score}%`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
       <span className="text-gray-400">{score}</span>
     </span>
@@ -69,7 +71,7 @@ function formatRuleDesc(desc) {
   return desc.replace(/\](?!\s)/, '] ')
 }
 
-function LogRow({ log, isExpanded, onToggle }) {
+function LogRow({ log, isExpanded, detailedLog, onToggle }) {
   const actionStyle = ACTION_STYLES[log.rule_action || log.dhcp_event || log.wifi_event] || ''
   const typeStyle = LOG_TYPE_STYLES[log.log_type] || LOG_TYPE_STYLES.system
   const dirIcon = DIRECTION_ICONS[log.direction] || ''
@@ -160,14 +162,19 @@ function LogRow({ log, isExpanded, onToggle }) {
 
         {/* AbuseIPDB */}
         <td className="px-2 py-1.5 text-[13px] text-center">
-          <ThreatBadge score={log.threat_score} />
+          <ThreatBadge score={log.threat_score} categories={log.threat_categories} />
+        </td>
+
+        {/* Threat Categories */}
+        <td className="px-2 py-1.5 text-[11px] text-orange-400/70 max-w-[180px] truncate" title={decodeThreatCategories(log.threat_categories) || ''}>
+          {decodeThreatCategories(log.threat_categories) || <span className="text-gray-700">—</span>}
         </td>
       </tr>
 
       {isExpanded && (
         <tr>
-          <td colSpan={12}>
-            <LogDetail log={log} />
+          <td colSpan={13}>
+            <LogDetail log={detailedLog || log} />
           </td>
         </tr>
       )}
@@ -175,7 +182,7 @@ function LogRow({ log, isExpanded, onToggle }) {
   )
 }
 
-export default function LogTable({ logs, loading, expandedId, onToggleExpand }) {
+export default function LogTable({ logs, loading, expandedId, detailedLog, onToggleExpand }) {
 
   const columns = [
     { key: 'timestamp', label: 'Time', className: 'w-20' },
@@ -190,6 +197,7 @@ export default function LogTable({ logs, loading, expandedId, onToggleExpand }) 
     { key: 'proto', label: 'Proto', className: 'w-12' },
     { key: 'rule', label: 'Rule / Info', className: 'w-40' },
     { key: 'threat', label: 'AbuseIPDB', className: 'w-20' },
+    { key: 'categories', label: 'Categories', className: 'w-40' },
   ]
 
   return (
@@ -210,13 +218,13 @@ export default function LogTable({ logs, loading, expandedId, onToggleExpand }) 
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={12} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={13} className="text-center py-12 text-gray-600 text-sm">
                 Loading...
               </td>
             </tr>
           ) : logs.length === 0 ? (
             <tr>
-              <td colSpan={12} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={13} className="text-center py-12 text-gray-600 text-sm">
                 No logs match current filters
               </td>
             </tr>
@@ -226,6 +234,7 @@ export default function LogTable({ logs, loading, expandedId, onToggleExpand }) 
                 key={log.id}
                 log={log}
                 isExpanded={expandedId === log.id}
+                detailedLog={expandedId === log.id ? detailedLog : null}
                 onToggle={() => onToggleExpand(log.id)}
               />
             ))

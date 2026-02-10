@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { fetchStats } from '../api'
-import { formatNumber, getFlag } from '../utils'
+import { formatNumber, getFlag, decodeThreatCategories } from '../utils'
 
 const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d']
 
@@ -51,6 +51,16 @@ function LogsPerHourChart({ data }) {
       })}
     </div>
   )
+}
+
+function formatTimeAgo(isoStr) {
+  if (!isoStr) return null
+  const diff = Date.now() - new Date(isoStr).getTime()
+  const mins = Math.floor(diff / 60000)
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
 }
 
 function TopList({ title, items, renderItem }) {
@@ -174,14 +184,42 @@ export default function Dashboard() {
       {/* Top lists grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TopList
-          title="Top Blocked Countries"
-          items={stats.top_blocked_countries}
+          title="Top Threat IPs"
+          items={stats.top_threat_ips}
           renderItem={(item, i) => (
-            <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-gray-300">
-                {getFlag(item.country)} {item.country}
-              </span>
-              <span className="text-gray-500">{formatNumber(item.count)}</span>
+            <div key={i} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">
+                  {item.ip}
+                  {item.country && <span className="ml-1.5">{getFlag(item.country)}</span>}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-600 text-[10px]">{formatNumber(item.count)}×</span>
+                  <span className={`font-medium ${
+                    item.threat_score >= 75 ? 'text-red-400' : item.threat_score >= 50 ? 'text-orange-400' : 'text-yellow-400'
+                  }`}>
+                    {item.threat_score}%
+                  </span>
+                </div>
+              </div>
+              {(item.asn || item.city) && (
+                <div className="text-[10px] text-gray-500 truncate">
+                  {[item.asn, item.city].filter(Boolean).join(' · ')}
+                </div>
+              )}
+              {item.rdns && (
+                <div className="text-[10px] text-gray-600 truncate">{item.rdns}</div>
+              )}
+              <div className="flex items-center justify-between">
+                {decodeThreatCategories(item.threat_categories) ? (
+                  <div className="text-[10px] text-orange-400/70 truncate">
+                    {decodeThreatCategories(item.threat_categories)}
+                  </div>
+                ) : <div />}
+                {item.last_seen && (
+                  <div className="text-[10px] text-gray-600 shrink-0">{formatTimeAgo(item.last_seen)}</div>
+                )}
+              </div>
             </div>
           )}
         />
@@ -205,19 +243,14 @@ export default function Dashboard() {
         />
 
         <TopList
-          title="Top Threat IPs"
-          items={stats.top_threat_ips}
+          title="Top Blocked Countries"
+          items={stats.top_blocked_countries}
           renderItem={(item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
               <span className="text-gray-300">
-                {item.ip}
-                {item.country && <span className="ml-1.5">{getFlag(item.country)}</span>}
+                {getFlag(item.country)} {item.country}
               </span>
-              <span className={`font-medium ${
-                item.threat_score >= 75 ? 'text-red-400' : item.threat_score >= 50 ? 'text-orange-400' : 'text-yellow-400'
-              }`}>
-                {item.threat_score}%
-              </span>
+              <span className="text-gray-500">{formatNumber(item.count)}</span>
             </div>
           )}
         />

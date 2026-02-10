@@ -73,6 +73,10 @@ class TTLCache:
         with self._lock:
             return len(self._cache)
 
+    def delete(self, key: str):
+        with self._lock:
+            self._cache.pop(key, None)
+
 
 # ── GeoIP Enrichment ─────────────────────────────────────────────────────────
 
@@ -309,6 +313,7 @@ class AbuseIPDBEnricher:
             params = {
                 'ipAddress': ip_str,
                 'maxAgeInDays': 90,
+                'verbose': '',
             }
             resp = requests.get(self.API_URL, headers=headers, params=params, timeout=5)
 
@@ -335,10 +340,41 @@ class AbuseIPDBEnricher:
             resp.raise_for_status()
             data = resp.json().get('data', {})
 
+            # Aggregate categories from all reports (verbose mode)
+            all_cats = set()
+            for report in data.get('reports', []):
+                for cat in report.get('categories', []):
+                    all_cats.add(str(cat))
+
             result = {
                 'threat_score': data.get('abuseConfidenceScore', 0),
-                'threat_categories': [str(c) for c in data.get('categories', [])],
+                'threat_categories': sorted(all_cats),
             }
+
+            # Extra AbuseIPDB detail fields
+            usage_type = data.get('usageType')
+            if usage_type:
+                result['abuse_usage_type'] = usage_type
+
+            hostnames = data.get('hostnames', [])
+            if hostnames:
+                result['abuse_hostnames'] = ', '.join(hostnames)
+
+            total_reports = data.get('totalReports')
+            if total_reports is not None:
+                result['abuse_total_reports'] = total_reports
+
+            last_reported = data.get('lastReportedAt')
+            if last_reported:
+                result['abuse_last_reported'] = last_reported
+
+            is_whitelisted = data.get('isWhitelisted')
+            if is_whitelisted:
+                result['abuse_is_whitelisted'] = True
+
+            is_tor = data.get('isTor')
+            if is_tor:
+                result['abuse_is_tor'] = True
 
             # Update rate limits from response headers (source of truth)
             self._update_rate_limits(resp.headers)
@@ -346,7 +382,7 @@ class AbuseIPDBEnricher:
             # Persist to DB and memory cache
             if self.db:
                 try:
-                    self.db.upsert_threat(ip_str, result['threat_score'], result['threat_categories'])
+                    self.db.upsert_threat(ip_str, result)
                 except Exception as e:
                     logger.debug("DB threat cache write failed for %s: %s", ip_str, e)
 

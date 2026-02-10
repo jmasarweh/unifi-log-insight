@@ -391,7 +391,7 @@ def parse_log(raw_log: str) -> dict | None:
             try:
                 ipaddress.ip_address(ip_val)
             except ValueError:
-                logger.debug("Invalid %s '%s', setting to None", ip_field, ip_val)
+                logger.warning("Invalid %s '%s' in log: %.300s", ip_field, ip_val, original_raw)
                 parsed[ip_field] = None
 
     return parsed
