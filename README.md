@@ -71,7 +71,37 @@ MAXMIND_LICENSE_KEY=your_license_key
 TZ=Europe/London
 ```
 
-### 3. MaxMind Databases
+### 3. Configure Network Interfaces
+
+The app needs to know your WAN interface to classify traffic direction (inbound/outbound/inter-VLAN). It defaults to `ppp0` (PPPoE), which is wrong for most non-PPPoE setups.
+
+**Find your WAN interface:**
+
+| UniFi Model | Typical WAN Interface |
+|---|---|
+| UDR (PPPoE) | `ppp0` |
+| UDR (DHCP) | `eth3` |
+| UDM / UDM-SE | `eth8` |
+| USG | `eth0` |
+| UDM-Pro | `eth8` or `eth9` |
+
+**Edit `receiver/parsers.py`** — In the `derive_direction()` function, replace all three occurrences of `'ppp0'` with your WAN interface name.
+
+**Edit `receiver/parsers.py`** — Update the `INTERFACE_MAP` dictionary (around line 71) with your VLAN layout:
+```python
+INTERFACE_MAP = {
+    'br0':  'Main',       # Your default LAN
+    'br20': 'IoT',        # Example: IoT VLAN
+    'br40': 'Guest',      # Example: Guest VLAN
+    'ppp0': 'WAN',        # Your WAN interface
+}
+```
+
+**Edit `ui/src/utils.js`** — Update the `INTERFACE_NAMES` object (around line 79) to match the same labels.
+
+> **Note:** A setup wizard to automate this configuration is coming soon. These manual edits will no longer be needed once it ships.
+
+### 4. MaxMind Databases
 
 You have two options:
 
@@ -81,20 +111,48 @@ You have two options:
 - `GeoLite2-City.mmdb`
 - `GeoLite2-ASN.mmdb`
 
-### 4. Build and Run
+### 5. Build and Run
 
 ```bash
 docker compose up -d --build
 ```
 
-### 5. Configure Your Unifi Router Syslog
+### 6. Configure Your Unifi Router Syslog
 
 In your UniFi Network controller:
 1. Go to **Settings → System → Advanced**
 2. Enable **Remote Syslog**
 3. Set the syslog server to `<docker-host-ip>` on port `514`
 
-### 6. Open the UI
+### 7### 3. Configure Network Interfaces
+
+The app needs to know your WAN interface to classify traffic direction (inbound/outbound/inter-VLAN). It defaults to `ppp0` (PPPoE), which is wrong for most non-PPPoE setups.
+
+**Find your WAN interface:**
+
+| UniFi Model | Typical WAN Interface |
+|---|---|
+| UDR (PPPoE) | `ppp0` |
+| UDR (DHCP) | `eth3` |
+| UDM / UDM-SE | `eth8` |
+| USG | `eth0` |
+| UDM-Pro | `eth8` or `eth9` |
+
+**Edit `receiver/parsers.py`** — In the `derive_direction()` function, replace all three occurrences of `'ppp0'` with your WAN interface name.
+
+**Edit `receiver/parsers.py`** — Update the `INTERFACE_MAP` dictionary (around line 71) with your VLAN layout:
+```python
+INTERFACE_MAP = {
+    'br0':  'Main',       # Your default LAN
+    'br20': 'IoT',        # Example: IoT VLAN
+    'br40': 'Guest',      # Example: Guest VLAN
+    'ppp0': 'WAN',        # Your WAN interface
+}
+```
+
+**Edit `ui/src/utils.js`** — Update the `INTERFACE_NAMES` object (around line 79) to match the same labels.
+
+> **Note:** A setup wizard to automate this configuration is coming soon. These manual edits will no longer be needed once it ships.. Open the UI
 
 Navigate to `http://<docker-host-ip>:8090`
 
