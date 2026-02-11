@@ -1,0 +1,12 @@
+# Force LF line endings for all files (Docker/Linux compatibility)
+* text=auto eol=lf
+
+# Explicitly mark shell scripts as LF (critical for Docker)
+*.sh text eol=lf
+entrypoint.sh text eol=lf
+
+# Binary files
+*.mmdb binary
+*.png binary
+*.jpg binary
+*.ico binary
