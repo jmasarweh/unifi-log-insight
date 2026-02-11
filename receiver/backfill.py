@@ -17,6 +17,7 @@ import logging
 import threading
 
 from enrichment import is_public_ip
+from services import _SERVICE_MAP
 
 logger = logging.getLogger('backfill')
 
@@ -58,6 +59,9 @@ class BackfillTask:
 
     def _run_once(self):
         """Execute one backfill cycle."""
+        # Step 0: Patch NULL service_name rows for historical firewall logs
+        patched_services = self._patch_service_names()
+
         # Step 1: Patch NULL-scored rows from ip_threats cache
         patched_null = self._patch_from_cache()
 
@@ -74,9 +78,9 @@ class BackfillTask:
         budget = self.abuseipdb.remaining_budget
         if orphans and budget == 0:
             logger.info(
-                "Backfill: %d null-score patched, %d abuse-fields patched, "
+                "Backfill: %d services patched, %d null-score patched, %d abuse-fields patched, "
                 "%d re-enriched, %d orphans pending but no API budget",
-                patched_null, patched_abuse, reenriched, len(orphans)
+                patched_services, patched_null, patched_abuse, reenriched, len(orphans)
             )
             return
 
@@ -100,12 +104,12 @@ class BackfillTask:
             patched_final = self._patch_from_cache() + self._patch_abuse_fields()
 
         total_patched = patched_null + patched_abuse + patched_final
-        if total_patched > 0 or looked_up > 0 or failed > 0 or skipped > 0 or reenriched > 0:
+        if total_patched > 0 or looked_up > 0 or failed > 0 or skipped > 0 or reenriched > 0 or patched_services > 0:
             logger.info(
-                "Backfill complete: %d null-score patched, %d abuse-fields patched, "
+                "Backfill complete: %d services patched, %d null-score patched, %d abuse-fields patched, "
                 "%d ip_threats re-enriched, %d orphans looked up, %d failed, "
                 "%d skipped (no budget), %d rows patched from new data",
-                patched_null, patched_abuse, reenriched,
+                patched_services, patched_null, patched_abuse, reenriched,
                 looked_up, failed, skipped, patched_final
             )
         else:
@@ -232,6 +236,69 @@ class BackfillTask:
                 patched += cur.rowcount
 
                 return patched
+
+    def _patch_service_names(self) -> int:
+        """Backfill service names for historical firewall logs with NULL service_name.
+
+        Uses a single batch UPDATE with VALUES CTE to avoid scanning the logs table
+        once per service. Only updates firewall logs that have dst_port but NULL service_name.
+        Returns number of rows updated.
+        """
+        # Quick check: are there any NULL service_name rows to patch?
+        with self.db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT EXISTS(
+                        SELECT 1 FROM logs
+                        WHERE dst_port IS NOT NULL
+                          AND service_name IS NULL
+                          AND log_type = 'firewall'
+                        LIMIT 1
+                    )
+                """)
+                has_nulls = cur.fetchone()[0]
+
+        if not has_nulls:
+            return 0
+
+        # Build VALUES tuples from service map: (port, protocol, service_name)
+        # Chunk into batches of 500 to avoid massive SQL statements
+        service_tuples = [(port, proto, name) for (port, proto), name in _SERVICE_MAP.items()]
+        batch_size = 500
+        total_patched = 0
+
+        with self.db.get_conn() as conn:
+            with conn.cursor() as cur:
+                for i in range(0, len(service_tuples), batch_size):
+                    batch = service_tuples[i:i + batch_size]
+
+                    # Build VALUES clause
+                    values_list = []
+                    params = []
+                    for port, proto, name in batch:
+                        values_list.append("(%s, %s, %s)")
+                        params.extend([port, proto, name])
+
+                    values_clause = ', '.join(values_list)
+
+                    # Single UPDATE statement for this batch
+                    sql = f"""
+                        UPDATE logs
+                        SET service_name = v.service_name
+                        FROM (VALUES {values_clause}) AS v(port, protocol, service_name)
+                        WHERE logs.dst_port = v.port
+                          AND LOWER(logs.protocol) = v.protocol
+                          AND logs.service_name IS NULL
+                          AND logs.log_type = 'firewall'
+                    """
+
+                    cur.execute(sql, params)
+                    total_patched += cur.rowcount
+
+        if total_patched > 0:
+            logger.info("Service name backfill: patched %d historical firewall log rows", total_patched)
+
+        return total_patched
 
     def _reenrich_stale_threats(self) -> int:
         """Re-lookup ip_threats entries that are missing abuse detail fields.

@@ -155,6 +155,11 @@ function LogRow({ log, isExpanded, detailedLog, onToggle }) {
           {log.protocol || '—'}
         </td>
 
+        {/* Service */}
+        <td className="px-2 py-1.5 text-[12px] text-gray-500">
+          {log.service_name || '—'}
+        </td>
+
         {/* Rule / Info */}
         <td className="px-2 py-1.5 text-[12px] text-gray-500 max-w-[180px] truncate" title={infoTitle}>
           {infoText}
@@ -173,7 +178,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle }) {
 
       {isExpanded && (
         <tr>
-          <td colSpan={13}>
+          <td colSpan={14}>
             <LogDetail log={detailedLog || log} />
           </td>
         </tr>
@@ -195,6 +200,7 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
     { key: 'asn', label: 'ASN', className: 'w-36' },
     { key: 'network', label: 'Network', className: 'w-28' },
     { key: 'proto', label: 'Proto', className: 'w-12' },
+    { key: 'service', label: 'Service', className: 'w-24' },
     { key: 'rule', label: 'Rule / Info', className: 'w-40' },
     { key: 'threat', label: 'AbuseIPDB', className: 'w-20' },
     { key: 'categories', label: 'Categories', className: 'w-40' },

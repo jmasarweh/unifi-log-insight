@@ -111,6 +111,7 @@ def build_log_query(
     country: Optional[str],
     threat_min: Optional[int],
     search: Optional[str],
+    service: Optional[str],
 ) -> tuple[str, list]:
     """Build WHERE clause and params from filters."""
     conditions = []
@@ -178,6 +179,12 @@ def build_log_query(
         conditions.append("raw_log ILIKE %s")
         params.append(f"%{search}%")
 
+    if service:
+        services = [s.strip() for s in service.split(',')]
+        placeholders = ','.join(['%s'] * len(services))
+        conditions.append(f"service_name IN ({placeholders})")
+        params.extend(services)
+
     where = " AND ".join(conditions) if conditions else "1=1"
     return where, params
 
@@ -199,6 +206,7 @@ def get_logs(
     country: Optional[str] = Query(None, description="Comma-separated country codes"),
     threat_min: Optional[int] = Query(None, description="Minimum threat score"),
     search: Optional[str] = Query(None, description="Full-text search in raw_log"),
+    service: Optional[str] = Query(None, description="Comma-separated service names"),
     sort: str = Query("timestamp", description="Sort field"),
     order: str = Query("desc", description="asc or desc"),
     page: int = Query(1, ge=1),
@@ -207,12 +215,12 @@ def get_logs(
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
-        rule_name, country, threat_min, search,
+        rule_name, country, threat_min, search, service,
     )
 
     # Whitelist sort columns
     allowed_sorts = {
-        'timestamp', 'log_type', 'src_ip', 'dst_ip', 'protocol',
+        'timestamp', 'log_type', 'src_ip', 'dst_ip', 'protocol', 'service_name',
         'direction', 'rule_action', 'rule_name', 'geo_country',
         'threat_score', 'created_at',
     }
@@ -438,6 +446,15 @@ def get_stats(
             )
             top_dns = [dict(r) for r in cur.fetchall()]
 
+            # Top blocked services
+            cur.execute(
+                "SELECT service_name, COUNT(*) as count FROM logs "
+                "WHERE timestamp >= %s AND rule_action = 'block' AND service_name IS NOT NULL "
+                "GROUP BY service_name ORDER BY count DESC LIMIT 10",
+                [cutoff]
+            )
+            top_blocked_services = [dict(r) for r in cur.fetchall()]
+
         conn.commit()
         return {
             'time_range': time_range,
@@ -449,6 +466,7 @@ def get_stats(
             'top_blocked_countries': top_blocked_countries,
             'top_blocked_ips': top_blocked_ips,
             'top_threat_ips': top_threat_ips,
+            'top_blocked_services': top_blocked_services,
             'top_dns': top_dns,
             'logs_per_hour': logs_per_hour,
         }
@@ -480,12 +498,12 @@ def export_csv(
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
-        rule_name, country, threat_min, search,
+        rule_name, country, threat_min, search, service,
     )
 
     export_columns = [
         'timestamp', 'log_type', 'direction', 'src_ip', 'src_port',
-        'dst_ip', 'dst_port', 'protocol', 'rule_name', 'rule_desc',
+        'dst_ip', 'dst_port', 'protocol', 'service_name', 'rule_name', 'rule_desc',
         'rule_action', 'interface_in', 'interface_out', 'mac_address',
         'hostname', 'dns_query', 'dns_type', 'dns_answer',
         'geo_country', 'geo_city', 'asn_name', 'threat_score',
@@ -521,6 +539,29 @@ def export_csv(
         )
     except Exception as e:
         conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        put_conn(conn)
+
+
+@app.get("/api/services")
+def get_services():
+    """Return distinct service names for autocomplete filtering."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT service_name
+                FROM logs
+                WHERE service_name IS NOT NULL
+                ORDER BY service_name
+            """)
+            services = [row[0] for row in cur.fetchall()]
+        conn.commit()
+        return {'services': services}
+    except Exception as e:
+        conn.rollback()
+        logger.error("Error fetching services: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         put_conn(conn)

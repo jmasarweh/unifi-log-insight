@@ -10,6 +10,8 @@ import ipaddress
 import logging
 from datetime import datetime, timezone
 
+from services import get_service_name
+
 logger = logging.getLogger(__name__)
 
 # ── WAN IP auto-detection ────────────────────────────────────────────────────
@@ -208,6 +210,9 @@ def parse_firewall(body: str) -> dict:
 
     m = FW_DPT.search(body)
     result['dst_port'] = int(m.group(1)) if m else None
+
+    # Map destination port to IANA service name
+    result['service_name'] = get_service_name(result.get('dst_port'), result.get('protocol'))
 
     m = FW_MAC.search(body)
     result['mac_address'] = extract_mac(m.group(1)) if m else None

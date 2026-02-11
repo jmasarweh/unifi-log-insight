@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS logs (
     dst_ip      INET,
     dst_port    INTEGER,
     protocol    VARCHAR(10),
+    service_name TEXT,
     rule_name   VARCHAR(100),
     rule_desc   VARCHAR(255),
     rule_action VARCHAR(20),           -- allow, block, redirect
@@ -49,6 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_logs_dst_ip       ON logs (dst_ip);
 CREATE INDEX IF NOT EXISTS idx_logs_rule_action  ON logs (rule_action);
 CREATE INDEX IF NOT EXISTS idx_logs_direction    ON logs (direction);
 CREATE INDEX IF NOT EXISTS idx_logs_threat_score ON logs (threat_score) WHERE threat_score IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE service_name IS NOT NULL;
 
 -- Composite index for common filtered queries
 CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC);

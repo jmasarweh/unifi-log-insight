@@ -12,6 +12,7 @@ const DEFAULT_FILTERS = {
   ip: null,
   rule_name: null,
   search: null,
+  service: null,
   page: 1,
   per_page: 50,
   sort: 'timestamp',

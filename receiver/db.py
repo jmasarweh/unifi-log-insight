@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Column names matching the logs table
 INSERT_COLUMNS = [
     'timestamp', 'log_type', 'direction',
-    'src_ip', 'src_port', 'dst_ip', 'dst_port', 'protocol',
+    'src_ip', 'src_port', 'dst_ip', 'dst_port', 'protocol', 'service_name',
     'rule_name', 'rule_desc', 'rule_action',
     'interface_in', 'interface_out',
     'mac_address', 'hostname',
@@ -86,6 +86,9 @@ class Database:
             "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_last_reported TIMESTAMPTZ",
             "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_is_whitelisted BOOLEAN",
             "ALTER TABLE ip_threats ADD COLUMN IF NOT EXISTS abuse_is_tor BOOLEAN",
+            # IANA service name mapping (after protocol column)
+            "ALTER TABLE logs ADD COLUMN IF NOT EXISTS service_name TEXT",
+            "CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE service_name IS NOT NULL",
         ]
         try:
             with self.get_conn() as conn:

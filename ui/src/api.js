@@ -43,6 +43,12 @@ export async function enrichIP(ip) {
   return resp.json()
 }
 
+export async function fetchServices() {
+  const resp = await fetch(`${BASE}/services`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 export function getExportUrl(params = {}) {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {

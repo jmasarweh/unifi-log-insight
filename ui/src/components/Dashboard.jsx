@@ -256,6 +256,17 @@ export default function Dashboard() {
         />
 
         <TopList
+          title="Top Blocked Services"
+          items={stats.top_blocked_services}
+          renderItem={(item, i) => (
+            <div key={i} className="flex items-center justify-between text-xs">
+              <span className="text-gray-300 truncate mr-2">{item.service_name}</span>
+              <span className="text-gray-500 shrink-0">{formatNumber(item.count)}</span>
+            </div>
+          )}
+        />
+
+        <TopList
           title="Top DNS Queries"
           items={stats.top_dns}
           renderItem={(item, i) => (

@@ -148,6 +148,21 @@ export default function LogDetail({ log }) {
       )
     }
 
+    // Service name
+    if (displayLog.service_name) {
+      sections.push(
+        <div key="service">
+          <span className="text-gray-500 text-[12px] uppercase tracking-wider">Service</span>
+          <div className="text-gray-300 text-sm mt-0.5">
+            {displayLog.service_name}
+            {displayLog.dst_port && (
+              <span className="text-gray-500"> (port {displayLog.dst_port})</span>
+            )}
+          </div>
+        </div>
+      )
+    }
+
     const netDetails = [
       displayLog.interface_in && `IN: ${getInterfaceName(displayLog.interface_in)}`,
       displayLog.interface_out && `OUT: ${getInterfaceName(displayLog.interface_out)}`,

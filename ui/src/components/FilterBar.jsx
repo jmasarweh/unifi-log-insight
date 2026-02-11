@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { fetchServices } from '../api'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
 const TIME_RANGES = [
@@ -15,6 +16,17 @@ export default function FilterBar({ filters, onChange }) {
   const [ipSearch, setIpSearch] = useState(filters.ip || '')
   const [ruleSearch, setRuleSearch] = useState(filters.rule_name || '')
   const [textSearch, setTextSearch] = useState(filters.search || '')
+  const [serviceSearch, setServiceSearch] = useState('')
+  const [services, setServices] = useState([])
+  const [showServiceDropdown, setShowServiceDropdown] = useState(false)
+  const [selectedServices, setSelectedServices] = useState(
+    filters.service ? filters.service.split(',') : []
+  )
+
+  // Load services for autocomplete
+  useEffect(() => {
+    fetchServices().then(data => setServices(data.services || []))
+  }, [])
 
   // Debounce text inputs
   useEffect(() => {
@@ -163,6 +175,59 @@ export default function FilterBar({ filters, onChange }) {
             <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs">✕</button>
           )}
         </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={selectedServices.length > 0 ? `${selectedServices.length} service(s)` : "Service..."}
+            value={serviceSearch}
+            onChange={e => {
+              setServiceSearch(e.target.value)
+              setShowServiceDropdown(true)
+            }}
+            onFocus={() => setShowServiceDropdown(true)}
+            onBlur={() => setTimeout(() => setShowServiceDropdown(false), 200)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+          />
+          {selectedServices.length > 0 && (
+            <button
+              onClick={() => {
+                setSelectedServices([])
+                onChange({ ...filters, service: null })
+              }}
+              className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs"
+            >✕</button>
+          )}
+          {showServiceDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-800 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
+              {services
+                .filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase()))
+                .slice(0, 50)
+                .map(service => (
+                  <div
+                    key={service}
+                    onClick={() => {
+                      const updated = selectedServices.includes(service)
+                        ? selectedServices.filter(s => s !== service)
+                        : [...selectedServices, service]
+                      setSelectedServices(updated)
+                      onChange({ ...filters, service: updated.length ? updated.join(',') : null })
+                      setServiceSearch('')
+                    }}
+                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                      selectedServices.includes(service)
+                        ? 'bg-blue-500/20 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    {service}
+                  </div>
+                ))}
+              {services.filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase())).length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-500">No matching services</div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="relative flex-1 max-w-xs">
           <input
             type="text"
@@ -180,6 +245,8 @@ export default function FilterBar({ filters, onChange }) {
             setIpSearch('')
             setRuleSearch('')
             setTextSearch('')
+            setServiceSearch('')
+            setSelectedServices([])
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
           className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
