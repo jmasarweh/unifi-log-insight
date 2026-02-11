@@ -18,6 +18,8 @@ Built for home network monitoring — runs as a single Docker container with zer
 
 - **Syslog Receiver** — Listens on UDP 514, parses iptables firewall rules, DHCP leases, Wi-Fi events, and system messages
 - **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat intelligence (score, 23 attack categories, usage type, Tor/whitelist detection, report counts), reverse DNS
+- **Setup Wizard** — First-launch wizard auto-detects WAN interface(s) and network segments from live traffic, lets you label each interface (e.g., "IoT" instead of "br20"), and saves everything to the database — no config files to edit
+- **Multi-WAN Support** — Select multiple WAN interfaces for failover or load-balanced setups; reconfigure anytime via the Settings gear
 - **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, or local with automatic WAN IP learning
 - **DNS Ready** — Parser supports DNS query/answer logging (requires additional Unifi configuration — see [DNS Logging](#dns-logging) below)
 - **Live UI** — Auto-refreshing log stream with expandable detail rows, intelligent pause/resume when inspecting logs
@@ -27,7 +29,8 @@ Built for home network monitoring — runs as a single Docker container with zer
 - **Persistent Threat Cache** — `ip_threats` table stores AbuseIPDB results (score, categories, usage type, Tor status, report counts) for 4-day reuse, surviving container rebuilds. Three-tier lookup: in-memory → PostgreSQL → API call
 - **Backfill Daemon** — Automatically patches historical logs that have NULL threat scores against the persistent cache
 - **Batch Insert Resilience** — Row-by-row fallback on batch failures; IP validation at parse time prevents bad data from blocking ingestion
-- **Network Path Display** — Color-coded interface labels (Main, IoT, Hotspot, WAN) showing traffic flow direction
+- **Dynamic Interface Labels** — Color-coded, user-defined labels showing traffic flow direction; labels apply retroactively to all existing logs
+- **Interface Filter** — Filter logs by network interface with multi-select, searching by both interface name and label
 - **CSV Export** — Download filtered results up to 100K rows
 - **Auto-Retention** — 60-day retention for firewall/DHCP/Wi-Fi, 10-day for DNS
 - **MaxMind Auto-Update** — Scheduled GeoLite2 database refresh with hot-reload (no restart needed)
@@ -71,37 +74,7 @@ MAXMIND_LICENSE_KEY=your_license_key
 TZ=Europe/London
 ```
 
-### 3. Configure Network Interfaces
-
-The app needs to know your WAN interface to classify traffic direction (inbound/outbound/inter-VLAN). It defaults to `ppp0` (PPPoE), which is wrong for most non-PPPoE setups.
-
-**Find your WAN interface:**
-
-| UniFi Model | Typical WAN Interface |
-|---|---|
-| UDR (PPPoE) | `ppp0` |
-| UDR (DHCP) | `eth3` |
-| UDM / UDM-SE | `eth8` |
-| USG | `eth0` |
-| UDM-Pro | `eth8` or `eth9` |
-
-**Edit `receiver/parsers.py`** — In the `derive_direction()` function, replace all three occurrences of `'ppp0'` with your WAN interface name.
-
-**Edit `receiver/parsers.py`** — Update the `INTERFACE_MAP` dictionary (around line 71) with your VLAN layout:
-```python
-INTERFACE_MAP = {
-    'br0':  'Main',       # Your default LAN
-    'br20': 'IoT',        # Example: IoT VLAN
-    'br40': 'Guest',      # Example: Guest VLAN
-    'ppp0': 'WAN',        # Your WAN interface
-}
-```
-
-**Edit `ui/src/utils.js`** — Update the `INTERFACE_NAMES` object (around line 79) to match the same labels.
-
-> **Note:** A setup wizard to automate this configuration is coming soon. These manual edits will no longer be needed once it ships.
-
-### 4. MaxMind Databases
+### 3. MaxMind Databases
 
 You have two options:
 
@@ -111,50 +84,39 @@ You have two options:
 - `GeoLite2-City.mmdb`
 - `GeoLite2-ASN.mmdb`
 
-### 5. Build and Run
+### 4. Build and Run
 
 ```bash
 docker compose up -d --build
 ```
 
-### 6. Configure Your Unifi Router Syslog
+### 5. Configure Your Unifi Router Syslog
 
 In your UniFi Network controller:
 1. Go to **Settings → System → Advanced**
 2. Enable **Remote Syslog**
 3. Set the syslog server to `<docker-host-ip>` on port `514`
 
-### 7### 3. Configure Network Interfaces
-
-The app needs to know your WAN interface to classify traffic direction (inbound/outbound/inter-VLAN). It defaults to `ppp0` (PPPoE), which is wrong for most non-PPPoE setups.
-
-**Find your WAN interface:**
-
-| UniFi Model | Typical WAN Interface |
-|---|---|
-| UDR (PPPoE) | `ppp0` |
-| UDR (DHCP) | `eth3` |
-| UDM / UDM-SE | `eth8` |
-| USG | `eth0` |
-| UDM-Pro | `eth8` or `eth9` |
-
-**Edit `receiver/parsers.py`** — In the `derive_direction()` function, replace all three occurrences of `'ppp0'` with your WAN interface name.
-
-**Edit `receiver/parsers.py`** — Update the `INTERFACE_MAP` dictionary (around line 71) with your VLAN layout:
-```python
-INTERFACE_MAP = {
-    'br0':  'Main',       # Your default LAN
-    'br20': 'IoT',        # Example: IoT VLAN
-    'br40': 'Guest',      # Example: Guest VLAN
-    'ppp0': 'WAN',        # Your WAN interface
-}
-```
-
-**Edit `ui/src/utils.js`** — Update the `INTERFACE_NAMES` object (around line 79) to match the same labels.
-
-> **Note:** A setup wizard to automate this configuration is coming soon. These manual edits will no longer be needed once it ships.. Open the UI
+### 6. Open the UI
 
 Navigate to `http://<docker-host-ip>:8090`
+
+On first launch, a **Setup Wizard** will guide you through:
+
+1. **WAN Detection** — Select your WAN interface(s) so the system can classify traffic as inbound, outbound, or inter-VLAN. Common interfaces:
+
+   | UniFi Model | Typical WAN Interface |
+   |---|---|
+   | UDR (PPPoE) | `ppp0` |
+   | UDR (DHCP) | `eth3` |
+   | UDM / UDM-SE | `eth8` |
+   | USG | `eth0` |
+   | UDM-Pro | `eth8` or `eth9` |
+
+2. **Network Labels** — Give each interface a friendly name (e.g., "IoT" instead of "br20").
+3. **Summary** — Review and save.
+
+You can reconfigure at any time via the **Settings gear** in the top-right corner of the UI.
 
 ---
 
@@ -290,6 +252,8 @@ The main view shows a live-updating table of parsed logs:
 - **Time range** — 1h, 6h, 24h, 7d, 30d
 - **Action filters** — Allow, block, redirect
 - **Direction filters** — Inbound, outbound, VLAN, NAT
+- **Interface filter** — Multi-select by interface name or label (e.g., "IoT", "br20")
+- **Service filter** — Filter by detected service (HTTP, DNS, SSH, etc.)
 - **Text search** — Filter by IP, rule name, or raw log content
 
 Click any row to expand full details including enrichment data, parsed rule breakdown, AbuseIPDB intelligence (score, decoded attack categories, usage type, hostnames, report count, last reported date, Tor/whitelist status), and raw log.
@@ -313,10 +277,17 @@ Aggregated views with configurable time range:
 | Endpoint | Description |
 |---|---|
 | `GET /api/logs` | Paginated log list with all filters |
-| `GET /api/logs/{id}` | Single log detail |
+| `GET /api/logs/{id}` | Single log detail with threat data |
 | `GET /api/stats?time_range=24h` | Dashboard aggregations |
 | `GET /api/export` | CSV export with current filters |
 | `GET /api/health` | Health check with total count and latest timestamp |
+| `GET /api/services` | Distinct service names for filter dropdown |
+| `GET /api/interfaces` | Distinct interfaces seen in logs |
+| `GET /api/config` | Current system configuration (WAN, labels, setup status) |
+| `POST /api/setup/complete` | Save wizard configuration |
+| `GET /api/setup/wan-candidates` | Auto-detected WAN interface candidates |
+| `GET /api/setup/network-segments` | Discovered network segments with suggested labels |
+| `POST /api/enrich/{ip}` | Force fresh AbuseIPDB lookup for an IP |
 
 ---
 

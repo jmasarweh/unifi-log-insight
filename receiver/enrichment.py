@@ -174,7 +174,7 @@ class AbuseIPDBEnricher:
         self.enabled = bool(self.api_key)
         self._lock = threading.Lock()
         self.STALE_DAYS = 4  # Refresh from API after this many days
-        self.SAFETY_BUFFER = 20  # Stop this many calls before hard limit
+        self.SAFETY_BUFFER = 0  # No reserve — first come first serve
 
         # Rate limit state — None means unknown (not yet bootstrapped)
         # After first API call, these are set from response headers

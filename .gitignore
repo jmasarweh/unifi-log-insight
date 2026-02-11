@@ -2,8 +2,8 @@
 .env
 .env.local
 
-# MaxMind databases (large binary files)
-maxmind/*.mmdb
+# MaxMind (databases, lock files, etc.)
+maxmind/
 
 # Python
 __pycache__/

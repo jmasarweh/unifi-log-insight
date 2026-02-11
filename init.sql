@@ -85,3 +85,10 @@ CREATE TABLE IF NOT EXISTS ip_threats (
 );
 
 CREATE INDEX IF NOT EXISTS idx_ip_threats_looked_up ON ip_threats (looked_up_at);
+
+-- Dynamic configuration store (setup wizard, interface labels, etc.)
+CREATE TABLE IF NOT EXISTS system_config (
+    key         TEXT PRIMARY KEY,
+    value       JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);

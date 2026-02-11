@@ -41,9 +41,11 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
       .catch(() => setRescanning(false))
   }
 
-  // Poll for candidates when none found (waiting for syslog traffic)
+  // Poll until candidates arrive AND at least one has a WAN IP
+  const allResolved = candidates.length > 0 && candidates.some(c => c.wan_ip)
+
   useEffect(() => {
-    if (loading || error || candidates.length > 0) {
+    if (loading || error || allResolved) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       return
     }
@@ -51,16 +53,12 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
       fetchWANCandidates()
         .then(data => {
           const c = data.candidates || []
-          if (c.length > 0) {
-            setCandidates(c)
-            clearInterval(pollRef.current)
-            pollRef.current = null
-          }
+          if (c.length > 0) setCandidates(c)
         })
         .catch(() => {})
     }, 5000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [loading, error, candidates.length])
+  }, [loading, error, allResolved])
 
   const handleToggle = (iface) => {
     if (selected.includes(iface)) {
@@ -130,15 +128,13 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
             <h3 className="text-sm font-semibold text-gray-300">
               Detected in your logs
             </h3>
-            {reconfigMode && (
-              <button
-                onClick={handleRescan}
-                disabled={rescanning}
-                className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                {rescanning ? 'Scanning...' : 'Rescan Logs'}
-              </button>
-            )}
+            <button
+              onClick={handleRescan}
+              disabled={rescanning}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              {rescanning ? 'Scanning...' : 'Rescan Logs'}
+            </button>
           </div>
           <p className="text-xs text-gray-500 mb-3">
             Click on the interface that is your WAN. You can select multiple.

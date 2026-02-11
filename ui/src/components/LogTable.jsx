@@ -218,13 +218,13 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={13} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={14} className="text-center py-12 text-gray-600 text-sm">
                 Loading...
               </td>
             </tr>
           ) : logs.length === 0 ? (
             <tr>
-              <td colSpan={13} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={14} className="text-center py-12 text-gray-600 text-sm">
                 No logs match current filters
               </td>
             </tr>

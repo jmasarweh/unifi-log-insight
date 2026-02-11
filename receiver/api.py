@@ -384,19 +384,22 @@ def complete_setup(body: dict):
     if not body.get('wan_interfaces'):
         raise HTTPException(status_code=400, detail="wan_interfaces required")
 
+    # Read current WAN config before overwriting (for backfill comparison)
+    current_wan = set(get_config(enricher_db, "wan_interfaces", ["ppp0"]))
+
     set_config(enricher_db, "wan_interfaces", body["wan_interfaces"])
     set_config(enricher_db, "interface_labels", body.get("interface_labels", {}))
     set_config(enricher_db, "setup_complete", True)
     set_config(enricher_db, "config_version", 1)
 
-    # Trigger direction backfill if WAN changed from default
-    wan_set = set(body["wan_interfaces"])
-    if wan_set != {'ppp0'}:
+    # Trigger direction backfill if WAN interfaces actually changed
+    new_wan = set(body["wan_interfaces"])
+    if new_wan != current_wan:
         set_config(enricher_db, "direction_backfill_pending", True)
 
     # Signal receiver process to reload config
     try:
-        subprocess.run(['pkill', '-SIGUSR2', '-f', 'receiver/main.py'],
+        subprocess.run(['pkill', '-SIGUSR2', '-f', '/app/main.py'],
                       check=False, timeout=2)
         with open('/tmp/config_update_requested', 'w') as f:
             f.write(str(time.time()))
@@ -897,17 +900,15 @@ def enrich_ip(ip: str):
     if not abuseipdb.enabled:
         raise HTTPException(status_code=400, detail="AbuseIPDB not configured")
 
-    # Budget check: use shared stats file as source of truth since the
-    # receiver process also consumes budget with a separate enricher instance.
+    # Budget check: use shared stats file as source of truth
     try:
         with open('/tmp/abuseipdb_stats.json') as f:
             stats = json.load(f)
             remaining = stats.get('remaining', 0) or 0
-            if remaining <= 20:  # match SAFETY_BUFFER
-                raise HTTPException(status_code=429, detail="No API budget remaining")
+            if remaining <= 0:
+                raise HTTPException(status_code=429, detail="No API budget remaining — resets daily")
     except FileNotFoundError:
-        # No stats yet — allow one call to bootstrap rate limit state
-        pass
+        pass  # No stats yet — allow call to bootstrap rate limit state
 
     # Clear from memory cache
     abuseipdb.cache.delete(ip)
