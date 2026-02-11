@@ -252,15 +252,24 @@ class BackfillTask:
 
         with self.db.get_conn() as conn:
             with conn.cursor() as cur:
-                # Find stale entries
+                # Two-stage selection: 100 most recently seen, then top N by score
                 cur.execute("""
-                    SELECT host(ip) as ip_str
-                    FROM ip_threats
-                    WHERE abuse_usage_type IS NULL
-                      AND (threat_categories IS NULL
-                           OR threat_categories = '{}'
-                           OR threat_categories = '{"blacklist"}')
-                      AND threat_score > 0
+                    SELECT ip_str, threat_score FROM (
+                        SELECT host(t.ip) as ip_str, t.threat_score,
+                               MAX(l.timestamp) as last_seen
+                        FROM ip_threats t
+                        JOIN logs l ON (l.src_ip = t.ip OR l.dst_ip = t.ip)
+                        WHERE t.abuse_usage_type IS NULL
+                          AND (t.threat_categories IS NULL
+                               OR t.threat_categories = '{}'
+                               OR t.threat_categories = '{"blacklist"}')
+                          AND t.threat_score > 0
+                          AND l.log_type = 'firewall'
+                          AND l.rule_action = 'block'
+                        GROUP BY t.ip, t.threat_score
+                        ORDER BY last_seen DESC
+                        LIMIT 100
+                    ) recent
                     ORDER BY threat_score DESC
                     LIMIT %s
                 """, [batch_size])

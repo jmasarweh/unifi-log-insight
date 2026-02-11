@@ -28,6 +28,21 @@ export async function fetchHealth() {
   return resp.json()
 }
 
+export async function fetchAbuseIPDBStatus() {
+  const resp = await fetch(`${BASE}/abuseipdb/status`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function enrichIP(ip) {
+  const resp = await fetch(`${BASE}/enrich/${encodeURIComponent(ip)}`, { method: 'POST' })
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
 export function getExportUrl(params = {}) {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {

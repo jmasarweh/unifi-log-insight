@@ -19,6 +19,11 @@ if [ ! -s "$PGDATA/PG_VERSION" ]; then
     su - postgres -c "psql -d unifi_logs -c \"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO unifi;\""
     su - postgres -c "psql -d unifi_logs -c \"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO unifi;\""
 
+    # Transfer table ownership so the unifi user can run ALTER TABLE migrations
+    su - postgres -c "psql -d unifi_logs -c \"ALTER TABLE logs OWNER TO unifi;\""
+    su - postgres -c "psql -d unifi_logs -c \"ALTER TABLE ip_threats OWNER TO unifi;\""
+    su - postgres -c "psql -d unifi_logs -c \"ALTER SEQUENCE logs_id_seq OWNER TO unifi;\""
+
     # Configure PostgreSQL to accept connections from the app
     echo "host all all 127.0.0.1/32 md5" >> "$PGDATA/pg_hba.conf"
     echo "local all all trust" >> "$PGDATA/pg_hba.conf"

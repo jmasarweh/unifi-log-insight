@@ -28,6 +28,8 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
 from parsers import get_wan_ip
+from db import Database
+from enrichment import AbuseIPDBEnricher, is_public_ip
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +57,13 @@ def get_conn():
 
 def put_conn(conn):
     db_pool.putconn(conn)
+
+
+# ── AbuseIPDB Enricher (for manual enrich endpoint) ──────────────────────────
+
+enricher_db = Database(conn_params, min_conn=1, max_conn=3)
+enricher_db.connect()
+abuseipdb = AbuseIPDBEnricher(db=enricher_db)
 
 
 # ── App ───────────────────────────────────────────────────────────────────────
@@ -574,6 +583,95 @@ def health():
         return {'status': 'error', 'detail': str(e)}
     finally:
         put_conn(conn)
+
+
+# ── AbuseIPDB Endpoints ──────────────────────────────────────────────────────
+
+@app.get("/api/abuseipdb/status")
+def abuseipdb_status():
+    try:
+        with open('/tmp/abuseipdb_stats.json') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"remaining": None, "limit": None}
+
+
+@app.post("/api/enrich/{ip}")
+def enrich_ip(ip: str):
+    if not is_public_ip(ip):
+        raise HTTPException(status_code=400, detail="Not a public IP")
+
+    if not abuseipdb.enabled:
+        raise HTTPException(status_code=400, detail="AbuseIPDB not configured")
+
+    if abuseipdb.remaining_budget <= 0:
+        # Read from stats file as fallback (receiver process may have budget info)
+        try:
+            with open('/tmp/abuseipdb_stats.json') as f:
+                stats = json.load(f)
+                remaining = stats.get('remaining', 0) or 0
+                if remaining <= 0:
+                    raise HTTPException(status_code=429, detail="No API budget remaining")
+        except FileNotFoundError:
+            raise HTTPException(status_code=429, detail="No API budget remaining")
+
+    # Clear from memory cache
+    abuseipdb.cache.delete(ip)
+
+    # Backdate ip_threats entry so lookup() treats it as expired
+    try:
+        with enricher_db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE ip_threats
+                    SET looked_up_at = NOW() - INTERVAL '30 days'
+                    WHERE ip = %s::inet
+                """, [ip])
+    except Exception:
+        pass  # Entry may not exist yet, that's fine
+
+    # Call lookup — hits the API, writes back to ip_threats + memory cache
+    result = abuseipdb.lookup(ip)
+    if not result or 'threat_score' not in result:
+        raise HTTPException(status_code=502, detail="AbuseIPDB lookup failed")
+
+    # Patch ALL log rows for this IP
+    logs_patched = 0
+    try:
+        with enricher_db.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    UPDATE logs
+                    SET threat_score = COALESCE(t.threat_score, logs.threat_score),
+                        abuse_usage_type = t.abuse_usage_type,
+                        abuse_hostnames = t.abuse_hostnames,
+                        abuse_total_reports = t.abuse_total_reports,
+                        abuse_last_reported = t.abuse_last_reported,
+                        abuse_is_whitelisted = t.abuse_is_whitelisted,
+                        abuse_is_tor = t.abuse_is_tor,
+                        threat_categories = COALESCE(
+                            CASE WHEN array_length(t.threat_categories, 1) > 0
+                                 THEN t.threat_categories ELSE NULL END,
+                            logs.threat_categories
+                        )
+                    FROM ip_threats t
+                    WHERE (logs.src_ip = t.ip OR logs.dst_ip = t.ip)
+                      AND t.ip = %s::inet
+                      AND logs.log_type = 'firewall'
+                      AND logs.rule_action = 'block'
+                """, [ip])
+                logs_patched = cur.rowcount
+    except Exception as e:
+        logger.error("Failed to patch logs for %s: %s", ip, e)
+
+    return {
+        'ip': ip,
+        'threat_score': result.get('threat_score'),
+        'abuse_usage_type': result.get('abuse_usage_type'),
+        'categories': result.get('threat_categories', []),
+        'logs_patched': logs_patched,
+        'remaining_budget': abuseipdb.remaining_budget,
+    }
 
 
 # ── Static file serving ───────────────────────────────────────────────────────

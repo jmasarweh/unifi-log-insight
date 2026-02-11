@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS logs (
     threat_score    INTEGER,           -- 0-100 from AbuseIPDB
     threat_categories TEXT[],
     rdns        VARCHAR(255),
+    abuse_usage_type TEXT,
+    abuse_hostnames TEXT,
+    abuse_total_reports INTEGER,
+    abuse_last_reported TIMESTAMPTZ,
+    abuse_is_whitelisted BOOLEAN,
+    abuse_is_tor BOOLEAN,
     raw_log     TEXT NOT NULL,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
@@ -67,7 +73,13 @@ CREATE TABLE IF NOT EXISTS ip_threats (
     ip              INET PRIMARY KEY,
     threat_score    INTEGER NOT NULL DEFAULT 0,
     threat_categories TEXT[],
-    looked_up_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    looked_up_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    abuse_usage_type TEXT,
+    abuse_hostnames TEXT,
+    abuse_total_reports INTEGER,
+    abuse_last_reported TIMESTAMPTZ,
+    abuse_is_whitelisted BOOLEAN,
+    abuse_is_tor BOOLEAN
 );
 
 CREATE INDEX IF NOT EXISTS idx_ip_threats_looked_up ON ip_threats (looked_up_at);

@@ -1,5 +1,6 @@
-import React from 'react'
-import { getFlag, getInterfaceName, decodeThreatCategories } from '../utils'
+import React, { useState, useEffect } from 'react'
+import { getFlag, getInterfaceName, decodeThreatCategories, isPrivateIP } from '../utils'
+import { fetchAbuseIPDBStatus, enrichIP } from '../api'
 
 function parseRuleName(ruleName) {
   if (!ruleName) return null
@@ -15,35 +16,84 @@ function parseRuleName(ruleName) {
 }
 
 export default function LogDetail({ log }) {
+  const [enriching, setEnriching] = useState(false)
+  const [enrichError, setEnrichError] = useState(null)
+  const [enrichedData, setEnrichedData] = useState(null)
+  const [budget, setBudget] = useState(null)
+
+  // Determine which IP to enrich (prefer src_ip if public, else dst_ip)
+  function getEnrichableIP() {
+    if (!log) return null
+    if (log.src_ip && !isPrivateIP(log.src_ip)) return log.src_ip
+    if (log.dst_ip && !isPrivateIP(log.dst_ip)) return log.dst_ip
+    return null
+  }
+  const enrichableIP = getEnrichableIP()
+
+  const canEnrich = log
+    && log.log_type === 'firewall'
+    && log.rule_action === 'block'
+    && !log.abuse_usage_type
+    && enrichableIP
+
+  // Fetch budget status when enrich button would be shown
+  useEffect(() => {
+    if (!canEnrich) return
+    fetchAbuseIPDBStatus()
+      .then(s => setBudget(s.remaining))
+      .catch(() => setBudget(null))
+  }, [canEnrich])
+
   if (!log) return null
+
+  // Merge enriched data into display log
+  const displayLog = enrichedData ? { ...log, ...enrichedData } : log
+
+  const handleEnrich = async () => {
+    setEnriching(true)
+    setEnrichError(null)
+    try {
+      const result = await enrichIP(enrichableIP)
+      setEnrichedData({
+        threat_score: result.threat_score,
+        threat_categories: result.categories,
+        abuse_usage_type: result.abuse_usage_type,
+      })
+      setBudget(result.remaining_budget)
+    } catch (err) {
+      setEnrichError(err.message)
+    } finally {
+      setEnriching(false)
+    }
+  }
 
   const sections = []
 
   // rDNS (prominent)
-  if (log.rdns) {
+  if (displayLog.rdns) {
     sections.push(
       <div key="rdns" className="col-span-full">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">Reverse DNS</span>
-        <div className="text-gray-200 text-sm mt-0.5">{log.rdns}</div>
+        <div className="text-gray-200 text-sm mt-0.5">{displayLog.rdns}</div>
       </div>
     )
   }
 
   // GeoIP
-  if (log.geo_country) {
+  if (displayLog.geo_country) {
     const geo = [
-      getFlag(log.geo_country),
-      log.geo_country,
-      log.geo_city,
+      getFlag(displayLog.geo_country),
+      displayLog.geo_country,
+      displayLog.geo_city,
     ].filter(Boolean).join(' · ')
 
     sections.push(
       <div key="geo">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">GeoIP</span>
         <div className="text-gray-300 text-sm mt-0.5">{geo}</div>
-        {log.geo_lat && (
+        {displayLog.geo_lat && (
           <div className="text-gray-600 text-[12px] mt-0.5">
-            {log.geo_lat.toFixed(4)}, {log.geo_lon.toFixed(4)}
+            {displayLog.geo_lat.toFixed(4)}, {displayLog.geo_lon.toFixed(4)}
           </div>
         )}
       </div>
@@ -51,22 +101,22 @@ export default function LogDetail({ log }) {
   }
 
   // ASN
-  if (log.asn_name) {
+  if (displayLog.asn_name) {
     sections.push(
       <div key="asn">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">ASN</span>
         <div className="text-gray-300 text-sm mt-0.5">
-          {log.asn_name}
-          {log.asn_number && <span className="text-gray-600 ml-1.5">AS{log.asn_number}</span>}
+          {displayLog.asn_name}
+          {displayLog.asn_number && <span className="text-gray-600 ml-1.5">AS{displayLog.asn_number}</span>}
         </div>
       </div>
     )
   }
 
   // Firewall details
-  if (log.log_type === 'firewall') {
+  if (displayLog.log_type === 'firewall') {
     // Parsed rule breakdown
-    const parsed = parseRuleName(log.rule_name)
+    const parsed = parseRuleName(displayLog.rule_name)
     if (parsed) {
       sections.push(
         <div key="rule_parsed">
@@ -83,8 +133,8 @@ export default function LogDetail({ log }) {
     }
 
     // Rule description
-    if (log.rule_desc) {
-      const desc = log.rule_desc.replace(/\](?!\s)/, '] ')
+    if (displayLog.rule_desc) {
+      const desc = displayLog.rule_desc.replace(/\](?!\s)/, '] ')
       sections.push(
         <div key="rule_desc">
           <span className="text-gray-500 text-[12px] uppercase tracking-wider">Rule Description</span>
@@ -94,9 +144,9 @@ export default function LogDetail({ log }) {
     }
 
     const netDetails = [
-      log.interface_in && `IN: ${getInterfaceName(log.interface_in)}`,
-      log.interface_out && `OUT: ${getInterfaceName(log.interface_out)}`,
-      log.mac_address && `MAC: ${log.mac_address}`,
+      displayLog.interface_in && `IN: ${getInterfaceName(displayLog.interface_in)}`,
+      displayLog.interface_out && `OUT: ${getInterfaceName(displayLog.interface_out)}`,
+      displayLog.mac_address && `MAC: ${displayLog.mac_address}`,
     ].filter(Boolean)
     if (netDetails.length) {
       sections.push(
@@ -109,10 +159,10 @@ export default function LogDetail({ log }) {
   }
 
   // DHCP details
-  if (log.log_type === 'dhcp') {
+  if (displayLog.log_type === 'dhcp') {
     const dhcpDetails = [
-      log.hostname && `Host: ${log.hostname}`,
-      log.mac_address && `MAC: ${log.mac_address}`,
+      displayLog.hostname && `Host: ${displayLog.hostname}`,
+      displayLog.mac_address && `MAC: ${displayLog.mac_address}`,
     ].filter(Boolean)
     if (dhcpDetails.length) {
       sections.push(
@@ -125,10 +175,10 @@ export default function LogDetail({ log }) {
   }
 
   // WiFi details
-  if (log.log_type === 'wifi') {
+  if (displayLog.log_type === 'wifi') {
     const wifiDetails = [
-      log.wifi_event && `Event: ${log.wifi_event}`,
-      log.mac_address && `MAC: ${log.mac_address}`,
+      displayLog.wifi_event && `Event: ${displayLog.wifi_event}`,
+      displayLog.mac_address && `MAC: ${displayLog.mac_address}`,
     ].filter(Boolean)
     if (wifiDetails.length) {
       sections.push(
@@ -143,8 +193,8 @@ export default function LogDetail({ log }) {
   // AbuseIPDB Detail Fields
   const abuseDetails = []
 
-  if (log.threat_score !== null && log.threat_score !== undefined) {
-    const score = log.threat_score
+  if (displayLog.threat_score !== null && displayLog.threat_score !== undefined) {
+    const score = displayLog.threat_score
     let color = 'text-emerald-400'
     let label = 'Clean'
     if (score >= 75) { color = 'text-red-400'; label = 'Critical' }
@@ -158,44 +208,44 @@ export default function LogDetail({ log }) {
         <div className={`text-sm mt-0.5 ${color} font-medium`}>
           {score}% · {label}
         </div>
-        {decodeThreatCategories(log.threat_categories) && (
+        {decodeThreatCategories(displayLog.threat_categories) && (
           <div className="text-[11px] text-orange-400/70 mt-0.5">
-            {decodeThreatCategories(log.threat_categories)}
+            {decodeThreatCategories(displayLog.threat_categories)}
           </div>
         )}
       </div>
     )
   }
 
-  if (log.abuse_usage_type) {
+  if (displayLog.abuse_usage_type) {
     abuseDetails.push(
       <div key="abuse_usage">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Usage Type</span>
-        <div className="text-gray-300 text-sm mt-0.5">{log.abuse_usage_type}</div>
+        <div className="text-gray-300 text-sm mt-0.5">{displayLog.abuse_usage_type}</div>
       </div>
     )
   }
 
-  if (log.abuse_hostnames) {
+  if (displayLog.abuse_hostnames) {
     abuseDetails.push(
       <div key="abuse_hosts">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Host Names</span>
-        <div className="text-gray-300 text-sm mt-0.5">{log.abuse_hostnames}</div>
+        <div className="text-gray-300 text-sm mt-0.5">{displayLog.abuse_hostnames}</div>
       </div>
     )
   }
 
-  if (log.abuse_total_reports != null && log.abuse_total_reports > 0) {
+  if (displayLog.abuse_total_reports != null && displayLog.abuse_total_reports > 0) {
     abuseDetails.push(
       <div key="abuse_reports">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Reports #</span>
-        <div className="text-gray-300 text-sm mt-0.5">{log.abuse_total_reports.toLocaleString()}</div>
+        <div className="text-gray-300 text-sm mt-0.5">{displayLog.abuse_total_reports.toLocaleString()}</div>
       </div>
     )
   }
 
-  if (log.abuse_last_reported) {
-    const d = new Date(log.abuse_last_reported)
+  if (displayLog.abuse_last_reported) {
+    const d = new Date(displayLog.abuse_last_reported)
     const formatted = d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     abuseDetails.push(
       <div key="abuse_last">
@@ -205,7 +255,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (log.abuse_is_whitelisted) {
+  if (displayLog.abuse_is_whitelisted) {
     abuseDetails.push(
       <div key="abuse_wl">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Whitelisted</span>
@@ -214,7 +264,7 @@ export default function LogDetail({ log }) {
     )
   }
 
-  if (log.abuse_is_tor) {
+  if (displayLog.abuse_is_tor) {
     abuseDetails.push(
       <div key="abuse_tor">
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB Tor</span>
@@ -223,6 +273,9 @@ export default function LogDetail({ log }) {
     )
   }
 
+  // Enrich button — shown when abuse data is missing for a blocked firewall log
+  const showEnrichButton = canEnrich && !enrichedData
+
   return (
     <div className="bg-gray-900/50 border-t border-gray-800 px-4 py-3">
       {sections.length > 0 && (
@@ -230,16 +283,37 @@ export default function LogDetail({ log }) {
           {sections}
         </div>
       )}
-      {abuseDetails.length > 0 && (
+      {(abuseDetails.length > 0 || showEnrichButton) && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3 pt-2 border-t border-gray-800/50">
           {abuseDetails}
+          {showEnrichButton && (
+            <div key="enrich_btn">
+              <span className="text-gray-500 text-[12px] uppercase tracking-wider">AbuseIPDB</span>
+              <div className="mt-1">
+                <button
+                  onClick={handleEnrich}
+                  disabled={enriching || budget === 0}
+                  className="px-2.5 py-1 text-[12px] rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  title={budget === 0 ? 'No API budget' : `Look up ${enrichableIP} on AbuseIPDB`}
+                >
+                  {enriching ? 'Looking up...' : `Enrich ${enrichableIP}`}
+                </button>
+                {budget !== null && (
+                  <span className="text-gray-600 text-[11px] ml-2">{budget} remaining</span>
+                )}
+                {enrichError && (
+                  <div className="text-red-400 text-[11px] mt-1">{enrichError}</div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
       {/* Raw log */}
       <div>
         <span className="text-gray-500 text-[12px] uppercase tracking-wider">Raw Log</span>
         <pre className="text-[12px] text-gray-100 mt-1 whitespace-pre-wrap break-all leading-relaxed bg-gray-950 rounded p-2 border border-gray-800">
-          {log.raw_log}
+          {displayLog.raw_log}
         </pre>
       </div>
     </div>
