@@ -34,3 +34,4 @@ agents.md
 .vscode
 .doc
 .worktrees/
+unifi_logs_backup.dump
