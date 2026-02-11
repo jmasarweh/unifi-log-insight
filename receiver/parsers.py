@@ -67,7 +67,7 @@ DHCP_REQ     = re.compile(r'DHCPREQUEST\((\S+)\)\s+([0-9.]+)\s+([0-9a-f:]+)')
 WIFI_EVENT  = re.compile(r'(\w+):\s+STA\s+([0-9a-f:]+)')
 WIFI_ASSOC  = re.compile(r'STA\s+([0-9a-f:]+)\s+.*?(associated|disassociated|deauthenticated|authenticated)')
 
-# ── Interface → network mapping ───────────────────────────────────────────────
+# ── Interface → network mapping example - customize for your setup───────────────────────────────────────────────
 INTERFACE_MAP = {
     'br0':  'Main',      # VLAN 1  - 10.10.10.0/24
     'br20': 'IoT',       # VLAN 20 - 10.10.20.0/24
@@ -203,7 +203,7 @@ def parse_firewall(body: str) -> dict:
     result['dst_ip'] = m.group(1) if m else None
 
     m = FW_PROTO.search(body)
-    result['protocol'] = m.group(1) if m else None
+    result['protocol'] = m.group(1).lower() if m else None
 
     m = FW_SPT.search(body)
     result['src_port'] = int(m.group(1)) if m else None

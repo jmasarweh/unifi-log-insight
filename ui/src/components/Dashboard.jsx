@@ -185,7 +185,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TopList
           title="Top Threat IPs"
-          items={stats.top_threat_ips}
+          items={stats.top_threat_ips || []}
           renderItem={(item, i) => (
             <div key={i} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
@@ -226,7 +226,7 @@ export default function Dashboard() {
 
         <TopList
           title="Top Blocked IPs"
-          items={stats.top_blocked_ips}
+          items={stats.top_blocked_ips || []}
           renderItem={(item, i) => (
             <div key={i} className="space-y-1">
               <div className="flex items-center justify-between text-xs">
@@ -244,7 +244,7 @@ export default function Dashboard() {
 
         <TopList
           title="Top Blocked Countries"
-          items={stats.top_blocked_countries}
+          items={stats.top_blocked_countries || []}
           renderItem={(item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
               <span className="text-gray-300">
@@ -257,7 +257,7 @@ export default function Dashboard() {
 
         <TopList
           title="Top Blocked Services"
-          items={stats.top_blocked_services}
+          items={stats.top_blocked_services || []}
           renderItem={(item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
               <span className="text-gray-300 truncate mr-2">{item.service_name}</span>
@@ -268,7 +268,7 @@ export default function Dashboard() {
 
         <TopList
           title="Top DNS Queries"
-          items={stats.top_dns}
+          items={stats.top_dns || []}
           renderItem={(item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
               <span className="text-gray-300 truncate mr-2">{item.dns_query}</span>

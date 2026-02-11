@@ -89,6 +89,8 @@ class Database:
             # IANA service name mapping (after protocol column)
             "ALTER TABLE logs ADD COLUMN IF NOT EXISTS service_name TEXT",
             "CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE service_name IS NOT NULL",
+            # Normalize protocol to lowercase for index optimization
+            "UPDATE logs SET protocol = LOWER(protocol) WHERE protocol IS NOT NULL AND protocol != LOWER(protocol)",
         ]
         try:
             with self.get_conn() as conn:

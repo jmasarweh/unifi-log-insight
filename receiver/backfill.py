@@ -17,7 +17,7 @@ import logging
 import threading
 
 from enrichment import is_public_ip
-from services import _SERVICE_MAP
+from services import get_service_mappings
 
 logger = logging.getLogger('backfill')
 
@@ -263,7 +263,7 @@ class BackfillTask:
 
         # Build VALUES tuples from service map: (port, protocol, service_name)
         # Chunk into batches of 500 to avoid massive SQL statements
-        service_tuples = [(port, proto, name) for (port, proto), name in _SERVICE_MAP.items()]
+        service_tuples = [(port, proto, name) for (port, proto), name in get_service_mappings().items()]
         batch_size = 500
         total_patched = 0
 
@@ -287,7 +287,7 @@ class BackfillTask:
                         SET service_name = v.service_name
                         FROM (VALUES {values_clause}) AS v(port, protocol, service_name)
                         WHERE logs.dst_port = v.port
-                          AND LOWER(logs.protocol) = v.protocol
+                          AND logs.protocol = v.protocol
                           AND logs.service_name IS NULL
                           AND logs.log_type = 'firewall'
                     """
