@@ -37,8 +37,12 @@ RETENTION_HOUR = "03:00"        # Run retention cleanup daily at this time
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
+_log_level_name = os.environ.get('LOG_LEVEL', 'INFO').upper()
+if _log_level_name not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
+    _log_level_name = 'INFO'
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, _log_level_name),
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
     stream=sys.stdout,
@@ -167,8 +171,8 @@ def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: Blacklist
         try:
             db_stats = db.get_stats()
             enrich_stats = enricher.get_stats()
-            logger.info("DB stats — total: %s, last hour: %s", db_stats['total'], db_stats['last_hour'])
-            logger.info("Enrichment stats — %s", enrich_stats)
+            logger.debug("DB stats — total: %s, last hour: %s", db_stats['total'], db_stats['last_hour'])
+            logger.debug("Enrichment stats — %s", enrich_stats)
         except Exception as e:
             logger.error("Failed to get stats: %s", e)
 
@@ -213,7 +217,7 @@ def wait_for_postgres(conn_params: dict, max_retries: int = 30, delay: float = 2
             logger.info("PostgreSQL is ready.")
             return
         except psycopg2.OperationalError:
-            logger.info("Waiting for PostgreSQL... (%d/%d)", i + 1, max_retries)
+            logger.debug("Waiting for PostgreSQL... (%d/%d)", i + 1, max_retries)
             time.sleep(delay)
     logger.error("PostgreSQL not available after %d retries", max_retries)
     sys.exit(1)

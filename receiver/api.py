@@ -16,6 +16,7 @@ import csv
 import io
 import json
 import logging
+import re
 import subprocess
 import time
 from datetime import datetime, timedelta, timezone
@@ -35,8 +36,12 @@ from parsers import get_wan_ip
 from db import Database, get_config, set_config, count_logs
 from enrichment import AbuseIPDBEnricher, is_public_ip
 
+_log_level_name = os.environ.get('LOG_LEVEL', 'INFO').upper()
+if _log_level_name not in ('DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'):
+    _log_level_name = 'INFO'
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, _log_level_name),
     format='%(asctime)s [%(name)s] %(levelname)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S',
 )
@@ -80,6 +85,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Uvicorn access log filter ────────────────────────────────────────────────
+
+class _QuietAccessFilter(logging.Filter):
+    """Suppress high-frequency polling endpoints from uvicorn access logs.
+
+    /api/health (polled every 15s) and /api/logs (polled on page load)
+    are only shown at DEBUG level. All other endpoints remain visible at INFO.
+    """
+    _QUIET_RE = re.compile(r'"GET /api/(health|logs)[\s?]')
+
+    def filter(self, record):
+        if self._QUIET_RE.search(record.getMessage()):
+            return logging.getLogger().getEffectiveLevel() <= logging.DEBUG
+        return True
+
+
+@app.on_event("startup")
+def _configure_access_logging():
+    logging.getLogger("uvicorn.access").addFilter(_QuietAccessFilter())
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

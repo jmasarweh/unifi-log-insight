@@ -89,6 +89,9 @@ MAXMIND_LICENSE_KEY=your_license_key
 
 # Timezone for scheduled tasks (used by cron for MaxMind updates)
 TZ=Europe/London
+
+# Log level (DEBUG shows periodic stats and all access logs; default: INFO)
+# LOG_LEVEL=INFO
 ```
 
 Then run:
@@ -196,6 +199,7 @@ Everything runs inside a single Docker container, managed by supervisord:
 | `MAXMIND_ACCOUNT_ID` | No | Enables GeoIP auto-update. Without it, manually place `.mmdb` files |
 | `MAXMIND_LICENSE_KEY` | No | Paired with account ID for auto-update |
 | `TZ` | No | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York` |
+| `LOG_LEVEL` | No | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Defaults to `INFO`. Set to `WARNING` for quiet steady-state. Use `DEBUG` for troubleshooting |
 
 ### Ports
 

@@ -9,6 +9,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./maxmind:/app/maxmind
+    # Logging verbosity — set LOG_LEVEL in .env (DEBUG, INFO, WARNING, ERROR, CRITICAL; default: INFO)
     env_file:
       - .env
     healthcheck:

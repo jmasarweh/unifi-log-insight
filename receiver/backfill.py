@@ -118,7 +118,7 @@ class BackfillTask:
                 looked_up, failed, skipped, patched_final
             )
         else:
-            logger.info("Backfill: nothing to do")
+            logger.debug("Backfill: nothing to do")
 
     def _backfill_direction(self) -> int:
         """Re-derive direction for firewall logs when WAN interfaces change.
@@ -134,7 +134,7 @@ class BackfillTask:
         if not get_config(self.db, 'direction_backfill_pending', False):
             return 0
 
-        logger.info("Starting direction backfill...")
+        logger.debug("Starting direction backfill...")
 
         total_updated = 0
         batch_size = 500
@@ -176,7 +176,7 @@ class BackfillTask:
                     )
 
             total_updated += len(updates)
-            logger.info("Direction backfill progress: %d logs updated", total_updated)
+            logger.debug("Direction backfill progress: %d logs updated", total_updated)
 
         # Clear the pending flag
         set_config(self.db, 'direction_backfill_pending', False)
@@ -364,7 +364,7 @@ class BackfillTask:
                     total_patched += cur.rowcount
 
         if total_patched > 0:
-            logger.info("Service name backfill: patched %d historical firewall log rows", total_patched)
+            logger.debug("Service name backfill: patched %d historical firewall log rows", total_patched)
 
         return total_patched
 

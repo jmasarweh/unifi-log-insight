@@ -80,4 +80,9 @@ else
     echo "[entrypoint] MaxMind credentials not set, skipping GeoIP auto-update"
 fi
 
+# Derive lowercase log level for uvicorn (defaults to info)
+UVICORN_LOG_LEVEL=$(echo "${LOG_LEVEL:-INFO}" | tr '[:upper:]' '[:lower:]')
+export UVICORN_LOG_LEVEL
+echo "[entrypoint] Log level: ${LOG_LEVEL:-INFO} (uvicorn: $UVICORN_LOG_LEVEL)"
+
 exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
