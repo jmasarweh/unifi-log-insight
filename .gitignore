@@ -36,3 +36,4 @@ agents.md
 .worktrees/
 unifi_logs_backup.dump
 nul
+ui/package-lock.json

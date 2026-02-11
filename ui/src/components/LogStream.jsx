@@ -19,8 +19,16 @@ const DEFAULT_FILTERS = {
   order: 'desc',
 }
 
+const STORAGE_KEY = 'unifi-log-insight:log-types'
+
 export default function LogStream() {
-  const [filters, setFilters] = useState(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) return { ...DEFAULT_FILTERS, log_type: saved }
+    } catch (e) { /* private browsing */ }
+    return DEFAULT_FILTERS
+  })
   const [data, setData] = useState({ data: [], total: 0, page: 1, pages: 0 })
   const [loading, setLoading] = useState(true)
   const [autoRefresh, setAutoRefresh] = useState(true)
@@ -29,6 +37,17 @@ export default function LogStream() {
   const [pendingCount, setPendingCount] = useState(0)
   const intervalRef = useRef(null)
   const pendingRef = useRef(null)
+
+  // Persist log_type toggles to localStorage
+  useEffect(() => {
+    try {
+      if (filters.log_type) {
+        localStorage.setItem(STORAGE_KEY, filters.log_type)
+      } else {
+        localStorage.removeItem(STORAGE_KEY)
+      }
+    } catch (e) { /* private browsing */ }
+  }, [filters.log_type])
 
   // Effective auto-refresh: paused when a row is expanded
   const isRefreshing = autoRefresh && expandedId === null

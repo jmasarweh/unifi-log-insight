@@ -62,7 +62,7 @@ class BackfillTask:
     def _run_once(self):
         """Execute one backfill cycle."""
         # Step 0: Re-derive direction for firewall logs (if WAN interfaces changed)
-        direction_backfilled = self._backfill_direction()
+        self._backfill_direction()
 
         # Step 1: Patch NULL service_name rows for historical firewall logs
         patched_services = self._patch_service_names()
