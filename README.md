@@ -410,6 +410,12 @@ Install directly from Unraid's Docker UI — no terminal needed.
 
 ---
 
+## ⚖️ Disclaimer
+
+This project is not affiliated with, endorsed by, or associated with Ubiquiti Inc. "UniFi" and related brand names are trademarks of Ubiquiti Inc. All rights to those trademarks are reserved by their respective owners.
+
+---
+
 ## 📄 License
 
 MIT
