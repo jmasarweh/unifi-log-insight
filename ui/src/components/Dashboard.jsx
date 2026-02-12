@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { fetchStats } from '../api'
 import { formatNumber, getFlag, decodeThreatCategories } from '../utils'
 
-const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d']
+const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', '60d']
 
 function StatCard({ label, value, color = 'text-white', sub }) {
   return (

@@ -9,6 +9,7 @@ const TIME_RANGES = [
   { value: '24h', label: '24h' },
   { value: '7d', label: '7d' },
   { value: '30d', label: '30d' },
+  { value: '60d', label: '60d' },
 ]
 const ACTIONS = ['allow', 'block', 'redirect']
 const DIRECTIONS = ['inbound', 'outbound', 'inter_vlan', 'nat']
@@ -32,12 +33,16 @@ export default function FilterBar({ filters, onChange }) {
 
   // Load services for autocomplete
   useEffect(() => {
-    fetchServices().then(data => setServices(data.services || []))
+    fetchServices()
+      .then(data => setServices(data.services || []))
+      .catch(err => { console.error('Failed to load services:', err); setServices([]) })
   }, [])
 
   // Load interfaces for filtering
   useEffect(() => {
-    fetchInterfaces().then(data => setInterfaces(data.interfaces || []))
+    fetchInterfaces()
+      .then(data => setInterfaces(data.interfaces || []))
+      .catch(err => { console.error('Failed to load interfaces:', err); setInterfaces([]) })
   }, [])
 
   // Debounce text inputs

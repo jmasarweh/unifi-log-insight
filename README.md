@@ -1,4 +1,4 @@
-# UniFi Log Insight
+# 🔍 UniFi Log Insight
 
 <img width="1985" height="1108" alt="image" src="https://github.com/user-attachments/assets/56a6ac3a-275a-4245-aaef-1462b35ccdc2" />
 
@@ -14,30 +14,30 @@ Built for home network monitoring — runs as a single Docker container with zer
 
 ---
 
-## Features
+## ✨ Features
 
-- **Syslog Receiver** — Listens on UDP 514, parses iptables firewall rules, DHCP leases, Wi-Fi events, and system messages
-- **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat intelligence (score, 23 attack categories, usage type, Tor/whitelist detection, report counts), reverse DNS
-- **Setup Wizard** — First-launch wizard auto-detects WAN interface(s) and network segments from live traffic, lets you label each interface (e.g., "IoT" instead of "br20"), and saves everything to the database — no config files to edit
-- **Multi-WAN Support** — Select multiple WAN interfaces for failover or load-balanced setups; reconfigure anytime via the Settings gear
-- **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, or local with automatic WAN IP learning
-- **DNS Ready** — Parser supports DNS query/answer logging (requires additional Unifi configuration — see [DNS Logging](#dns-logging) below)
-- **Live UI** — Auto-refreshing log stream with expandable detail rows, intelligent pause/resume when inspecting logs
-- **Filters** — Filter by log type, time range, action (allow/block/redirect), direction, IP address, rule name, and raw text search
-- **Dashboard** — Traffic breakdown by type and direction, logs-per-hour chart, top blocked countries/IPs (WAN IP and non-routable excluded), top threat IPs (enriched with ASN, city, rDNS, decoded categories, last seen), top DNS queries
-- **AbuseIPDB Blacklist** — Daily pull of 10,000 highest-risk IPs pre-seeded into the threat cache for instant scoring without API calls (separate quota: 5 calls/day)
-- **Persistent Threat Cache** — `ip_threats` table stores AbuseIPDB results (score, categories, usage type, Tor status, report counts) for 4-day reuse, surviving container rebuilds. Three-tier lookup: in-memory → PostgreSQL → API call
-- **Backfill Daemon** — Automatically patches historical logs that have NULL threat scores against the persistent cache
-- **Batch Insert Resilience** — Row-by-row fallback on batch failures; IP validation at parse time prevents bad data from blocking ingestion
-- **Dynamic Interface Labels** — Color-coded, user-defined labels showing traffic flow direction; labels apply retroactively to all existing logs
-- **Interface Filter** — Filter logs by network interface with multi-select, searching by both interface name and label
-- **CSV Export** — Download filtered results up to 100K rows
-- **Auto-Retention** — 60-day retention for firewall/DHCP/Wi-Fi, 10-day for DNS
-- **MaxMind Auto-Update** — Scheduled GeoLite2 database refresh with hot-reload (no restart needed)
+- 📡 **Syslog Receiver** — Listens on UDP 514, parses iptables firewall rules, DHCP leases, Wi-Fi events, and system messages
+- 🌍 **IP Enrichment** — MaxMind GeoLite2 (country, city, coordinates), ASN lookup, AbuseIPDB threat intelligence (score, 23 attack categories, usage type, Tor/whitelist detection, report counts), reverse DNS
+- 🧙 **Setup Wizard** — First-launch wizard auto-detects WAN interface(s) and network segments from live traffic, lets you label each interface (e.g., "IoT" instead of "br20"), and saves everything to the database — no config files to edit
+- 🔀 **Multi-WAN Support** — Select multiple WAN interfaces for failover or load-balanced setups; reconfigure anytime via the Settings gear
+- 🧭 **Smart Direction Detection** — Classifies traffic as inbound, outbound, inter-VLAN, or local with automatic WAN IP learning
+- 🔤 **DNS Ready** — Parser supports DNS query/answer logging (requires additional Unifi configuration — see [DNS Logging](#-dns-logging) below)
+- 📺 **Live UI** — Auto-refreshing log stream with expandable detail rows, intelligent pause/resume when inspecting logs
+- 🔎 **Filters** — Filter by log type, time range, action (allow/block/redirect), direction, IP address, rule name, and raw text search
+- 📊 **Dashboard** — Traffic breakdown by type and direction, logs-per-hour chart, top blocked countries/IPs (WAN IP and non-routable excluded), top threat IPs (enriched with ASN, city, rDNS, decoded categories, last seen), top DNS queries
+- 🛡️ **AbuseIPDB Blacklist** — Daily pull of 10,000 highest-risk IPs pre-seeded into the threat cache for instant scoring without API calls (separate quota: 5 calls/day)
+- 💾 **Persistent Threat Cache** — `ip_threats` table stores AbuseIPDB results (score, categories, usage type, Tor status, report counts) for 4-day reuse, surviving container rebuilds. Three-tier lookup: in-memory → PostgreSQL → API call
+- 🔄 **Backfill Daemon** — Automatically patches historical logs that have NULL threat scores against the persistent cache
+- 🛟 **Batch Insert Resilience** — Row-by-row fallback on batch failures; IP validation at parse time prevents bad data from blocking ingestion
+- 🏷️ **Dynamic Interface Labels** — Color-coded, user-defined labels showing traffic flow direction; labels apply retroactively to all existing logs
+- 🎛️ **Interface Filter** — Filter logs by network interface with multi-select, searching by both interface name and label
+- 📥 **CSV Export** — Download filtered results up to 100K rows
+- 🗑️ **Auto-Retention** — 60-day retention for firewall/DHCP/Wi-Fi, 10-day for DNS
+- 🔁 **MaxMind Auto-Update** — Scheduled GeoLite2 database refresh with hot-reload (no restart needed)
 
 ---
 
-## Prerequisites
+## 📋 Prerequisites
 
 - **Docker** and **Docker Compose** on the host machine
 - **UniFi Router** (or any UniFi gateway that supports remote syslog)
@@ -46,7 +46,9 @@ Built for home network monitoring — runs as a single Docker container with zer
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
+
+> 🖧 **Running Unraid?** Skip to the [Unraid Setup](#-unraid-setup) section for a no-terminal install guide.
 
 ### Option A — Pull Pre-built Image (recommended)
 
@@ -150,33 +152,43 @@ You can reconfigure at any time via the **Settings gear** in the top-right corne
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 Everything runs inside a single Docker container, managed by supervisord:
 
-```
-┌──────────────────────────────────────────────────────┐
-│  Docker Container                                    │
-│                                                      │
-│  ┌─────────────┐   ┌──────────────┐   ┌──────────┐  │
-│  │   Syslog     │──▶│   Enrichment  │──▶│ PostgreSQL│  │
-│  │  Receiver    │   │  GeoIP/ASN   │   │  Storage  │  │
-│  │  UDP :514    │   │  AbuseIPDB   │   │          │  │
-│  │             │   │  rDNS        │   │          │  │
-│  └─────────────┘   └──────────────┘   └────┬─────┘  │
-│                                            │        │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────┴──────┐  │
-│  │    Cron      │   │  Scheduler   │   │  FastAPI    │  │
-│  │  MaxMind    │   │  Blacklist   │   │  REST API   │  │
-│  │  Updates    │   │  Retention   │   │  + React UI │  │
-│  │             │   │  Backfill    │   │  :8000      │  │
-│  └─────────────┘   └─────────────┘   └────────────┘  │
-└──────────────────────────────────────────────────────┘
-        UDP :514                        HTTP :8090
-      (syslog in)                     (UI + API out)
+```mermaid
+graph LR
+    subgraph Docker Container
+        direction TB
+
+        subgraph Ingestion
+            SR["📡 Syslog Receiver\nUDP :514"]
+            EN["🌍 Enrichment\nGeoIP · ASN · AbuseIPDB · rDNS"]
+        end
+
+        subgraph Storage
+            PG["🐘 PostgreSQL\nlogs · ip_threats"]
+        end
+
+        subgraph Serving
+            API["⚡ FastAPI + React UI\n:8000"]
+        end
+
+        subgraph Background
+            CRON["🕐 Cron\nMaxMind Updates"]
+            SCHED["🔄 Scheduler\nBlacklist · Retention · Backfill"]
+        end
+
+        SR --> EN --> PG
+        PG --> API
+        SCHED --> PG
+    end
+
+    UDP["🔌 UDP :514\nsyslog in"] --> SR
+    API --> HTTP["🌐 HTTP :8090\nUI + API out"]
 ```
 
-### Log Processing Pipeline
+### 🔀 Log Processing Pipeline
 
 1. **Receive** — Raw syslog UDP packets from Unifi
 2. **Parse** — Extract fields from iptables, hostapd, dhclient, and dnsmasq messages (when DNS logging is enabled)
@@ -188,7 +200,7 @@ Everything runs inside a single Docker container, managed by supervisord:
 
 ---
 
-## Configuration Reference
+## ⚙️ Configuration Reference
 
 ### Environment Variables
 
@@ -219,7 +231,7 @@ Cleanup runs daily at 03:00 (container local time).
 
 ---
 
-## MaxMind Auto-Update
+## 🗺️ MaxMind Auto-Update
 
 When credentials are configured, GeoLite2 databases update automatically on **Wednesday and Saturday at 7:00 AM** (local time per `TZ`). This aligns with MaxMind's Tuesday/Friday publish schedule, giving a buffer for propagation.
 
@@ -239,7 +251,7 @@ docker exec unifi-log-insight cat /var/log/geoip-update.log
 
 ---
 
-## AbuseIPDB Integration
+## 🛡️ AbuseIPDB Integration
 
 When `ABUSEIPDB_API_KEY` is configured, the system provides multi-layered threat intelligence:
 
@@ -273,14 +285,14 @@ The system uses AbuseIPDB response headers (`X-RateLimit-Remaining`, `Retry-Afte
 
 ---
 
-## UI Guide
+## 🖥️ UI Guide
 
 ### Log Stream
 
 The main view shows a live-updating table of parsed logs:
 
 - **Type filters** — Toggle firewall, DNS, DHCP, Wi-Fi, system
-- **Time range** — 1h, 6h, 24h, 7d, 30d
+- **Time range** — 1h, 6h, 24h, 7d, 30d, 60d
 - **Action filters** — Allow, block, redirect
 - **Direction filters** — Inbound, outbound, VLAN, NAT
 - **Interface filter** — Multi-select by interface name or label (e.g., "IoT", "br20")
@@ -303,7 +315,7 @@ Aggregated views with configurable time range:
 
 ---
 
-## API Endpoints
+## 📡 API Endpoints
 
 | Endpoint | Description |
 |---|---|
@@ -322,7 +334,7 @@ Aggregated views with configurable time range:
 
 ---
 
-## DNS Logging
+## 🔤 DNS Logging
 
 The app includes full DNS query parsing, but **some Unifi Routers/Gateways do not send DNS logs by default**. Their dnsmasq instance lacks the `log-queries` directive, and its configuration is auto-generated by `ubios-udapi-server` — manual edits are overwritten on reboot.
 
@@ -337,7 +349,7 @@ The dashboard includes a "Top DNS Queries" panel and the filter bar has a DNS ty
 
 ---
 
-## Unraid Setup
+## 🖧 Unraid Setup
 
 Install directly from Unraid's Docker UI — no terminal needed.
 
@@ -376,7 +388,7 @@ Install directly from Unraid's Docker UI — no terminal needed.
 
 ---
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 ### No logs appearing
 
@@ -398,6 +410,6 @@ Install directly from Unraid's Docker UI — no terminal needed.
 
 ---
 
-## License
+## 📄 License
 
 MIT
