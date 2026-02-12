@@ -5,10 +5,12 @@ Parses UDR syslog messages into structured data.
 Log types: firewall, dns, dhcp, wifi
 """
 
+import os
 import re
 import ipaddress
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from services import get_service_name
 
@@ -77,8 +79,25 @@ MONTHS = {
 }
 
 
+def _get_syslog_tz():
+    """Return the timezone for interpreting syslog timestamps.
+
+    Uses TZ env var (matching the gateway's local time). Falls back to UTC.
+    """
+    tz_name = os.environ.get('TZ', 'UTC')
+    try:
+        return ZoneInfo(tz_name)
+    except Exception:
+        logger.warning("Invalid TZ=%r, falling back to UTC for syslog timestamps", tz_name)
+        return timezone.utc
+
+
 def parse_syslog_timestamp(month: str, day: str, time_str: str) -> datetime:
     """Parse syslog timestamp. Syslog doesn't include year, so we use current year.
+
+    Syslog RFC3164 timestamps carry no timezone — they are in the sender's
+    local time.  We interpret them in the container's TZ (which should match
+    the gateway) and convert to UTC for storage.
 
     Year-rollover guard: only subtract a year when the parsed month is
     significantly ahead of the current month (e.g. a Dec log arriving in Jan).
@@ -86,15 +105,17 @@ def parse_syslog_timestamp(month: str, day: str, time_str: str) -> datetime:
     even a few seconds ahead of the container clock, same-day logs get stamped
     with the previous year.
     """
-    now = datetime.now(timezone.utc)
+    local_tz = _get_syslog_tz()
+    now = datetime.now(local_tz)
     month_num = MONTHS.get(month, 1)
     h, m, s = time_str.split(':')
-    ts = now.replace(month=month_num, day=int(day), hour=int(h), minute=int(m), second=int(s), microsecond=0)
+    year = now.year
     # Handle year rollover: only when the log month is far ahead of now
     # (e.g. log says December but we're in January → previous year's December)
-    if ts.month - now.month > 6:
-        ts = ts.replace(year=ts.year - 1)
-    return ts
+    if month_num - now.month > 6:
+        year -= 1
+    ts = datetime(year, month_num, int(day), int(h), int(m), int(s), tzinfo=local_tz)
+    return ts.astimezone(timezone.utc)
 
 
 def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str = None, dst_ip: str = None) -> str:
