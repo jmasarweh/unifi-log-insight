@@ -43,6 +43,7 @@ Built for home network monitoring — runs as a single Docker container with zer
 - **UniFi Router** (or any UniFi gateway that supports remote syslog)
 - **MaxMind GeoLite2 account** (free) — for GeoIP/ASN lookups
 - **AbuseIPDB API key** (free tier, optional) — for threat scoring on blocked IPs
+- **Syslog enabled per firewall rule** — Each firewall rule you want to track must have syslog explicitly enabled in UniFi's Zone Policy Engine (Network App v.10+)
 
 ---
 
@@ -128,6 +129,19 @@ In your UniFi Network controller:
 4. Set the syslog server to the `<docker-host-ip>` on port `514`
 5. Click Apply Changes.
 
+#### Enable Syslog Per Firewall Rule
+
+Each firewall or traffic rule must have syslog individually enabled, or its logs won't be sent. As of UniFi Network App v.10+:
+
+1. Go to **Settings**
+2. Navigate to **Policy Engines → Zones**
+3. Select a rule you want to monitor
+4. Enable the **Syslog** toggle for that rule
+5. Repeat for all rules you wish to track
+
+<!-- TODO: Add screenshot of syslog toggle in Zone Policy Engine rule -->
+
+> **Note:** Without per-rule syslog enabled, firewall logs will not appear in UniFi Log Insight even if global Activity Logging is configured.
 
 ### Open the UI
 
