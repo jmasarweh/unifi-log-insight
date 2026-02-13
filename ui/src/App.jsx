@@ -174,9 +174,10 @@ export default function App() {
         <div className="flex items-center gap-4">
           {/* Logo */}
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
-              <span className="text-blue-400 text-xs font-bold">U</span>
-            </div>
+            <svg viewBox="0 0 24 24" className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10.5" strokeWidth="1.5" strokeOpacity="0.4" />
+              <path d="M8.5 7.5v5.5a3.5 3.5 0 0 0 7 0V7.5" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
             <span className="text-sm font-semibold text-gray-200">UniFi Log Insight</span>
           </div>
 

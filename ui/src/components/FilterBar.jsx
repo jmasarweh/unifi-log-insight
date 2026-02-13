@@ -225,7 +225,7 @@ export default function FilterBar({ filters, onChange }) {
             >✕</button>
           )}
           {showServiceDropdown && (
-            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-800 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
+            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
               {services
                 .filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase()))
                 .slice(0, 50)
@@ -243,7 +243,7 @@ export default function FilterBar({ filters, onChange }) {
                     className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
                       selectedServices.includes(service)
                         ? 'bg-blue-500/20 text-blue-400'
-                        : 'text-gray-300 hover:bg-gray-700'
+                        : 'text-gray-300 hover:bg-gray-800'
                     }`}
                   >
                     {service}
@@ -278,7 +278,7 @@ export default function FilterBar({ filters, onChange }) {
             >✕</button>
           )}
           {showInterfaceDropdown && (
-            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-800 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
+            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
               {interfaces
                 .filter(iface =>
                   iface.name.toLowerCase().includes(interfaceSearch.toLowerCase()) ||
@@ -299,7 +299,7 @@ export default function FilterBar({ filters, onChange }) {
                     className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
                       selectedInterfaces.includes(iface.name)
                         ? 'bg-blue-500/20 text-blue-400'
-                        : 'text-gray-300 hover:bg-gray-700'
+                        : 'text-gray-300 hover:bg-gray-800'
                     }`}
                   >
                     <div className="flex items-center justify-between">

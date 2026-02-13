@@ -45,6 +45,9 @@ jobs:
             type=semver,pattern={{major}}
             type=raw,value=latest
 
+      - name: Write version file from git tag
+        run: echo "${GITHUB_REF_NAME#v}" > VERSION
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

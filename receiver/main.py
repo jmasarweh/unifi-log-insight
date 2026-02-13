@@ -194,6 +194,10 @@ def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: Blacklist
             db.detect_wan_ip()
         except Exception as e:
             logger.error("WAN IP detection failed: %s", e)
+        try:
+            db.detect_gateway_ips()
+        except Exception as e:
+            logger.error("Gateway IP detection failed: %s", e)
 
     schedule.every(STATS_INTERVAL_MINUTES).minutes.do(log_stats)
     schedule.every(STATS_INTERVAL_MINUTES).minutes.do(refresh_wan_ip)
@@ -273,11 +277,15 @@ def main():
     parsers.reload_config_from_db(db)
     logger.info("Loaded config: WAN interfaces = %s", parsers.WAN_INTERFACES)
 
-    # Detect and persist WAN IP from existing log data
+    # Detect and persist WAN IP + gateway IPs from existing log data
     try:
         db.detect_wan_ip()
     except Exception as e:
         logger.error("Startup WAN IP detection failed: %s", e)
+    try:
+        db.detect_gateway_ips()
+    except Exception as e:
+        logger.error("Startup gateway IP detection failed: %s", e)
 
     # Check config version for future migrations
     current_version = get_config(db, 'config_version', 0)
@@ -330,7 +338,7 @@ def main():
     scheduler_thread.start()
 
     # Start backfill daemon (patches NULL threat scores every 30 min)
-    backfill = BackfillTask(db, enricher.abuseipdb)
+    backfill = BackfillTask(db, enricher)
     backfill.start()
 
     # Start receiving (blocks)

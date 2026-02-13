@@ -21,12 +21,16 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
   const [enrichedData, setEnrichedData] = useState(null)
   const [budget, setBudget] = useState(null)
 
-  // Determine which IP to enrich (prefer src_ip if public, else dst_ip)
+  // Determine which IP to enrich — the remote party, not our infrastructure
   function getEnrichableIP() {
     if (!log) return null
-    if (log.src_ip && !isPrivateIP(log.src_ip)) return log.src_ip
-    if (log.dst_ip && !isPrivateIP(log.dst_ip)) return log.dst_ip
-    return null
+    const srcPublic = log.src_ip && !isPrivateIP(log.src_ip)
+    const dstPublic = log.dst_ip && !isPrivateIP(log.dst_ip)
+    // For outbound/local traffic, the remote party is the destination
+    if (log.direction === 'outbound' || log.direction === 'local') {
+      return dstPublic ? log.dst_ip : srcPublic ? log.src_ip : null
+    }
+    return srcPublic ? log.src_ip : dstPublic ? log.dst_ip : null
   }
   const enrichableIP = getEnrichableIP()
 
@@ -302,7 +306,7 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
   const showEnrichButton = showAbuse && canEnrich && !enrichedData
 
   return (
-    <div className="bg-gray-900/50 border-t border-gray-800 px-4 py-3">
+    <div className="bg-gray-950/80 border-t border-gray-800 px-4 py-3">
       {sections.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           {sections}

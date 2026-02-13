@@ -436,32 +436,60 @@ class Enricher:
         self.geoip = GeoIPEnricher()
         self.abuseipdb = AbuseIPDBEnricher(db=db)
         self.rdns = RDNSEnricher()
+        self._db = db
         self._known_wan_ip = None
+        self._excluded_ips = set()  # WAN IPs, gateway IPs — not enrichable
+
+    def _is_remote_ip(self, ip_str: str) -> bool:
+        """Check if IP is remote (enrichable): public, not our WAN, not gateway."""
+        if not ip_str:
+            return False
+        if not is_public_ip(ip_str):
+            return False
+        if ip_str in self._excluded_ips:
+            return False
+        return True
 
     def enrich(self, parsed: dict) -> dict:
         """Enrich a parsed log entry with GeoIP, ASN, threat, and rDNS data.
-        
+
         Strategy:
-        - GeoIP + ASN: all public IPs (local lookups, fast)
-        - AbuseIPDB: only blocked firewall events with public IPs (not our WAN)
-        - rDNS: all public IPs
+        - GeoIP + ASN: all remote public IPs (local lookups, fast)
+        - AbuseIPDB: only blocked firewall events with remote public IPs
+        - rDNS: all remote public IPs
+
+        WAN and gateway IPs are excluded — they belong to us, not the remote party.
         """
-        # Auto-exclude WAN IP from AbuseIPDB as it's learned
+        # Auto-exclude WAN IPs (v4 + v6) from enrichment as they're learned
         from parsers import get_wan_ip
         wan_ip = get_wan_ip()
         if wan_ip and wan_ip != self._known_wan_ip:
             self._known_wan_ip = wan_ip
+            self._excluded_ips.add(wan_ip)
             self.abuseipdb.exclude_ip(wan_ip)
+            # Refresh full wan_ips + gateway_ips from DB
+            if self._db:
+                from db import get_config
+                for ip in get_config(self._db, 'wan_ips') or []:
+                    self._excluded_ips.add(ip)
+                    if ip not in self.abuseipdb._excluded_ips:
+                        self.abuseipdb.exclude_ip(ip)
+                for ip in get_config(self._db, 'gateway_ips') or []:
+                    self._excluded_ips.add(ip)
 
-        # Determine which IP to enrich (the public one)
+        # Determine which IP to enrich — the remote party, not our infrastructure
         ip_to_enrich = None
         src_ip = parsed.get('src_ip')
         dst_ip = parsed.get('dst_ip')
+        src_remote = self._is_remote_ip(src_ip)
+        dst_remote = self._is_remote_ip(dst_ip)
 
-        if src_ip and is_public_ip(src_ip):
+        if src_remote and not dst_remote:
             ip_to_enrich = src_ip
-        elif dst_ip and is_public_ip(dst_ip):
+        elif dst_remote and not src_remote:
             ip_to_enrich = dst_ip
+        elif src_remote and dst_remote:
+            ip_to_enrich = src_ip
 
         if not ip_to_enrich:
             return parsed

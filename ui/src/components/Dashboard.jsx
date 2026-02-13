@@ -1,8 +1,18 @@
 import { useState, useEffect } from 'react'
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchStats } from '../api'
 import { formatNumber, FlagIcon, decodeThreatCategories } from '../utils'
 
 const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', '60d']
+
+const LOG_TYPE_COLORS = {
+  firewall: 'text-blue-400',
+  dns: 'text-violet-400',
+  dhcp: 'text-cyan-400',
+  wifi: 'text-amber-400',
+  ids: 'text-red-400',
+  system: 'text-gray-300',
+}
 
 export function DashboardSkeleton() {
   return (
@@ -24,8 +34,9 @@ export function DashboardSkeleton() {
       </div>
       {/* Direction breakdown */}
       <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-16" />
-      {/* Chart */}
+      {/* Charts */}
       <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-40" />
+      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-52" />
       {/* Section header */}
       <div className="h-3 w-24 bg-gray-800 rounded mt-2" />
       {/* Panel grid */}
@@ -66,34 +77,119 @@ function MiniBar({ data, maxVal, color = 'bg-blue-500' }) {
   )
 }
 
-function LogsPerHourChart({ data }) {
-  if (!data || data.length === 0) {
-    return <div className="text-gray-400 text-xs text-center py-8">No data yet</div>
+function formatXAxis(iso, timeRange) {
+  const d = new Date(iso)
+  if (['1h', '6h', '24h'].includes(timeRange)) {
+    return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   }
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+}
 
-  const maxCount = Math.max(...data.map(d => d.count))
-  const chartHeight = 120
-
+function ChartTooltip({ active, payload, timeRange }) {
+  if (!active || !payload?.length) return null
+  const d = new Date(payload[0].payload.period)
+  const label = ['1h', '6h', '24h'].includes(timeRange)
+    ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
   return (
-    <div className="flex items-end gap-px h-32 px-1">
-      {data.map((d, i) => {
-        const height = maxCount > 0 ? (d.count / maxCount) * chartHeight : 0
-        const hour = new Date(d.hour).getHours()
+    <div className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs shadow-lg">
+      <div className="text-gray-400 mb-1">{label}</div>
+      <div className="text-gray-200 font-medium">{formatNumber(payload[0].value)} logs</div>
+    </div>
+  )
+}
+
+function ActionTooltip({ active, payload, timeRange }) {
+  if (!active || !payload?.length) return null
+  const row = payload[0].payload
+  const d = new Date(row.period)
+  const label = ['1h', '6h', '24h'].includes(timeRange)
+    ? d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+    : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  const keys = { Redirect: 'redirect', Blocked: 'block', Allowed: 'allow' }
+  const total = (row.allow || 0) + (row.block || 0) + (row.redirect || 0)
+  return (
+    <div className="bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs shadow-lg">
+      <div className="text-gray-400 mb-1.5">{label}</div>
+      {payload.map((p, i) => {
+        const raw = row[keys[p.name]] || 0
+        const pct = total > 0 ? Math.round((raw / total) * 100) : 0
         return (
-          <div key={i} className="flex-1 flex flex-col items-center gap-1" title={`${hour}:00 — ${formatNumber(d.count)} logs`}>
-            <div
-              className="w-full bg-blue-500/60 hover:bg-blue-500 rounded-t transition-colors min-h-[2px]"
-              style={{ height: `${height}px` }}
-            />
-            <span className={`text-[9px] ${
-              i % Math.max(1, Math.floor(data.length / 8)) === 0
-                ? 'text-gray-400'
-                : 'invisible'
-            }`}>{hour}h</span>
+          <div key={i} className="flex items-center justify-between gap-4">
+            <span style={{ color: p.color }}>{p.name}</span>
+            <span className="text-gray-200 font-medium">{formatNumber(raw)} <span className="text-gray-500">({pct}%)</span></span>
           </div>
         )
       })}
+      <div className="border-t border-gray-700 mt-1.5 pt-1.5 flex justify-between text-gray-300">
+        <span>Total</span>
+        <span className="font-medium">{formatNumber(total)}</span>
+      </div>
     </div>
+  )
+}
+
+function LogsOverTimeChart({ data, timeRange }) {
+  if (!data || data.length === 0) {
+    return <div className="text-gray-400 text-xs text-center py-8">No data yet</div>
+  }
+  return (
+    <ResponsiveContainer width="100%" height={140}>
+      <AreaChart data={data}>
+        <defs>
+          <linearGradient id="logsGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.05} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="period" tickFormatter={(v) => formatXAxis(v, timeRange)}
+               tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+               interval="preserveStartEnd" />
+        <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} width={40}
+               tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+        <Tooltip content={<ChartTooltip timeRange={timeRange} />} />
+        <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2}
+              fill="url(#logsGrad)" dot={false} activeDot={{ r: 4, fill: '#3b82f6' }} />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+}
+
+function TrafficByActionChart({ data, timeRange }) {
+  if (!data || data.length === 0) {
+    return <div className="text-gray-400 text-xs text-center py-8">No data yet</div>
+  }
+  return (
+    <ResponsiveContainer width="100%" height={220}>
+      <AreaChart data={data}>
+        <defs>
+          <linearGradient id="allowGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#22c55e" stopOpacity={0.5} />
+            <stop offset="100%" stopColor="#22c55e" stopOpacity={0.15} />
+          </linearGradient>
+          <linearGradient id="blockGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity={0.5} />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity={0.15} />
+          </linearGradient>
+          <linearGradient id="redirectGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.5} />
+            <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.15} />
+          </linearGradient>
+        </defs>
+        <XAxis dataKey="period" tickFormatter={(v) => formatXAxis(v, timeRange)}
+               tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false}
+               interval="preserveStartEnd" />
+        <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} width={40}
+               tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+        <Tooltip content={<ActionTooltip timeRange={timeRange} />} />
+        <Area type="monotone" dataKey="redirect" name="Redirect" stackId="1" stroke="#f59e0b" strokeWidth={1.5}
+              fill="url(#redirectGrad)" dot={false} />
+        <Area type="monotone" dataKey="block" name="Blocked" stackId="1" stroke="#ef4444" strokeWidth={1.5}
+              fill="url(#blockGrad)" dot={false} />
+        <Area type="monotone" dataKey="allow" name="Allowed" stackId="1" stroke="#22c55e" strokeWidth={1.5}
+              fill="url(#allowGrad)" dot={false} />
+      </AreaChart>
+    </ResponsiveContainer>
   )
 }
 
@@ -204,7 +300,12 @@ export default function Dashboard() {
         <StatCard
           label="Log Types"
           value={Object.keys(stats.by_type).length}
-          sub={Object.entries(stats.by_type).map(([t, c]) => `${t}: ${formatNumber(c)}`).join(' · ')}
+          sub={Object.entries(stats.by_type).map(([t, c], i, arr) => (
+            <span key={t}>
+              <span className={LOG_TYPE_COLORS[t] || 'text-gray-400'}>{t}</span>
+              {': '}{formatNumber(c)}{i < arr.length - 1 ? ' · ' : ''}
+            </span>
+          ))}
         />
       </div>
 
@@ -233,14 +334,32 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Logs per hour chart */}
+      {/* Logs over time chart */}
       <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">Logs Per Hour</div>
-        <LogsPerHourChart data={stats.logs_per_hour} />
+        <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">Traffic Over Time</div>
+        <LogsOverTimeChart data={stats.logs_over_time || stats.logs_per_hour} timeRange={timeRange} />
       </div>
 
-      {/* Blocked Traffic */}
-      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-2">Blocked Traffic</div>
+      {/* Traffic by action chart */}
+      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[10px] text-gray-400 uppercase tracking-wider">Traffic by Action</div>
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1 text-[10px] text-green-400">
+              <span className="w-2 h-2 rounded-full bg-green-500" /> Allowed
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-red-400">
+              <span className="w-2 h-2 rounded-full bg-red-500" /> Blocked
+            </span>
+            <span className="flex items-center gap-1 text-[10px] text-amber-400">
+              <span className="w-2 h-2 rounded-full bg-amber-500" /> Redirect
+            </span>
+          </div>
+        </div>
+        <TrafficByActionChart data={stats.traffic_by_action} timeRange={timeRange} />
+      </div>
+
+      {/* Top lists grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TopList
           title="Top Threat IPs"
@@ -310,50 +429,25 @@ export default function Dashboard() {
                 <span className="text-gray-300">{item.ip}</span>
                 <span className="text-gray-400">{formatNumber(item.count)}</span>
               </div>
-              <MiniBar data={item.count} maxVal={maxBlockedInternal} color="bg-orange-500/60" />
+              <MiniBar data={item.count} maxVal={maxBlockedInternal} color="bg-red-500/60" />
             </div>
           )}
         />
 
         <TopList
-          title="Top Blocked Countries"
-          items={stats.top_blocked_countries || []}
+          title="Top Active Internal IPs"
+          items={stats.top_active_internal_ips || []}
           renderItem={(item, i) => (
-            <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-gray-300">
-                {<FlagIcon code={item.country} />} {item.country}
-              </span>
-              <span className="text-gray-400">{formatNumber(item.count)}</span>
+            <div key={i} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">{item.ip}</span>
+                <span className="text-gray-400">{formatNumber(item.count)}</span>
+              </div>
+              <MiniBar data={item.count} maxVal={maxActiveInternal} color="bg-emerald-500/60" />
             </div>
           )}
         />
 
-        <TopList
-          title="Top Blocked Services"
-          items={stats.top_blocked_services || []}
-          renderItem={(item, i) => (
-            <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-gray-300 truncate mr-2">{item.service_name}</span>
-              <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
-            </div>
-          )}
-        />
-
-        <TopList
-          title="Top DNS Queries"
-          items={stats.top_dns || []}
-          renderItem={(item, i) => (
-            <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-gray-300 truncate mr-2">{item.dns_query}</span>
-              <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
-            </div>
-          )}
-        />
-      </div>
-
-      {/* Allowed Traffic */}
-      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-2">Allowed Traffic</div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TopList
           title="Top Allowed Destinations"
           items={stats.top_allowed_destinations || []}
@@ -372,15 +466,50 @@ export default function Dashboard() {
           )}
         />
 
+        <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
+          <div className="text-[10px] text-gray-400 uppercase tracking-wider mb-3">Top Countries</div>
+          {(() => {
+            const blocked = stats.top_blocked_countries || []
+            const allowed = stats.top_allowed_countries || []
+            if (blocked.length === 0 && allowed.length === 0) return <div className="text-gray-400 text-xs py-4 text-center">No data</div>
+            return (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <div className="text-[10px] text-red-400/70 mb-1">Blocked</div>
+                  {blocked.slice(0, 10).map((item, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-300 truncate mr-2">
+                        <FlagIcon code={item.country} /> {item.country}
+                      </span>
+                      <span className="text-red-400/80 shrink-0">{formatNumber(item.count)}</span>
+                    </div>
+                  ))}
+                  {blocked.length === 0 && <div className="text-gray-500 text-xs">—</div>}
+                </div>
+                <div className="space-y-1.5">
+                  <div className="text-[10px] text-green-400/70 mb-1">Allowed</div>
+                  {allowed.slice(0, 10).map((item, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-300 truncate mr-2">
+                        <FlagIcon code={item.country} /> {item.country}
+                      </span>
+                      <span className="text-green-400/80 shrink-0">{formatNumber(item.count)}</span>
+                    </div>
+                  ))}
+                  {allowed.length === 0 && <div className="text-gray-500 text-xs">—</div>}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
         <TopList
-          title="Top Allowed Countries"
-          items={stats.top_allowed_countries || []}
+          title="Top Blocked Services"
+          items={stats.top_blocked_services || []}
           renderItem={(item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-gray-300">
-                {<FlagIcon code={item.country} />} {item.country}
-              </span>
-              <span className="text-gray-400">{formatNumber(item.count)}</span>
+              <span className="text-gray-300 truncate mr-2">{item.service_name}</span>
+              <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
             </div>
           )}
         />
@@ -397,15 +526,12 @@ export default function Dashboard() {
         />
 
         <TopList
-          title="Top Active Internal IPs"
-          items={stats.top_active_internal_ips || []}
+          title="Top DNS Queries"
+          items={stats.top_dns || []}
           renderItem={(item, i) => (
-            <div key={i} className="space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-300">{item.ip}</span>
-                <span className="text-gray-400">{formatNumber(item.count)}</span>
-              </div>
-              <MiniBar data={item.count} maxVal={maxActiveInternal} color="bg-emerald-500/60" />
+            <div key={i} className="flex items-center justify-between text-xs">
+              <span className="text-gray-300 truncate mr-2">{item.dns_query}</span>
+              <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
             </div>
           )}
         />

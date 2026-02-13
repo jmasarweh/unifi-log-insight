@@ -99,6 +99,10 @@ class Database:
                 value JSONB NOT NULL,
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # One-time flag: re-enrich logs that were enriched on WAN IP instead of remote IP
+            """INSERT INTO system_config (key, value, updated_at)
+               VALUES ('enrichment_wan_fix_pending', 'true', NOW())
+               ON CONFLICT (key) DO NOTHING""",
         ]
         try:
             with self.get_conn() as conn:
@@ -442,23 +446,86 @@ class Database:
                 return {row[0]: row[1] for row in cur.fetchall() if row[1]}
 
     def detect_wan_ip(self) -> str | None:
-        """Detect the WAN IP from firewall logs and persist to system_config.
+        """Detect WAN IPs (IPv4 + IPv6) from firewall logs and persist to system_config.
 
-        Uses the configured WAN interfaces to find the most common public dst_ip.
-        Only updates system_config when the detected IP changes.
-        Returns the detected WAN IP or None.
+        Uses the configured WAN interfaces to find the most common public dst_ip
+        per address family. Stores the primary (IPv4) as 'wan_ip' and all WAN IPs
+        as 'wan_ips' list for exclusion from dashboard stats.
+        Returns the primary detected WAN IP or None.
         """
         wan_interfaces = self.get_config('wan_interfaces', ['ppp0'])
-        wan_ips = self.get_wan_ips_by_interface(wan_interfaces)
-        # Use the first WAN interface's IP (most deployments have one)
-        wan_ip = next(iter(wan_ips.values()), None) if wan_ips else None
+        if not wan_interfaces:
+            return None
 
-        if wan_ip:
+        # Detect most common public dst_ip per address family (v4 and v6)
+        detected = []
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                placeholders = ','.join(['%s'] * len(wan_interfaces))
+                cur.execute(f"""
+                    SELECT MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
+                        WHERE dst_ip IS NOT NULL AND {self._PRIVATE_IP_FILTER}
+                          AND family(dst_ip) = 4
+                    ) AS wan_ip4,
+                    MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
+                        WHERE dst_ip IS NOT NULL AND {self._PRIVATE_IP_FILTER}
+                          AND family(dst_ip) = 6
+                    ) AS wan_ip6
+                    FROM logs
+                    WHERE log_type = 'firewall'
+                      AND interface_in IN ({placeholders})
+                """, wan_interfaces)
+                row = cur.fetchone()
+                if row:
+                    if row[0]:
+                        detected.append(row[0])
+                    if row[1]:
+                        detected.append(row[1])
+
+        primary = detected[0] if detected else None
+
+        if primary:
             current = self.get_config('wan_ip')
-            if wan_ip != current:
-                self.set_config('wan_ip', wan_ip)
-                logger.info("WAN IP detected and persisted: %s", wan_ip)
-        return wan_ip
+            if primary != current:
+                self.set_config('wan_ip', primary)
+                logger.info("WAN IP detected and persisted: %s", primary)
+
+        current_list = self.get_config('wan_ips', [])
+        if sorted(detected) != sorted(current_list):
+            self.set_config('wan_ips', detected)
+            if len(detected) > 1:
+                logger.info("WAN IPs detected (dual-stack): %s", detected)
+
+        return primary
+
+    def detect_gateway_ips(self) -> list[str]:
+        """Detect gateway internal IPs from _LOCAL firewall rule names.
+
+        UniFi zone-based rules ending in '_LOCAL' target traffic destined for
+        the gateway itself. The dst_ip on those rules (excluding broadcast/
+        multicast) gives us the gateway's internal IP per VLAN.
+        Stores result as 'gateway_ips' list in system_config.
+        """
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT DISTINCT host(dst_ip) AS gateway_ip
+                    FROM logs
+                    WHERE log_type = 'firewall'
+                      AND rule_name LIKE '%%\\_LOCAL%%'
+                      AND (dst_ip << '10.0.0.0/8' OR dst_ip << '172.16.0.0/12'
+                           OR dst_ip << '192.168.0.0/16'
+                           OR dst_ip << 'fc00::/7')
+                      AND host(dst_ip) NOT IN ('224.0.0.251', '255.255.255.255')
+                """)
+                detected = [row[0] for row in cur.fetchall()]
+
+        current = self.get_config('gateway_ips', [])
+        if sorted(detected) != sorted(current):
+            self.set_config('gateway_ips', detected)
+            logger.info("Gateway IPs detected: %s", detected)
+
+        return detected
 
     def get_wan_ip_candidates(self) -> list[dict]:
         """Return all non-bridge firewall interfaces with their WAN IPs.

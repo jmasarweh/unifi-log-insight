@@ -51,7 +51,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt \
     && pip uninstall -y pip setuptools \
     && rm -rf /app/venv/lib/python*/ensurepip
 
-# Copy application code
+# Copy version file and application code
+COPY VERSION /app/VERSION
 COPY receiver/ /app/
 COPY init.sql /app/init.sql
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf

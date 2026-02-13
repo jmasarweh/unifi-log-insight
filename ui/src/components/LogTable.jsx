@@ -37,9 +37,6 @@ function IPCell({ ip, port }) {
 }
 
 function NetworkPath({ ifaceIn, ifaceOut }) {
-  const nameIn = getInterfaceName(ifaceIn)
-  const nameOut = getInterfaceName(ifaceOut)
-
   if (!ifaceIn && !ifaceOut) return <span className="text-gray-700">—</span>
 
   // Colors based on raw interface name, not label
@@ -47,14 +44,14 @@ function NetworkPath({ ifaceIn, ifaceOut }) {
   const colorOut = getInterfaceColor(ifaceOut)
 
   if (!ifaceOut) {
-    return <span className={colorIn}>{nameIn}</span>
+    return <span className={colorIn}>{getInterfaceName(ifaceIn)}</span>
   }
 
   return (
     <span className="inline-flex items-center gap-1">
-      <span className={colorIn}>{nameIn}</span>
+      <span className={ifaceIn ? colorIn : 'text-gray-400 italic'}>{ifaceIn ? getInterfaceName(ifaceIn) : 'External'}</span>
       <span className="text-gray-500">→</span>
-      <span className={colorOut}>{nameOut}</span>
+      <span className={colorOut}>{getInterfaceName(ifaceOut)}</span>
     </span>
   )
 }

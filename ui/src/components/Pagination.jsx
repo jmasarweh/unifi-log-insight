@@ -114,7 +114,7 @@ export default function Pagination({ page, pages, total, perPage, onChange, vers
       {/* Release Notes Modal */}
       {showNotes && latestRelease && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowNotes(false)}>
-          <div role="dialog" aria-modal="true" aria-labelledby="release-notes-title" className="bg-gray-900 border border-gray-700 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="release-notes-title" className="bg-gray-950 border border-gray-700 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
               <span id="release-notes-title" className="text-sm font-semibold text-gray-200">Release Notes — {latestRelease.tag}</span>
               <button onClick={() => setShowNotes(false)} className="text-gray-400 hover:text-gray-200 text-lg leading-none">&times;</button>

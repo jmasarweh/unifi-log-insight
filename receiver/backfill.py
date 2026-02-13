@@ -18,7 +18,6 @@ import threading
 
 from psycopg2 import extras
 
-from enrichment import is_public_ip
 from services import get_service_mappings
 
 logger = logging.getLogger('backfill')
@@ -30,14 +29,17 @@ STALE_REENRICH_BATCH = 25  # Max IPs to re-enrich per cycle
 class BackfillTask:
     """Periodic backfill of missing threat scores and abuse detail fields."""
 
-    def __init__(self, db, abuseipdb_enricher):
+    def __init__(self, db, enricher):
         """
         Args:
             db: Database instance with connection pool
-            abuseipdb_enricher: AbuseIPDBEnricher instance (shared with live enrichment)
+            enricher: Enricher instance (shared with live enrichment)
         """
         self.db = db
-        self.abuseipdb = abuseipdb_enricher
+        self.enricher = enricher
+        self.abuseipdb = enricher.abuseipdb
+        self.geoip = enricher.geoip
+        self.rdns = enricher.rdns
         self._thread = None
 
     def start(self):
@@ -61,8 +63,11 @@ class BackfillTask:
 
     def _run_once(self):
         """Execute one backfill cycle."""
-        # Step 0: Re-derive direction for firewall logs (if WAN interfaces changed)
+        # Step 0a: Re-derive direction for firewall logs (if WAN interfaces changed)
         self._backfill_direction()
+
+        # Step 0b: Fix enrichment on logs that were enriched on our WAN IP
+        self._fix_wan_ip_enrichment()
 
         # Step 1: Patch NULL service_name rows for historical firewall logs
         patched_services = self._patch_service_names()
@@ -183,17 +188,118 @@ class BackfillTask:
         logger.info("Direction backfill complete: %d total logs updated", total_updated)
         return total_updated
 
+    def _fix_wan_ip_enrichment(self) -> int:
+        """One-time fix: re-enrich logs that were enriched on our WAN IP.
+
+        Finds firewall logs where src_ip is a known WAN IP and enrichment
+        data exists (geo_country not null) — these have our own ISP's data
+        instead of the remote endpoint's. Re-enriches with dst_ip using
+        local GeoIP/ASN/rDNS lookups (zero API cost). NULLs threat/abuse
+        fields so _patch_from_cache() re-fills from the correct IP.
+
+        Gated by 'enrichment_wan_fix_pending' config flag — runs once.
+        """
+        from db import get_config, set_config
+
+        if not get_config(self.db, 'enrichment_wan_fix_pending', False):
+            return 0
+
+        wan_ips = get_config(self.db, 'wan_ips') or []
+        if not wan_ips:
+            # No WAN IPs known yet — skip and retry next cycle
+            return 0
+
+        logger.info("Starting WAN IP enrichment fix (WAN IPs: %s)...", wan_ips)
+
+        total_fixed = 0
+        batch_size = 500
+        last_id = 0
+
+        while True:
+            with self.db.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT id, host(dst_ip) as dst_ip
+                        FROM logs
+                        WHERE log_type = 'firewall'
+                          AND src_ip = ANY(%s::inet[])
+                          AND geo_country IS NOT NULL
+                          AND dst_ip IS NOT NULL
+                          AND id > %s
+                        ORDER BY id
+                        LIMIT %s
+                    """, [wan_ips, last_id, batch_size])
+                    rows = cur.fetchall()
+
+            if not rows:
+                break
+
+            updates = []
+            for row in rows:
+                id_val, dst_ip = row
+                last_id = id_val
+
+                if not self.enricher._is_remote_ip(dst_ip):
+                    # dst is private/missing — just NULL the wrong enrichment
+                    updates.append((
+                        None, None, None, None, None, None, None,
+                        None, None, None, None, None, None, None, None,
+                        id_val
+                    ))
+                    continue
+
+                # Re-enrich with the correct IP (dst = remote party)
+                geo = self.geoip.lookup(dst_ip)
+                rdns = self.rdns.lookup(dst_ip)
+
+                updates.append((
+                    geo.get('geo_country'), geo.get('geo_city'),
+                    geo.get('geo_lat'), geo.get('geo_lon'),
+                    geo.get('asn_number'), geo.get('asn_name'),
+                    rdns.get('rdns'),
+                    # NULL threat/abuse fields — _patch_from_cache will re-fill
+                    None, None, None, None, None, None, None, None,
+                    id_val
+                ))
+
+            if updates:
+                with self.db.get_conn() as conn:
+                    with conn.cursor() as cur:
+                        extras.execute_batch(cur, """
+                            UPDATE logs SET
+                                geo_country = %s, geo_city = %s,
+                                geo_lat = %s, geo_lon = %s,
+                                asn_number = %s, asn_name = %s,
+                                rdns = %s,
+                                threat_score = %s, threat_categories = %s,
+                                abuse_usage_type = %s, abuse_hostnames = %s,
+                                abuse_total_reports = %s, abuse_last_reported = %s,
+                                abuse_is_whitelisted = %s, abuse_is_tor = %s
+                            WHERE id = %s
+                        """, updates, page_size=500)
+
+            total_fixed += len(updates)
+            logger.debug("WAN enrichment fix progress: %d logs fixed", total_fixed)
+
+        set_config(self.db, 'enrichment_wan_fix_pending', False)
+        logger.info("Enrichment WAN fix complete: %d logs re-enriched", total_fixed)
+        return total_fixed
+
     def _patch_from_cache(self) -> int:
         """Update NULL threat_score log rows from ip_threats table.
 
         Patches score, categories, and AbuseIPDB detail fields.
-        Two-pass approach mirrors enricher priority: src_ip first, then dst_ip
-        for remaining NULLs (e.g. outbound blocked traffic).
+        Two-pass approach: src_ip first (skipping WAN IPs), then dst_ip
+        for remaining NULLs. WAN IPs are excluded so we only patch from
+        the remote party's threat data.
         Returns number of rows updated.
         """
+        from db import get_config
+        wan_ips = get_config(self.db, 'wan_ips') or []
+
         with self.db.get_conn() as conn:
             with conn.cursor() as cur:
-                # Pass 1: patch where src_ip matches (most common — inbound)
+                # Pass 1: patch where src_ip matches (skip WAN IPs)
                 cur.execute("""
                     UPDATE logs
                     SET threat_score = t.threat_score,
@@ -206,17 +312,14 @@ class BackfillTask:
                         abuse_is_tor = COALESCE(logs.abuse_is_tor, t.abuse_is_tor)
                     FROM ip_threats t
                     WHERE logs.src_ip = t.ip
+                      AND NOT (logs.src_ip = ANY(%s::inet[]))
                       AND logs.threat_score IS NULL
                       AND logs.log_type = 'firewall'
                       AND logs.rule_action = 'block'
-                """)
+                """, [wan_ips])
                 patched = cur.rowcount
 
-                # Pass 2: patch remaining NULLs where dst_ip matches
-                # (outbound blocked traffic where dst_ip was the enriched IP).
-                # Pass 1 already filled src_ip matches, so this only touches
-                # rows where src_ip had no ip_threats entry — matching enricher
-                # fallback logic (prefer src_ip, else dst_ip).
+                # Pass 2: patch remaining NULLs where dst_ip matches (skip WAN IPs)
                 cur.execute("""
                     UPDATE logs
                     SET threat_score = t.threat_score,
@@ -229,10 +332,11 @@ class BackfillTask:
                         abuse_is_tor = COALESCE(logs.abuse_is_tor, t.abuse_is_tor)
                     FROM ip_threats t
                     WHERE logs.dst_ip = t.ip
+                      AND NOT (logs.dst_ip = ANY(%s::inet[]))
                       AND logs.threat_score IS NULL
                       AND logs.log_type = 'firewall'
                       AND logs.rule_action = 'block'
-                """)
+                """, [wan_ips])
                 patched += cur.rowcount
 
                 return patched
@@ -242,12 +346,15 @@ class BackfillTask:
 
         This covers logs scored before verbose mode was enabled.
         Only patches from ip_threats entries that have abuse data.
-        Two-pass: src_ip first, then dst_ip for remaining gaps.
+        Two-pass: src_ip first (skip WAN IPs), then dst_ip for remaining gaps.
         Returns number of rows updated.
         """
+        from db import get_config
+        wan_ips = get_config(self.db, 'wan_ips') or []
+
         with self.db.get_conn() as conn:
             with conn.cursor() as cur:
-                # Pass 1: src_ip match
+                # Pass 1: src_ip match (skip WAN IPs)
                 cur.execute("""
                     UPDATE logs
                     SET abuse_usage_type = t.abuse_usage_type,
@@ -267,15 +374,16 @@ class BackfillTask:
                         END
                     FROM ip_threats t
                     WHERE logs.src_ip = t.ip
+                      AND NOT (logs.src_ip = ANY(%s::inet[]))
                       AND logs.threat_score IS NOT NULL
                       AND logs.abuse_usage_type IS NULL
                       AND t.abuse_usage_type IS NOT NULL
                       AND logs.log_type = 'firewall'
                       AND logs.rule_action = 'block'
-                """)
+                """, [wan_ips])
                 patched = cur.rowcount
 
-                # Pass 2: dst_ip match for remaining gaps
+                # Pass 2: dst_ip match for remaining gaps (skip WAN IPs)
                 cur.execute("""
                     UPDATE logs
                     SET abuse_usage_type = t.abuse_usage_type,
@@ -295,12 +403,13 @@ class BackfillTask:
                         END
                     FROM ip_threats t
                     WHERE logs.dst_ip = t.ip
+                      AND NOT (logs.dst_ip = ANY(%s::inet[]))
                       AND logs.threat_score IS NOT NULL
                       AND logs.abuse_usage_type IS NULL
                       AND t.abuse_usage_type IS NOT NULL
                       AND logs.log_type = 'firewall'
                       AND logs.rule_action = 'block'
-                """)
+                """, [wan_ips])
                 patched += cur.rowcount
 
                 return patched
@@ -466,4 +575,4 @@ class BackfillTask:
                     ) sub
                 """)
                 return [row[0] for row in cur.fetchall()
-                        if is_public_ip(row[0])]
+                        if self.enricher._is_remote_ip(row[0])]

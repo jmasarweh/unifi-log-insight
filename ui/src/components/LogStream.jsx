@@ -239,17 +239,17 @@ export default function LogStream({ version, latestRelease }) {
               Columns{hiddenColumns.size > 0 ? ` (${TOGGLEABLE_COLUMNS.length - hiddenColumns.size}/${TOGGLEABLE_COLUMNS.length})` : ''}
             </button>
             {showColumnsMenu && (
-              <div className="absolute right-0 top-full mt-1 w-40 bg-gray-800 border border-gray-700 rounded shadow-lg z-20 py-1">
+              <div className="absolute right-0 top-full mt-1 w-40 bg-gray-950 border border-gray-700 rounded shadow-lg z-20 py-1">
                 {TOGGLEABLE_COLUMNS.map(col => (
                   <label
                     key={col.key}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-700 cursor-pointer select-none"
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 cursor-pointer select-none"
                   >
                     <input
                       type="checkbox"
                       checked={!hiddenColumns.has(col.key)}
                       onChange={() => toggleColumn(col.key)}
-                      className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-0 focus:ring-offset-0"
+                      className="rounded border-gray-600 bg-gray-800 text-blue-500 focus:ring-0 focus:ring-offset-0"
                     />
                     {col.label}
                   </label>
