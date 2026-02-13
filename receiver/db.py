@@ -42,7 +42,7 @@ INSERT_SQL = f"""
 class Database:
     """PostgreSQL connection pool and operations."""
 
-    def __init__(self, conn_params: dict = None, min_conn: int = 2, max_conn: int = 10):
+    def __init__(self, conn_params: dict | None = None, min_conn: int = 2, max_conn: int = 10):
         self.conn_params = conn_params or {
             'host': '127.0.0.1',
             'port': 5432,
@@ -106,8 +106,8 @@ class Database:
                     for sql in migrations:
                         cur.execute(sql)
             logger.info("Schema migrations applied.")
-        except Exception as e:
-            logger.error("Schema migration failed: %s", e)
+        except Exception:
+            logger.exception("Schema migration failed")
 
         self._backfill_tz_timestamps()
 
@@ -289,12 +289,18 @@ class Database:
                         'threat_categories': row[1] or [],
                     }
                     # Include extra fields if present
-                    if row[2]: result['abuse_usage_type'] = row[2]
-                    if row[3]: result['abuse_hostnames'] = row[3]
-                    if row[4] is not None: result['abuse_total_reports'] = row[4]
-                    if row[5]: result['abuse_last_reported'] = row[5].isoformat() if hasattr(row[5], 'isoformat') else row[5]
-                    if row[6]: result['abuse_is_whitelisted'] = row[6]
-                    if row[7]: result['abuse_is_tor'] = row[7]
+                    if row[2]:
+                        result['abuse_usage_type'] = row[2]
+                    if row[3]:
+                        result['abuse_hostnames'] = row[3]
+                    if row[4] is not None:
+                        result['abuse_total_reports'] = row[4]
+                    if row[5]:
+                        result['abuse_last_reported'] = row[5].isoformat() if hasattr(row[5], 'isoformat') else row[5]
+                    if row[6] is not None:
+                        result['abuse_is_whitelisted'] = row[6]
+                    if row[7] is not None:
+                        result['abuse_is_tor'] = row[7]
                     return result
         return None
 
@@ -366,8 +372,8 @@ class Database:
                     extras.execute_batch(cur, sql, entries, page_size=500)
             logger.info("Bulk upserted %d threat entries", len(entries))
             return len(entries)
-        except Exception as e:
-            logger.error("Bulk upsert failed: %s", e)
+        except Exception:
+            logger.exception("Bulk upsert failed")
             return 0
 
     # ── System configuration ──────────────────────────────────────────────────
@@ -397,6 +403,88 @@ class Database:
                     ON CONFLICT (key) DO UPDATE
                     SET value = EXCLUDED.value, updated_at = NOW()
                 """, [key, Json(value)])  # Use Json() for proper JSONB handling
+
+
+    # ── WAN IP detection ──────────────────────────────────────────────────────
+
+    # Shared SQL filter for excluding private/non-routable dst_ip
+    _PRIVATE_IP_FILTER = """
+        NOT (dst_ip << '10.0.0.0/8'::inet
+          OR dst_ip << '172.16.0.0/12'::inet
+          OR dst_ip << '192.168.0.0/16'::inet
+          OR dst_ip << '127.0.0.0/8'::inet
+          OR dst_ip << 'fc00::/7'::inet
+          OR dst_ip << 'fe80::/10'::inet
+          OR dst_ip << '::1/128'::inet
+          OR host(dst_ip) = '255.255.255.255')
+    """
+
+    def get_wan_ips_by_interface(self, interfaces: list) -> dict:
+        """Detect WAN IP for each interface using the most common public dst_ip.
+
+        Returns dict of {interface: wan_ip_str} for each interface that has one.
+        """
+        if not interfaces:
+            return {}
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                placeholders = ','.join(['%s'] * len(interfaces))
+                cur.execute(f"""
+                    SELECT interface_in AS iface,
+                           MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
+                               WHERE dst_ip IS NOT NULL AND {self._PRIVATE_IP_FILTER}
+                           ) AS wan_ip
+                    FROM logs
+                    WHERE log_type = 'firewall'
+                      AND interface_in IN ({placeholders})
+                    GROUP BY interface_in
+                """, interfaces)
+                return {row[0]: row[1] for row in cur.fetchall() if row[1]}
+
+    def detect_wan_ip(self) -> str | None:
+        """Detect the WAN IP from firewall logs and persist to system_config.
+
+        Uses the configured WAN interfaces to find the most common public dst_ip.
+        Only updates system_config when the detected IP changes.
+        Returns the detected WAN IP or None.
+        """
+        wan_interfaces = self.get_config('wan_interfaces', ['ppp0'])
+        wan_ips = self.get_wan_ips_by_interface(wan_interfaces)
+        # Use the first WAN interface's IP (most deployments have one)
+        wan_ip = next(iter(wan_ips.values()), None) if wan_ips else None
+
+        if wan_ip:
+            current = self.get_config('wan_ip')
+            if wan_ip != current:
+                self.set_config('wan_ip', wan_ip)
+                logger.info("WAN IP detected and persisted: %s", wan_ip)
+        return wan_ip
+
+    def get_wan_ip_candidates(self) -> list[dict]:
+        """Return all non-bridge firewall interfaces with their WAN IPs.
+
+        Used by the setup wizard to discover candidate WAN interfaces.
+        """
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"""
+                    SELECT
+                        interface_in AS interface,
+                        COUNT(*)     AS event_count,
+                        MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
+                            WHERE dst_ip IS NOT NULL AND {self._PRIVATE_IP_FILTER}
+                        ) AS wan_ip
+                    FROM logs
+                    WHERE log_type = 'firewall'
+                      AND interface_in IS NOT NULL
+                      AND interface_in NOT LIKE 'br%%'
+                    GROUP BY interface_in
+                    ORDER BY event_count DESC
+                """)
+                return [
+                    {'interface': r[0], 'event_count': int(r[1]), 'wan_ip': r[2] or ''}
+                    for r in cur.fetchall()
+                ]
 
 
 # ── Standalone helper functions ───────────────────────────────────────────────

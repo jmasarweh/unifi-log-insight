@@ -428,15 +428,18 @@ def parse_log(raw_log: str) -> dict | None:
 
 
 def reload_config_from_db(db):
-    """Reload WAN interfaces and labels from system_config table.
+    """Reload WAN interfaces, labels, and WAN IP from system_config table.
 
     Called by main.py on startup and via SIGUSR2 signal after reconfiguration.
-    Updates module-level WAN_INTERFACES and INTERFACE_LABELS.
+    Updates module-level WAN_INTERFACES, INTERFACE_LABELS, and _wan_ip.
     """
-    global WAN_INTERFACES, INTERFACE_LABELS
+    global WAN_INTERFACES, INTERFACE_LABELS, _wan_ip
     from db import get_config
 
     wan_list = get_config(db, 'wan_interfaces', ['ppp0'])
     WAN_INTERFACES = set(wan_list)
     INTERFACE_LABELS = get_config(db, 'interface_labels', {})
+    saved_wan_ip = get_config(db, 'wan_ip')
+    if saved_wan_ip:
+        _wan_ip = saved_wan_ip
     logger.info("Config reloaded: WAN=%s, Labels=%d", WAN_INTERFACES, len(INTERFACE_LABELS))

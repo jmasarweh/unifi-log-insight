@@ -20,6 +20,8 @@ const DEFAULT_FILTERS = {
 }
 
 const STORAGE_KEY = 'unifi-log-insight:log-types'
+const ACTION_STORAGE_KEY = 'unifi-log-insight:rule-action'
+const DIRECTION_STORAGE_KEY = 'unifi-log-insight:direction'
 const COLUMNS_STORAGE_KEY = 'unifi-log-insight:hidden-columns'
 
 const TOGGLEABLE_COLUMNS = [
@@ -30,13 +32,18 @@ const TOGGLEABLE_COLUMNS = [
   { key: 'categories', label: 'Categories' },
 ]
 
-export default function LogStream() {
+export default function LogStream({ version, latestRelease }) {
   const [filters, setFilters] = useState(() => {
+    const restored = { ...DEFAULT_FILTERS }
     try {
-      const saved = localStorage.getItem(STORAGE_KEY)
-      if (saved) return { ...DEFAULT_FILTERS, log_type: saved }
+      const savedTypes = localStorage.getItem(STORAGE_KEY)
+      if (savedTypes) restored.log_type = savedTypes
+      const savedAction = localStorage.getItem(ACTION_STORAGE_KEY)
+      if (savedAction) restored.rule_action = savedAction
+      const savedDirection = localStorage.getItem(DIRECTION_STORAGE_KEY)
+      if (savedDirection) restored.direction = savedDirection
     } catch (e) { /* private browsing */ }
-    return DEFAULT_FILTERS
+    return restored
   })
   const [data, setData] = useState({ data: [], total: 0, page: 1, pages: 0 })
   const [loading, setLoading] = useState(true)
@@ -57,16 +64,27 @@ export default function LogStream() {
   const intervalRef = useRef(null)
   const pendingRef = useRef(null)
 
-  // Persist log_type toggles to localStorage
+  // Persist filter toggles to localStorage
   useEffect(() => {
     try {
-      if (filters.log_type) {
-        localStorage.setItem(STORAGE_KEY, filters.log_type)
-      } else {
-        localStorage.removeItem(STORAGE_KEY)
-      }
+      if (filters.log_type) localStorage.setItem(STORAGE_KEY, filters.log_type)
+      else localStorage.removeItem(STORAGE_KEY)
     } catch (e) { /* private browsing */ }
   }, [filters.log_type])
+
+  useEffect(() => {
+    try {
+      if (filters.rule_action) localStorage.setItem(ACTION_STORAGE_KEY, filters.rule_action)
+      else localStorage.removeItem(ACTION_STORAGE_KEY)
+    } catch (e) { /* private browsing */ }
+  }, [filters.rule_action])
+
+  useEffect(() => {
+    try {
+      if (filters.direction) localStorage.setItem(DIRECTION_STORAGE_KEY, filters.direction)
+      else localStorage.removeItem(DIRECTION_STORAGE_KEY)
+    } catch (e) { /* private browsing */ }
+  }, [filters.direction])
 
   // Persist hidden columns to localStorage
   const toggleColumn = (key) => {
@@ -192,7 +210,7 @@ export default function LogStream() {
           <button
             onClick={() => setAutoRefresh(!autoRefresh)}
             className={`flex items-center gap-1.5 text-[11px] transition-colors ${
-              isRefreshing ? 'text-emerald-400' : autoRefresh && expandedId !== null ? 'text-amber-400' : 'text-gray-500'
+              isRefreshing ? 'text-emerald-400' : autoRefresh && expandedId !== null ? 'text-amber-400' : 'text-gray-400'
             }`}
           >
             <span className={`w-1.5 h-1.5 rounded-full ${isRefreshing ? 'bg-emerald-400 animate-pulse' : autoRefresh && expandedId !== null ? 'bg-amber-400' : 'bg-gray-600'}`} />
@@ -207,7 +225,7 @@ export default function LogStream() {
             </button>
           )}
           {lastUpdate && (
-            <span className="text-[10px] text-gray-600">
+            <span className="text-[10px] text-gray-500">
               Updated {lastUpdate.toLocaleTimeString('en-GB')}
             </span>
           )}
@@ -216,7 +234,7 @@ export default function LogStream() {
           <div className="relative inline-flex items-center" ref={columnsMenuRef}>
             <button
               onClick={() => setShowColumnsMenu(v => !v)}
-              className={`text-[11px] transition-colors ${hiddenColumns.size > 0 ? 'text-amber-400' : 'text-gray-500 hover:text-gray-300'}`}
+              className={`text-[11px] transition-colors ${hiddenColumns.size > 0 ? 'text-amber-400' : 'text-gray-400 hover:text-gray-200'}`}
             >
               Columns{hiddenColumns.size > 0 ? ` (${TOGGLEABLE_COLUMNS.length - hiddenColumns.size}/${TOGGLEABLE_COLUMNS.length})` : ''}
             </button>
@@ -239,7 +257,7 @@ export default function LogStream() {
                 <div className="border-t border-gray-700 mt-1 pt-1 px-3 pb-1">
                   <button
                     onClick={() => setShowColumnsMenu(false)}
-                    className="w-full text-xs text-gray-400 hover:text-gray-200 py-1 transition-colors"
+                    className="w-full text-xs text-gray-300 hover:text-gray-200 py-1 transition-colors"
                   >
                     Done
                   </button>
@@ -249,13 +267,13 @@ export default function LogStream() {
           </div>
           <button
             onClick={() => load(filters)}
-            className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-[11px] text-gray-400 hover:text-gray-200 transition-colors"
           >
             ↻ Refresh
           </button>
           <a
             href={getExportUrl(filters)}
-            className="text-[11px] text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-[11px] text-gray-400 hover:text-gray-200 transition-colors"
           >
             ↓ Export CSV
           </a>
@@ -274,6 +292,8 @@ export default function LogStream() {
         total={data.total}
         perPage={filters.per_page}
         onChange={handlePageChange}
+        version={version}
+        latestRelease={latestRelease}
       />
     </div>
   )

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchServices, fetchInterfaces } from '../api'
-import { getInterfaceName } from '../utils'
+import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS } from '../utils'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
 const TIME_RANGES = [
@@ -74,6 +74,24 @@ export default function FilterBar({ filters, onChange }) {
   }
 
   const activeTypes = filters.log_type ? filters.log_type.split(',') : LOG_TYPES
+  const activeActions = filters.rule_action ? filters.rule_action.split(',') : ACTIONS
+  const activeDirections = filters.direction ? filters.direction.split(',') : DIRECTIONS
+
+  const toggleAction = (action) => {
+    const current = filters.rule_action ? filters.rule_action.split(',') : ACTIONS
+    const updated = current.includes(action)
+      ? current.filter(a => a !== action)
+      : [...current, action]
+    onChange({ ...filters, rule_action: updated.length === ACTIONS.length ? null : updated.join(',') })
+  }
+
+  const toggleDirection = (dir) => {
+    const current = filters.direction ? filters.direction.split(',') : DIRECTIONS
+    const updated = current.includes(dir)
+      ? current.filter(d => d !== dir)
+      : [...current, dir]
+    onChange({ ...filters, direction: updated.length === DIRECTIONS.length ? null : updated.join(',') })
+  }
 
   const typeColors = {
     firewall: 'bg-blue-500',
@@ -95,10 +113,46 @@ export default function FilterBar({ filters, onChange }) {
               className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
                 activeTypes.includes(type)
                   ? `${typeColors[type]} text-white`
-                  : 'bg-gray-800 text-gray-500 hover:text-gray-400'
+                  : 'bg-gray-800 text-gray-400 hover:text-gray-300'
               }`}
             >
               {type}
+            </button>
+          ))}
+        </div>
+
+        <div className="h-5 w-px bg-gray-700" />
+
+        <div className="flex items-center gap-1">
+          {ACTIONS.map(action => (
+            <button
+              key={action}
+              onClick={() => toggleAction(action)}
+              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                activeActions.includes(action)
+                  ? action === 'block' ? 'bg-red-500/30 text-red-400' : action === 'allow' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'
+                  : 'bg-gray-800 text-gray-400 hover:text-gray-300'
+              }`}
+            >
+              {action}
+            </button>
+          ))}
+        </div>
+
+        <div className="h-5 w-px bg-gray-700" />
+
+        <div className="flex items-center gap-1">
+          {DIRECTIONS.map(dir => (
+            <button
+              key={dir}
+              onClick={() => toggleDirection(dir)}
+              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                activeDirections.includes(dir)
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-500 hover:text-gray-400'
+              }`}
+            >
+              <span className={activeDirections.includes(dir) ? DIRECTION_COLORS[dir] : ''}>{DIRECTION_ICONS[dir]}</span> {dir === 'inter_vlan' ? 'vlan' : dir}
             </button>
           ))}
         </div>
@@ -113,58 +167,10 @@ export default function FilterBar({ filters, onChange }) {
               className={`px-2 py-1 rounded text-xs font-medium transition-all ${
                 filters.time_range === tr.value
                   ? 'bg-gray-700 text-white'
-                  : 'text-gray-500 hover:text-gray-400'
+                  : 'text-gray-400 hover:text-gray-300'
               }`}
             >
               {tr.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="h-5 w-px bg-gray-700" />
-
-        <div className="flex items-center gap-1">
-          {ACTIONS.map(action => (
-            <button
-              key={action}
-              onClick={() => {
-                const current = filters.rule_action ? filters.rule_action.split(',') : []
-                const updated = current.includes(action)
-                  ? current.filter(a => a !== action)
-                  : [...current, action]
-                onChange({ ...filters, rule_action: updated.length ? updated.join(',') : null })
-              }}
-              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                filters.rule_action?.split(',').includes(action)
-                  ? action === 'block' ? 'bg-red-500/30 text-red-400' : action === 'allow' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-yellow-500/20 text-yellow-400'
-                  : 'text-gray-500 hover:text-gray-400'
-              }`}
-            >
-              {action}
-            </button>
-          ))}
-        </div>
-
-        <div className="h-5 w-px bg-gray-700" />
-
-        <div className="flex items-center gap-1">
-          {DIRECTIONS.map(dir => (
-            <button
-              key={dir}
-              onClick={() => {
-                const current = filters.direction ? filters.direction.split(',') : []
-                const updated = current.includes(dir)
-                  ? current.filter(d => d !== dir)
-                  : [...current, dir]
-                onChange({ ...filters, direction: updated.length ? updated.join(',') : null })
-              }}
-              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                filters.direction?.split(',').includes(dir)
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-500 hover:text-gray-400'
-              }`}
-            >
-              {dir === 'inter_vlan' ? 'vlan' : dir}
             </button>
           ))}
         </div>
@@ -178,10 +184,10 @@ export default function FilterBar({ filters, onChange }) {
             placeholder="IP address..."
             value={ipSearch}
             onChange={e => setIpSearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
           />
           {ipSearch && (
-            <button onClick={() => setIpSearch('')} className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs">✕</button>
+            <button onClick={() => setIpSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
           )}
         </div>
         <div className="relative">
@@ -190,10 +196,10 @@ export default function FilterBar({ filters, onChange }) {
             placeholder="Rule name..."
             value={ruleSearch}
             onChange={e => setRuleSearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
           />
           {ruleSearch && (
-            <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs">✕</button>
+            <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
           )}
         </div>
         <div className="relative">
@@ -207,7 +213,7 @@ export default function FilterBar({ filters, onChange }) {
             }}
             onFocus={() => setShowServiceDropdown(true)}
             onBlur={() => setTimeout(() => setShowServiceDropdown(false), 200)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
           />
           {selectedServices.length > 0 && (
             <button
@@ -215,7 +221,7 @@ export default function FilterBar({ filters, onChange }) {
                 setSelectedServices([])
                 onChange({ ...filters, service: null })
               }}
-              className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs"
+              className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
             >✕</button>
           )}
           {showServiceDropdown && (
@@ -244,7 +250,7 @@ export default function FilterBar({ filters, onChange }) {
                   </div>
                 ))}
               {services.filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase())).length === 0 && (
-                <div className="px-3 py-2 text-xs text-gray-500">No matching services</div>
+                <div className="px-3 py-2 text-xs text-gray-400">No matching services</div>
               )}
             </div>
           )}
@@ -260,7 +266,7 @@ export default function FilterBar({ filters, onChange }) {
             }}
             onFocus={() => setShowInterfaceDropdown(true)}
             onBlur={() => setTimeout(() => setShowInterfaceDropdown(false), 200)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500 w-40"
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-40"
           />
           {selectedInterfaces.length > 0 && (
             <button
@@ -268,7 +274,7 @@ export default function FilterBar({ filters, onChange }) {
                 setSelectedInterfaces([])
                 onChange({ ...filters, interface: null })
               }}
-              className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs"
+              className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
             >✕</button>
           )}
           {showInterfaceDropdown && (
@@ -299,7 +305,7 @@ export default function FilterBar({ filters, onChange }) {
                     <div className="flex items-center justify-between">
                       <span className="font-mono">{iface.name}</span>
                       {iface.label !== iface.name && (
-                        <span className="text-gray-500 ml-2">{iface.label}</span>
+                        <span className="text-gray-400 ml-2">{iface.label}</span>
                       )}
                     </div>
                   </div>
@@ -308,7 +314,7 @@ export default function FilterBar({ filters, onChange }) {
                 iface.name.toLowerCase().includes(interfaceSearch.toLowerCase()) ||
                 iface.label.toLowerCase().includes(interfaceSearch.toLowerCase())
               ).length === 0 && (
-                <div className="px-3 py-2 text-xs text-gray-500">No matching interfaces</div>
+                <div className="px-3 py-2 text-xs text-gray-400">No matching interfaces</div>
               )}
             </div>
           )}
@@ -319,10 +325,10 @@ export default function FilterBar({ filters, onChange }) {
             placeholder="Search raw log..."
             value={textSearch}
             onChange={e => setTextSearch(e.target.value)}
-            className="w-full bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+            className="w-full bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500"
           />
           {textSearch && (
-            <button onClick={() => setTextSearch('')} className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300 text-xs">✕</button>
+            <button onClick={() => setTextSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
           )}
         </div>
         <button
@@ -336,7 +342,7 @@ export default function FilterBar({ filters, onChange }) {
             setSelectedInterfaces([])
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
-          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+          className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
         >
           Reset
         </button>

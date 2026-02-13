@@ -1,19 +1,12 @@
-// Country flag emoji from ISO code
-const FLAGS = {
-  US: '🇺🇸', GB: '🇬🇧', IE: '🇮🇪', DE: '🇩🇪', CN: '🇨🇳', RU: '🇷🇺',
-  NL: '🇳🇱', BR: '🇧🇷', FR: '🇫🇷', JP: '🇯🇵', KR: '🇰🇷', IN: '🇮🇳',
-  AU: '🇦🇺', CA: '🇨🇦', SG: '🇸🇬', HK: '🇭🇰', SE: '🇸🇪', IT: '🇮🇹',
-  ES: '🇪🇸', PL: '🇵🇱', RO: '🇷🇴', UA: '🇺🇦', TW: '🇹🇼', VN: '🇻🇳',
-  TH: '🇹🇭', ID: '🇮🇩', PH: '🇵🇭', AR: '🇦🇷', MX: '🇲🇽', CL: '🇨🇱',
-  ZA: '🇿🇦', EG: '🇪🇬', NG: '🇳🇬', KE: '🇰🇪', SA: '🇸🇦', AE: '🇦🇪',
-  TR: '🇹🇷', IR: '🇮🇷', PK: '🇵🇰', BD: '🇧🇩', FI: '🇫🇮', NO: '🇳🇴',
-  DK: '🇩🇰', CH: '🇨🇭', AT: '🇦🇹', BE: '🇧🇪', PT: '🇵🇹', GR: '🇬🇷',
-  CZ: '🇨🇿', HU: '🇭🇺', BG: '🇧🇬', JO: '🇯🇴', LB: '🇱🇧', IL: '🇮🇱',
-}
+// Country flag SVG icon (works on all platforms including Windows)
+import React from 'react'
 
-export function getFlag(code) {
-  if (!code) return ''
-  return FLAGS[code.toUpperCase()] || '🏳️'
+export function FlagIcon({ code }) {
+  if (!code) return null
+  return React.createElement('span', {
+    className: `fi fi-${code.toLowerCase()}`,
+    style: { fontSize: '14px', lineHeight: 1 },
+  })
 }
 
 export function formatTime(ts) {
@@ -63,7 +56,7 @@ export const LOG_TYPE_STYLES = {
   dhcp: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
   wifi: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
   ids: 'bg-red-500/15 text-red-400 border-red-500/30',
-  system: 'bg-gray-500/15 text-gray-400 border-gray-500/30',
+  system: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
 }
 
 export const ACTION_STYLES = {
@@ -75,7 +68,7 @@ export const ACTION_STYLES = {
   DHCPREQUEST: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
   DHCPOFFER: 'bg-cyan-500/15 text-cyan-400 border-cyan-500/30',
   associated: 'bg-amber-500/15 text-amber-400 border-amber-500/30',
-  disassociated: 'bg-gray-500/15 text-gray-400 border-gray-500/30',
+  disassociated: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
 }
 
 export const DIRECTION_ICONS = {
@@ -124,7 +117,7 @@ export function getInterfaceName(iface) {
 }
 
 export function getInterfaceColor(iface) {
-  if (!iface) return 'text-gray-400'
+  if (!iface) return 'text-gray-300'
 
   // WAN interfaces → always red
   if (WAN_INTERFACES.has(iface)) return 'text-red-400'
@@ -132,25 +125,25 @@ export function getInterfaceColor(iface) {
   // Bridge interfaces → fixed color per VLAN number
   if (iface.startsWith('br')) {
     const num = parseInt(iface.slice(2), 10)
-    if (isNaN(num)) return 'text-gray-400'
-    return BRIDGE_COLOR_MAP[num] || 'text-gray-400'
+    if (isNaN(num)) return 'text-gray-300'
+    return BRIDGE_COLOR_MAP[num] || 'text-gray-300'
   }
 
   // VLAN interfaces
   if (iface.startsWith('vlan')) return 'text-indigo-400'
 
   // Ethernet interfaces
-  if (iface.startsWith('eth')) return 'text-gray-400'
+  if (iface.startsWith('eth')) return 'text-gray-300'
 
-  return 'text-gray-400'
+  return 'text-gray-300'
 }
 
 export const DIRECTION_COLORS = {
   inbound: 'text-red-400',
   outbound: 'text-blue-400',
-  inter_vlan: 'text-gray-400',
+  inter_vlan: 'text-gray-300',
   nat: 'text-yellow-400',
-  local: 'text-gray-500',
+  local: 'text-gray-400',
 }
 
 // AbuseIPDB category code → human-readable label

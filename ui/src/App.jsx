@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import LogStream from './components/LogStream'
 import Dashboard from './components/Dashboard'
 import SetupWizard from './components/SetupWizard'
-import { fetchHealth, fetchConfig } from './api'
+import { fetchHealth, fetchConfig, fetchLatestRelease } from './api'
 import { loadInterfaceLabels } from './utils'
 
 const TABS = [
@@ -49,6 +49,7 @@ function formatAbuseIPDB(abuseipdb) {
 export default function App() {
   const [activeTab, setActiveTab] = useState('logs')
   const [health, setHealth] = useState(null)
+  const [latestRelease, setLatestRelease] = useState(null)
   const [showWizard, setShowWizard] = useState(false)
   const [showReconfig, setShowReconfig] = useState(false)
   const [config, setConfig] = useState(null)
@@ -89,9 +90,25 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    const cached = sessionStorage.getItem('latest_release')
+    if (cached) {
+      try {
+        const { data, ts } = JSON.parse(cached)
+        if (Date.now() - ts < 3600000) { setLatestRelease(data); return }
+      } catch { /* ignore */ }
+    }
+    fetchLatestRelease().then(release => {
+      if (release) {
+        setLatestRelease(release)
+        sessionStorage.setItem('latest_release', JSON.stringify({ data: release, ts: Date.now() }))
+      }
+    })
+  }, [])
+
   if (!configLoaded) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-400 text-sm">
+      <div className="flex items-center justify-center h-screen bg-gray-950 text-gray-300 text-sm">
         Loading configuration...
       </div>
     )
@@ -170,7 +187,7 @@ export default function App() {
                 className={`px-3 py-1.5 rounded text-xs font-medium transition-all ${
                   activeTab === tab.id
                     ? 'bg-gray-800 text-white'
-                    : 'text-gray-500 hover:text-gray-300'
+                    : 'text-gray-400 hover:text-gray-200'
                 }`}
               >
                 {tab.label}
@@ -183,19 +200,19 @@ export default function App() {
         <div className="flex items-center gap-3">
           {health && (
             <>
-              <span className="text-[10px] text-gray-600">
+              <span className="text-[10px] text-gray-400">
                 AbuseIPDB: {formatAbuseIPDB(health.abuseipdb)}
               </span>
-              <span className="text-[10px] text-gray-700">|</span>
-              <span className="text-[10px] text-gray-600">
+              <span className="text-[10px] text-gray-600">|</span>
+              <span className="text-[10px] text-gray-400">
                 MaxMind: {formatShortDate(health.maxmind_last_update)}
               </span>
-              <span className="text-[10px] text-gray-700">|</span>
-              <span className="text-[10px] text-gray-600">
+              <span className="text-[10px] text-gray-600">|</span>
+              <span className="text-[10px] text-gray-400">
                 Next pull: {formatShortDate(health.maxmind_next_update)}
               </span>
-              <span className="text-[10px] text-gray-700">|</span>
-              <span className="text-[10px] text-gray-600">
+              <span className="text-[10px] text-gray-600">|</span>
+              <span className="text-[10px] text-gray-400">
                 {health.total_logs?.toLocaleString()} logs
               </span>
               <span className={`w-1.5 h-1.5 rounded-full ${
@@ -205,7 +222,7 @@ export default function App() {
           )}
           <button
             onClick={() => setShowReconfig(true)}
-            className="ml-2 p-1.5 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300 transition-colors"
+            className="ml-2 p-1.5 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
             title="Network Settings"
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
@@ -217,7 +234,7 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'logs' && <LogStream />}
+        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} />}
         {activeTab === 'dashboard' && <Dashboard />}
       </main>
     </div>

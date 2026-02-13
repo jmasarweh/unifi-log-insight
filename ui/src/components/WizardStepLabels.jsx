@@ -145,14 +145,14 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-gray-200 mb-2">Label your network interfaces</h2>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-gray-300">
           Give each interface a friendly name so the UI shows "IoT" instead
           of "br20". Suggested labels are pre-filled. Edit or clear any field.
         </p>
       </div>
 
       {loading && (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-400">
           Discovering network interfaces...
         </div>
       )}
@@ -174,9 +174,9 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800">
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Interface</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Sample IP</th>
-                <th className="text-left text-xs font-medium text-gray-400 px-4 py-3">Label</th>
+                <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Interface</th>
+                <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Sample IP</th>
+                <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Label</th>
               </tr>
             </thead>
             <tbody>
@@ -198,7 +198,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
                       {seg.manual && (
                         <button
                           onClick={() => handleRemoveManualInterface(seg.interface)}
-                          className="text-gray-600 hover:text-red-400 text-xs transition-colors"
+                          className="text-gray-500 hover:text-red-400 text-xs transition-colors"
                           title="Remove"
                         >
                           ✕
@@ -208,7 +208,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-gray-500">
+                      <span className="text-xs font-mono text-gray-400">
                         {seg.sample_local_ip || '—'}
                       </span>
                       {seg.sample_local_ip && isLocalIP(seg.sample_local_ip) && (
@@ -226,7 +226,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
                         value={labels[seg.interface] || ''}
                         onChange={(e) => handleLabelChange(seg.interface, e.target.value)}
                         placeholder={seg.suggested_label || 'e.g., Main LAN, IoT, Guest'}
-                        className={`w-full px-3 py-1.5 bg-gray-800 border rounded text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
+                        className={`w-full px-3 py-1.5 bg-gray-800 border rounded text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
                           duplicateLabels.has(seg.interface) ? 'border-yellow-500/50' : 'border-gray-700'
                         }`}
                       />
@@ -246,7 +246,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
       {!loading && !error && (
         <div>
           <h3 className="text-sm font-semibold text-gray-300 mb-2">Add VLAN interface</h3>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-gray-400 mb-3">
             If a VLAN isn't listed above (no logs yet), enter its ID and label.
             VLAN 1 maps to br0, all others map to br&lt;ID&gt;.
           </p>
@@ -259,10 +259,10 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
               onChange={(e) => setVlanId(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddVlan()}
               placeholder="VLAN ID"
-              className="w-28 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm font-mono text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="w-28 px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm font-mono text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             />
             {vlanId && vlanIdToInterface(parseInt(vlanId)) && (
-              <span className="text-xs font-mono text-gray-500 shrink-0">
+              <span className="text-xs font-mono text-gray-400 shrink-0">
                 {vlanIdToInterface(parseInt(vlanId))}
               </span>
             )}
@@ -273,7 +273,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
               onChange={(e) => setVlanLabel(e.target.value.replace(LABEL_REGEX, ''))}
               onKeyDown={(e) => e.key === 'Enter' && handleAddVlan()}
               placeholder="Label (e.g., IoT, Guest)"
-              className="flex-1 max-w-xs px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="flex-1 max-w-xs px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             />
             <button
               onClick={handleAddVlan}
@@ -281,7 +281,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
               className={`px-4 py-1.5 rounded font-medium text-sm transition-all ${
                 isValidVlanId()
                   ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
               }`}
             >
               Add
@@ -303,7 +303,7 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
             disabled={hasValidationErrors}
             className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
               hasValidationErrors
-                ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
                 : 'bg-blue-500 hover:bg-blue-600 text-white'
             }`}
           >

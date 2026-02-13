@@ -189,7 +189,14 @@ def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: Blacklist
             except Exception as e:
                 logger.error("Blacklist pull failed: %s", e)
 
+    def refresh_wan_ip():
+        try:
+            db.detect_wan_ip()
+        except Exception as e:
+            logger.error("WAN IP detection failed: %s", e)
+
     schedule.every(STATS_INTERVAL_MINUTES).minutes.do(log_stats)
+    schedule.every(STATS_INTERVAL_MINUTES).minutes.do(refresh_wan_ip)
     schedule.every().day.at(RETENTION_HOUR).do(retention_cleanup)
     schedule.every().day.at("04:00").do(pull_blacklist)
 
@@ -265,6 +272,12 @@ def main():
     # Load config into parsers module
     parsers.reload_config_from_db(db)
     logger.info("Loaded config: WAN interfaces = %s", parsers.WAN_INTERFACES)
+
+    # Detect and persist WAN IP from existing log data
+    try:
+        db.detect_wan_ip()
+    except Exception as e:
+        logger.error("Startup WAN IP detection failed: %s", e)
 
     # Check config version for future migrations
     current_version = get_config(db, 'config_version', 0)

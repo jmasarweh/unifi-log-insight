@@ -93,3 +93,14 @@ export async function fetchInterfaces() {
   if (!resp.ok) throw new Error(`API error: ${resp.status}`)
   return resp.json()
 }
+
+// ── Version Check ────────────────────────────────────────────────────────────
+
+export async function fetchLatestRelease() {
+  const resp = await fetch(
+    'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases/latest'
+  )
+  if (!resp.ok) return null
+  const data = await resp.json()
+  return { tag: data.tag_name, url: data.html_url, body: data.body || '' }
+}

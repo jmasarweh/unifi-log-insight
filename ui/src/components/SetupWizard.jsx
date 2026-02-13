@@ -41,7 +41,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
           </div>
           <div>
             <h1 className="text-lg font-semibold text-gray-200">UniFi Log Insight</h1>
-            <p className="text-xs text-gray-500">{reconfigMode ? 'Reconfigure' : 'Setup Wizard'}</p>
+            <p className="text-xs text-gray-400">{reconfigMode ? 'Reconfigure' : 'Setup Wizard'}</p>
           </div>
         </div>
 
@@ -55,7 +55,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                     ? 'bg-blue-500/10 border-blue-500/30 text-blue-400'
                     : step > s.num
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                    : 'bg-gray-800/50 border-gray-700 text-gray-500'
+                    : 'bg-gray-800/50 border-gray-700 text-gray-400'
                 }`}>
                   <span className="text-xs font-medium">{s.num}</span>
                   <span className="text-xs">{s.label}</span>
@@ -71,7 +71,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
           {reconfigMode && onCancel && (
             <button
               onClick={onCancel}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 transition-colors"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-300 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 transition-colors"
             >
               Cancel
             </button>
@@ -83,7 +83,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
       <main className="flex-1 overflow-auto">
         <div className="max-w-4xl mx-auto py-8 px-6">
           {loading ? (
-            <div className="text-center py-12 text-gray-500 text-sm">Loading current configuration...</div>
+            <div className="text-center py-12 text-gray-400 text-sm">Loading current configuration...</div>
           ) : (
             <>
               {step === 1 && (

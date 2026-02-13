@@ -32,7 +32,6 @@ import psycopg2
 from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 
-from parsers import get_wan_ip
 from db import Database, get_config, set_config, count_logs
 from enrichment import AbuseIPDBEnricher, is_public_ip
 from services import get_service_description
@@ -47,6 +46,8 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S',
 )
 logger = logging.getLogger('api')
+
+APP_VERSION = "1.2.7"
 
 # ── Database ──────────────────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ abuseipdb = AbuseIPDBEnricher(db=enricher_db)
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
-app = FastAPI(title="UniFi Log Insight API", version="1.0.0")
+app = FastAPI(title="UniFi Log Insight API", version=APP_VERSION)
 
 app.add_middleware(
     CORSMiddleware,
@@ -253,43 +254,8 @@ def setup_status():
 @app.get("/api/setup/wan-candidates")
 def wan_candidates():
     """Return non-bridge firewall interfaces with their associated WAN IP."""
-    conn = get_conn()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # For each interface_in, find the most common public dst_ip
-            # (this is the IP assigned to the interface — the WAN IP)
-            cur.execute("""
-                SELECT
-                    interface_in AS interface,
-                    COUNT(*)     AS event_count,
-                    MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
-                        WHERE dst_ip IS NOT NULL
-                        AND NOT (dst_ip << '10.0.0.0/8'::inet
-                              OR dst_ip << '172.16.0.0/12'::inet
-                              OR dst_ip << '192.168.0.0/16'::inet
-                              OR dst_ip << '127.0.0.0/8'::inet
-                              OR dst_ip << 'fc00::/7'::inet
-                              OR dst_ip << 'fe80::/10'::inet
-                              OR dst_ip << '::1/128'::inet
-                              OR host(dst_ip) = '255.255.255.255')
-                    ) AS wan_ip
-                FROM logs
-                WHERE log_type = 'firewall'
-                  AND interface_in IS NOT NULL
-                  AND interface_in NOT LIKE 'br%'
-                GROUP BY interface_in
-                ORDER BY event_count DESC
-            """)
-            candidates = cur.fetchall()
-    finally:
-        put_conn(conn)
-
-    for c in candidates:
-        c['event_count'] = int(c['event_count'])
-        c['wan_ip'] = c['wan_ip'] or ''
-
     return {
-        'candidates': candidates,
+        'candidates': enricher_db.get_wan_ip_candidates(),
     }
 
 
@@ -340,36 +306,7 @@ def network_segments(wan_interfaces: str = None):
         put_conn(conn)
 
     # For WAN interfaces, fetch their public IP instead of a local IP
-    wan_ips = {}
-    if wan_list:
-        conn2 = get_conn()
-        try:
-            with conn2.cursor(cursor_factory=RealDictCursor) as cur:
-                placeholders = ','.join(['%s'] * len(wan_list))
-                cur.execute(f"""
-                    SELECT interface_in AS iface,
-                           MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
-                               WHERE dst_ip IS NOT NULL
-                               AND NOT (dst_ip << '10.0.0.0/8'::inet
-                                     OR dst_ip << '172.16.0.0/12'::inet
-                                     OR dst_ip << '192.168.0.0/16'::inet
-                                     OR dst_ip << '127.0.0.0/8'::inet
-                                     OR dst_ip << 'fc00::/7'::inet
-                                     OR dst_ip << 'fe80::/10'::inet
-                                     OR dst_ip << '::1/128'::inet
-                                     OR host(dst_ip) = '255.255.255.255')
-                           ) AS wan_ip
-                    FROM logs
-                    WHERE log_type = 'firewall'
-                      AND interface_in IN ({placeholders})
-                    GROUP BY interface_in
-                """, wan_list)
-                for row in cur.fetchall():
-                    wan_ips[row['iface']] = row['wan_ip'] or ''
-        except Exception:
-            pass
-        finally:
-            put_conn(conn2)
+    wan_ips = enricher_db.get_wan_ips_by_interface(wan_list) if wan_list else {}
 
     # Generate suggested labels
     segments = []
@@ -670,8 +607,8 @@ def get_stats(
             )
             top_blocked_countries = [dict(r) for r in cur.fetchall()]
 
-            # Top blocked IPs (exclude WAN IP and non-routable)
-            wan_ip = get_wan_ip()
+            # Top blocked external IPs (public src_ip only, exclude WAN IP)
+            wan_ip = get_config(enricher_db, 'wan_ip')
             exclude_ips = ['0.0.0.0']
             if wan_ip:
                 exclude_ips.append(wan_ip)
@@ -682,10 +619,25 @@ def get_stats(
                 "FROM logs "
                 "WHERE timestamp >= %s AND rule_action = 'block' AND src_ip IS NOT NULL "
                 "AND host(src_ip) != ALL(%s) "
+                "AND NOT (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
+                "    OR src_ip << '192.168.0.0/16' OR src_ip << '127.0.0.0/8' "
+                "    OR src_ip << 'fe80::/10' OR src_ip << 'fc00::/7') "
                 "GROUP BY src_ip ORDER BY count DESC LIMIT 10",
                 [cutoff, exclude_ips]
             )
             top_blocked_ips = [dict(r) for r in cur.fetchall()]
+
+            # Top blocked internal IPs (private src_ip only — inter-VLAN / outbound blocks)
+            cur.execute(
+                "SELECT host(src_ip) as ip, COUNT(*) as count "
+                "FROM logs "
+                "WHERE timestamp >= %s AND rule_action = 'block' AND src_ip IS NOT NULL "
+                "AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
+                "    OR src_ip << '192.168.0.0/16') "
+                "GROUP BY src_ip ORDER BY count DESC LIMIT 10",
+                [cutoff]
+            )
+            top_blocked_internal_ips = [dict(r) for r in cur.fetchall()]
 
             # Top threat IPs (enriched — categories from ip_threats for reliability)
             cur.execute(
@@ -758,6 +710,7 @@ def get_stats(
             'by_direction': by_direction,
             'top_blocked_countries': top_blocked_countries,
             'top_blocked_ips': top_blocked_ips,
+            'top_blocked_internal_ips': top_blocked_internal_ips,
             'top_threat_ips': top_threat_ips,
             'top_blocked_services': top_blocked_services,
             'top_dns': top_dns,
@@ -910,6 +863,7 @@ def health():
 
         return {
             'status': 'ok',
+            'version': APP_VERSION,
             'total_logs': total,
             'latest_log': latest.isoformat() if latest else None,
             'abuseipdb': abuseipdb,

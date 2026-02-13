@@ -1,6 +1,6 @@
 import React from 'react'
 import {
-  formatTime, getFlag, isPrivateIP, getInterfaceName, getInterfaceColor,
+  formatTime, FlagIcon, isPrivateIP, getInterfaceName, getInterfaceColor,
   LOG_TYPE_STYLES, ACTION_STYLES,
   DIRECTION_ICONS, DIRECTION_COLORS, decodeThreatCategories,
 } from '../utils'
@@ -20,7 +20,7 @@ function ThreatBadge({ score, categories }) {
   return (
     <span className="inline-flex items-center gap-1" title={catText || `Threat score: ${score}%`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
-      <span className="text-gray-400">{score}</span>
+      <span className="text-gray-300">{score}</span>
     </span>
   )
 }
@@ -31,7 +31,7 @@ function IPCell({ ip, port }) {
   return (
     <span className="inline-flex items-baseline gap-0.5 min-w-0">
       <span className="text-gray-300 truncate">{ip}</span>
-      {port && <span className="text-gray-600">:{port}</span>}
+      {port && <span className="text-gray-500">:{port}</span>}
     </span>
   )
 }
@@ -53,7 +53,7 @@ function NetworkPath({ ifaceIn, ifaceOut }) {
   return (
     <span className="inline-flex items-center gap-1">
       <span className={colorIn}>{nameIn}</span>
-      <span className="text-gray-600">→</span>
+      <span className="text-gray-500">→</span>
       <span className={colorOut}>{nameOut}</span>
     </span>
   )
@@ -69,7 +69,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
   const actionStyle = ACTION_STYLES[log.rule_action || log.dhcp_event || log.wifi_event] || ''
   const typeStyle = LOG_TYPE_STYLES[log.log_type] || LOG_TYPE_STYLES.system
   const dirIcon = DIRECTION_ICONS[log.direction] || ''
-  const dirColor = DIRECTION_COLORS[log.direction] || 'text-gray-600'
+  const dirColor = DIRECTION_COLORS[log.direction] || 'text-gray-500'
 
   const infoText = log.log_type === 'firewall'
     ? (formatRuleDesc(log.rule_desc) || log.rule_name || '—')
@@ -90,7 +90,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         } ${log.threat_score >= 50 ? 'bg-orange-950/10' : ''}`}
       >
         {/* Time */}
-        <td className="px-3 py-1.5 text-[13px] text-gray-500 whitespace-nowrap font-light">
+        <td className="px-3 py-1.5 text-[13px] text-gray-400 whitespace-nowrap font-light">
           {formatTime(log.timestamp)}
         </td>
 
@@ -131,7 +131,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         {show('country') && (
           <td className="px-2 py-1.5 text-[13px] whitespace-nowrap" title={log.geo_country}>
             {log.geo_country ? (
-              <span>{getFlag(log.geo_country)} <span className="text-gray-500">{log.geo_country}</span></span>
+              <span><FlagIcon code={log.geo_country} /> <span className="text-gray-400">{log.geo_country}</span></span>
             ) : (
               <span className="text-gray-700">—</span>
             )}
@@ -140,7 +140,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* ASN */}
         {show('asn') && (
-          <td className="px-2 py-1.5 text-[12px] text-gray-500 max-w-[150px] truncate" title={log.asn_name || ''}>
+          <td className="px-2 py-1.5 text-[12px] text-gray-400 max-w-[150px] truncate" title={log.asn_name || ''}>
             {log.asn_name || '—'}
           </td>
         )}
@@ -151,18 +151,18 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         </td>
 
         {/* Protocol */}
-        <td className="px-2 py-1.5 text-[13px] text-gray-500">
+        <td className="px-2 py-1.5 text-[13px] text-gray-400 uppercase">
           {log.protocol || '—'}
         </td>
 
         {/* Service */}
-        <td className="px-2 py-1.5 text-[12px] text-gray-500">
+        <td className="px-2 py-1.5 text-[12px] text-gray-400 uppercase">
           {log.service_name || '—'}
         </td>
 
         {/* Rule / Info */}
         {show('rule') && (
-          <td className="px-2 py-1.5 text-[12px] text-gray-500 max-w-[180px] truncate" title={infoTitle}>
+          <td className="px-2 py-1.5 text-[12px] text-gray-400 max-w-[180px] truncate" title={infoTitle}>
             {infoText}
           </td>
         )}
@@ -176,7 +176,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Threat Categories */}
         {show('categories') && (
-          <td className="px-2 py-1.5 text-[11px] text-orange-400/70 max-w-[180px] truncate" title={decodeThreatCategories(log.threat_categories) || ''}>
+          <td className="px-2 py-1.5 text-[11px] text-purple-400/70 max-w-[180px] truncate" title={decodeThreatCategories(log.threat_categories) || ''}>
             {decodeThreatCategories(log.threat_categories) || <span className="text-gray-700">—</span>}
           </td>
         )}
@@ -206,7 +206,7 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
     { key: 'asn', label: 'ASN', className: 'w-36' },
     { key: 'network', label: 'Network', className: 'w-28' },
     { key: 'proto', label: 'Proto', className: 'w-12' },
-    { key: 'service', label: 'Service', className: 'w-48' },
+    { key: 'service', label: 'Service', className: 'w-28' },
     { key: 'rule', label: 'Rule / Info', className: 'w-48' },
     { key: 'threat', label: 'AbuseIPDB', className: 'w-20' },
     { key: 'categories', label: 'Categories', className: 'w-40' },
@@ -223,7 +223,7 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
             {visibleColumns.map(col => (
               <th
                 key={col.key}
-                className={`px-2 py-2 text-[12px] text-gray-500 font-medium uppercase tracking-wider ${col.className}`}
+                className={`px-2 py-2 text-[12px] text-gray-400 font-medium uppercase tracking-wider ${col.className}`}
               >
                 {col.label}
               </th>
@@ -233,13 +233,13 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
         <tbody>
           {loading ? (
             <tr>
-              <td colSpan={colCount} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={colCount} className="text-center py-12 text-gray-500 text-sm">
                 Loading...
               </td>
             </tr>
           ) : logs.length === 0 ? (
             <tr>
-              <td colSpan={colCount} className="text-center py-12 text-gray-600 text-sm">
+              <td colSpan={colCount} className="text-center py-12 text-gray-500 text-sm">
                 No logs match current filters
               </td>
             </tr>

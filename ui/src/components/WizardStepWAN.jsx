@@ -102,7 +102,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
         <h2 className="text-xl font-semibold text-gray-200 mb-2">
           Which interface connects to the internet?
         </h2>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-gray-300">
           Select your WAN interface so the system can classify traffic as
           inbound, outbound, or inter-VLAN. You can select more than one
           if you have a dual-WAN or failover setup.
@@ -110,7 +110,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
       </div>
 
       {loading && (
-        <div className="text-center py-12 text-gray-500">
+        <div className="text-center py-12 text-gray-400">
           Scanning your firewall logs...
         </div>
       )}
@@ -131,12 +131,12 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
             <button
               onClick={handleRescan}
               disabled={rescanning}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
             >
               {rescanning ? 'Scanning...' : 'Rescan Logs'}
             </button>
           </div>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-gray-400 mb-3">
             Click on the interface that is your WAN. You can select multiple.
           </p>
           <div className="space-y-2">
@@ -161,10 +161,10 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
                     {c.interface}
                   </span>
                   {c.wan_ip && (
-                    <span className="text-xs font-mono text-gray-500">{c.wan_ip}</span>
+                    <span className="text-xs font-mono text-gray-400">{c.wan_ip}</span>
                   )}
                 </div>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-400">
                   {c.event_count?.toLocaleString()} events
                 </span>
               </div>
@@ -177,7 +177,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
         <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="inline-block w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-gray-300">
               Waiting for syslog traffic... Select your WAN interface manually below, or
               wait for logs to arrive.
             </p>
@@ -186,7 +186,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
             <button
               onClick={handleRescan}
               disabled={rescanning}
-              className="text-xs text-gray-500 hover:text-gray-300 transition-colors ml-4 shrink-0"
+              className="text-xs text-gray-400 hover:text-gray-200 transition-colors ml-4 shrink-0"
             >
               {rescanning ? 'Scanning...' : 'Rescan'}
             </button>
@@ -200,7 +200,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
           <h3 className="text-sm font-semibold text-gray-300 mb-2">
             Common UniFi WAN interfaces
           </h3>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-gray-400 mb-3">
             If your interface wasn't detected above, pick it from this list.
             You can select multiple.
           </p>
@@ -225,7 +225,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
                   <span className="text-sm font-mono font-semibold text-gray-200">
                     {iface.name}
                   </span>
-                  <span className="text-xs text-gray-500">{iface.desc}</span>
+                  <span className="text-xs text-gray-400">{iface.desc}</span>
                 </div>
                 {iface.note && (
                   <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
@@ -244,7 +244,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
           <h3 className="text-sm font-semibold text-gray-300 mb-2">
             Custom interface name
           </h3>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-gray-400 mb-3">
             If your WAN interface isn't listed above, type its name and press
             Enter or click Add. You can add multiple.
           </p>
@@ -255,7 +255,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
               onChange={(e) => setManualInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAddManual()}
               placeholder="e.g., eth5, wan0, enp3s0"
-              className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm font-mono text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+              className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm font-mono text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             />
             <button
               onClick={handleAddManual}
@@ -263,7 +263,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
                 manualInput.trim()
                   ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
-                  : 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
               }`}
             >
               Add
@@ -301,20 +301,20 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
           <h3 className="text-sm font-semibold text-gray-300 mb-2">
             Add a Label to your WAN Interfaces
           </h3>
-          <p className="text-xs text-gray-500 mb-3">
+          <p className="text-xs text-gray-400 mb-3">
             Give each WAN interface a friendly name, e.g. &quot;WAN Primary&quot; or &quot;WAN Backup&quot;.
           </p>
           <div className="space-y-2">
             {selected.map((iface, idx) => (
               <div key={iface} className="flex items-center gap-3 px-4 py-2.5 bg-gray-900/50 border border-gray-800 rounded-lg">
-                <span className="text-sm font-mono text-gray-400 w-24 shrink-0">{iface}</span>
+                <span className="text-sm font-mono text-gray-300 w-24 shrink-0">{iface}</span>
                 <input
                   type="text"
                   maxLength={20}
                   value={interfaceLabels[iface] || ''}
                   onChange={(e) => handleWanLabelChange(iface, e.target.value)}
                   placeholder={selected.length === 1 ? 'e.g., WAN' : `e.g., WAN ${idx + 1}`}
-                  className="flex-1 max-w-xs px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-300 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                  className="flex-1 max-w-xs px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
                 />
               </div>
             ))}
@@ -342,7 +342,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
             className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
               selected.length > 0
                 ? 'bg-blue-500 hover:bg-blue-600 text-white'
-                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                : 'bg-gray-800 text-gray-400 cursor-not-allowed'
             }`}
           >
             Next

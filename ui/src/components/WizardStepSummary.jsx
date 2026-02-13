@@ -26,7 +26,7 @@ export default function WizardStepSummary({ wanInterfaces, interfaceLabels, onCo
     <div className="space-y-6">
       <div>
         <h2 className="text-xl font-semibold text-gray-200 mb-2">Step 3: Summary</h2>
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-gray-300">
           Review your configuration before completing setup.
         </p>
       </div>
@@ -35,7 +35,7 @@ export default function WizardStepSummary({ wanInterfaces, interfaceLabels, onCo
       <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">WAN Interfaces</h3>
         {wanInterfaces.length === 0 ? (
-          <p className="text-sm text-gray-500">None selected</p>
+          <p className="text-sm text-gray-400">None selected</p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {wanInterfaces.map(iface => (
@@ -51,13 +51,13 @@ export default function WizardStepSummary({ wanInterfaces, interfaceLabels, onCo
       <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-6">
         <h3 className="text-sm font-semibold text-gray-300 mb-3">Interface Labels</h3>
         {Object.keys(interfaceLabels).length === 0 ? (
-          <p className="text-sm text-gray-500">No custom labels (using raw interface names)</p>
+          <p className="text-sm text-gray-400">No custom labels (using raw interface names)</p>
         ) : (
           <div className="space-y-2">
             {Object.entries(interfaceLabels).map(([iface, label]) => (
               label && (
                 <div key={iface} className="flex items-center justify-between py-2 border-b border-gray-800/50 last:border-0">
-                  <span className="text-sm font-mono text-gray-400">{iface}</span>
+                  <span className="text-sm font-mono text-gray-300">{iface}</span>
                   <span className="text-sm text-gray-300">{label}</span>
                 </div>
               )
@@ -68,7 +68,7 @@ export default function WizardStepSummary({ wanInterfaces, interfaceLabels, onCo
 
       {/* API key note */}
       <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-gray-400">
           AbuseIPDB and MaxMind API keys are configured via environment variables
           in docker-compose.yml. See documentation for setup.
         </p>
@@ -88,7 +88,7 @@ export default function WizardStepSummary({ wanInterfaces, interfaceLabels, onCo
           disabled={saving}
           className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
             saving
-              ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
               : 'bg-gray-800 hover:bg-gray-700 text-gray-300'
           }`}
         >
@@ -101,7 +101,7 @@ export default function WizardStepSummary({ wanInterfaces, interfaceLabels, onCo
             saving
               ? 'bg-blue-500/50 text-white cursor-wait'
               : wanInterfaces.length === 0
-              ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
+              ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
               : 'bg-emerald-500 hover:bg-emerald-600 text-white'
           }`}
         >
