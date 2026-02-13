@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react'
+import React, { Suspense, useState, useEffect } from 'react'
 import LogStream from './components/LogStream'
-import Dashboard from './components/Dashboard'
 import SetupWizard from './components/SetupWizard'
+import { DashboardSkeleton } from './components/Dashboard'
+
+const Dashboard = React.lazy(() => import('./components/Dashboard'))
 import { fetchHealth, fetchConfig, fetchLatestRelease } from './api'
 import { loadInterfaceLabels } from './utils'
 
@@ -235,7 +237,9 @@ export default function App() {
       {/* Content */}
       <main className="flex-1 overflow-hidden">
         {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} />}
-        {activeTab === 'dashboard' && <Dashboard />}
+        <Suspense fallback={<DashboardSkeleton />}>
+          {activeTab === 'dashboard' && <Dashboard />}
+        </Suspense>
       </main>
     </div>
   )

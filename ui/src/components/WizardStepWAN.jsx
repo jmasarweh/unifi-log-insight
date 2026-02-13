@@ -131,7 +131,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
             <button
               onClick={handleRescan}
               disabled={rescanning}
-              className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
+              className="text-xs px-3 py-1 rounded border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors disabled:opacity-50"
             >
               {rescanning ? 'Scanning...' : 'Rescan Logs'}
             </button>
@@ -186,7 +186,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
             <button
               onClick={handleRescan}
               disabled={rescanning}
-              className="text-xs text-gray-400 hover:text-gray-200 transition-colors ml-4 shrink-0"
+              className="text-xs px-3 py-1 rounded border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors disabled:opacity-50 ml-4 shrink-0"
             >
               {rescanning ? 'Scanning...' : 'Rescan'}
             </button>

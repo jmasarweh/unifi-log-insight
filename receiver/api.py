@@ -700,6 +700,60 @@ def get_stats(
             )
             top_blocked_services = [dict(r) for r in cur.fetchall()]
 
+            # Allowed count
+            cur.execute(
+                "SELECT COUNT(*) as count FROM logs "
+                "WHERE timestamp >= %s AND log_type = 'firewall' AND rule_action = 'allow'",
+                [cutoff]
+            )
+            allowed = cur.fetchone()['count']
+
+            # Top allowed destinations (external dst_ip)
+            cur.execute(
+                "SELECT host(dst_ip) as ip, COUNT(*) as count, "
+                "MAX(geo_country) as country, MAX(asn_name) as asn "
+                "FROM logs "
+                "WHERE timestamp >= %s AND rule_action = 'allow' AND dst_ip IS NOT NULL "
+                "AND NOT (dst_ip << '10.0.0.0/8' OR dst_ip << '172.16.0.0/12' "
+                "    OR dst_ip << '192.168.0.0/16' OR dst_ip << '127.0.0.0/8' "
+                "    OR dst_ip << '169.254.0.0/16' OR dst_ip << '224.0.0.0/4' "
+                "    OR dst_ip << 'fe80::/10' OR dst_ip << 'fc00::/7') "
+                "GROUP BY dst_ip ORDER BY count DESC LIMIT 10",
+                [cutoff]
+            )
+            top_allowed_destinations = [dict(r) for r in cur.fetchall()]
+
+            # Top allowed countries (outbound destinations)
+            cur.execute(
+                "SELECT geo_country as country, COUNT(*) as count FROM logs "
+                "WHERE timestamp >= %s AND rule_action = 'allow' "
+                "AND geo_country IS NOT NULL AND direction = 'outbound' "
+                "GROUP BY geo_country ORDER BY count DESC LIMIT 10",
+                [cutoff]
+            )
+            top_allowed_countries = [dict(r) for r in cur.fetchall()]
+
+            # Top allowed services
+            cur.execute(
+                "SELECT service_name, COUNT(*) as count FROM logs "
+                "WHERE timestamp >= %s AND rule_action = 'allow' AND service_name IS NOT NULL "
+                "GROUP BY service_name ORDER BY count DESC LIMIT 10",
+                [cutoff]
+            )
+            top_allowed_services = [dict(r) for r in cur.fetchall()]
+
+            # Top active internal IPs (most allowed traffic by source)
+            cur.execute(
+                "SELECT host(src_ip) as ip, COUNT(*) as count "
+                "FROM logs "
+                "WHERE timestamp >= %s AND rule_action = 'allow' AND src_ip IS NOT NULL "
+                "AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
+                "    OR src_ip << '192.168.0.0/16') "
+                "GROUP BY src_ip ORDER BY count DESC LIMIT 10",
+                [cutoff]
+            )
+            top_active_internal_ips = [dict(r) for r in cur.fetchall()]
+
         conn.commit()
         return {
             'time_range': time_range,
@@ -707,12 +761,17 @@ def get_stats(
             'by_type': by_type,
             'blocked': blocked,
             'threats': threats,
+            'allowed': allowed,
             'by_direction': by_direction,
             'top_blocked_countries': top_blocked_countries,
             'top_blocked_ips': top_blocked_ips,
             'top_blocked_internal_ips': top_blocked_internal_ips,
             'top_threat_ips': top_threat_ips,
             'top_blocked_services': top_blocked_services,
+            'top_allowed_destinations': top_allowed_destinations,
+            'top_allowed_countries': top_allowed_countries,
+            'top_allowed_services': top_allowed_services,
+            'top_active_internal_ips': top_active_internal_ips,
             'top_dns': top_dns,
             'logs_per_hour': logs_per_hour,
         }

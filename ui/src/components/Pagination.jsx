@@ -3,7 +3,7 @@ import { formatNumber } from '../utils'
 
 function renderMarkdown(md) {
   if (!md) return ''
-  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   return esc(md)
     .replace(/^### (.+)$/gm, '<h3 class="text-xs font-semibold text-gray-200 mt-3 mb-1">$1</h3>')
     .replace(/^## (.+)$/gm, '<h2 class="text-sm font-semibold text-gray-100 mt-4 mb-1.5">$1</h2>')

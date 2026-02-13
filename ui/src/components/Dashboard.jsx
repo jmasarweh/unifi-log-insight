@@ -1,8 +1,50 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { fetchStats } from '../api'
 import { formatNumber, FlagIcon, decodeThreatCategories } from '../utils'
 
 const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', '60d']
+
+export function DashboardSkeleton() {
+  return (
+    <div className="p-4 space-y-4 overflow-auto max-h-full animate-pulse">
+      {/* Time range selector */}
+      <div className="flex gap-1">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="h-7 w-10 bg-gray-800 rounded" />
+        ))}
+      </div>
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 space-y-2">
+            <div className="h-2.5 w-16 bg-gray-800 rounded" />
+            <div className="h-6 w-12 bg-gray-800 rounded" />
+          </div>
+        ))}
+      </div>
+      {/* Direction breakdown */}
+      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-16" />
+      {/* Chart */}
+      <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-40" />
+      {/* Section header */}
+      <div className="h-3 w-24 bg-gray-800 rounded mt-2" />
+      {/* Panel grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-48" />
+        ))}
+      </div>
+      {/* Section header */}
+      <div className="h-3 w-24 bg-gray-800 rounded mt-2" />
+      {/* Allowed panel grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="bg-gray-900/50 border border-gray-800 rounded-lg p-4 h-48" />
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function StatCard({ label, value, color = 'text-white', sub }) {
   return (
@@ -106,7 +148,7 @@ export default function Dashboard() {
   }, [timeRange])
 
   if (loading && !stats) {
-    return <div className="flex items-center justify-center h-64 text-gray-400">Loading dashboard...</div>
+    return <DashboardSkeleton />
   }
 
   if (!stats) return null
@@ -116,6 +158,12 @@ export default function Dashboard() {
     : 0
   const maxBlockedInternal = (stats.top_blocked_internal_ips || []).length > 0
     ? Math.max(...stats.top_blocked_internal_ips.map(i => i.count))
+    : 0
+  const maxAllowedDest = (stats.top_allowed_destinations || []).length > 0
+    ? Math.max(...stats.top_allowed_destinations.map(i => i.count))
+    : 0
+  const maxActiveInternal = (stats.top_active_internal_ips || []).length > 0
+    ? Math.max(...stats.top_active_internal_ips.map(i => i.count))
     : 0
 
   return (
@@ -136,7 +184,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard label="Total Logs" value={stats.total} />
         <StatCard
           label="Blocked"
@@ -147,6 +195,11 @@ export default function Dashboard() {
           label="Threats (>50%)"
           value={stats.threats}
           color={stats.threats > 0 ? 'text-orange-400' : 'text-gray-300'}
+        />
+        <StatCard
+          label="Allowed"
+          value={stats.allowed || 0}
+          color={(stats.allowed || 0) > 0 ? 'text-green-400' : 'text-gray-300'}
         />
         <StatCard
           label="Log Types"
@@ -186,7 +239,8 @@ export default function Dashboard() {
         <LogsPerHourChart data={stats.logs_per_hour} />
       </div>
 
-      {/* Top lists grid */}
+      {/* Blocked Traffic */}
+      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-2">Blocked Traffic</div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TopList
           title="Top Threat IPs"
@@ -292,6 +346,66 @@ export default function Dashboard() {
             <div key={i} className="flex items-center justify-between text-xs">
               <span className="text-gray-300 truncate mr-2">{item.dns_query}</span>
               <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
+            </div>
+          )}
+        />
+      </div>
+
+      {/* Allowed Traffic */}
+      <div className="text-[10px] text-gray-400 uppercase tracking-wider mt-2">Allowed Traffic</div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <TopList
+          title="Top Allowed Destinations"
+          items={stats.top_allowed_destinations || []}
+          renderItem={(item, i) => (
+            <div key={i} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">
+                  {item.ip}
+                  {item.country && <span className="ml-1.5">{<FlagIcon code={item.country} />}</span>}
+                </span>
+                <span className="text-gray-400">{formatNumber(item.count)}</span>
+              </div>
+              {item.asn && <div className="text-[10px] text-gray-400">{item.asn}</div>}
+              <MiniBar data={item.count} maxVal={maxAllowedDest} color="bg-green-500/60" />
+            </div>
+          )}
+        />
+
+        <TopList
+          title="Top Allowed Countries"
+          items={stats.top_allowed_countries || []}
+          renderItem={(item, i) => (
+            <div key={i} className="flex items-center justify-between text-xs">
+              <span className="text-gray-300">
+                {<FlagIcon code={item.country} />} {item.country}
+              </span>
+              <span className="text-gray-400">{formatNumber(item.count)}</span>
+            </div>
+          )}
+        />
+
+        <TopList
+          title="Top Allowed Services"
+          items={stats.top_allowed_services || []}
+          renderItem={(item, i) => (
+            <div key={i} className="flex items-center justify-between text-xs">
+              <span className="text-gray-300 truncate mr-2">{item.service_name}</span>
+              <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
+            </div>
+          )}
+        />
+
+        <TopList
+          title="Top Active Internal IPs"
+          items={stats.top_active_internal_ips || []}
+          renderItem={(item, i) => (
+            <div key={i} className="space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-gray-300">{item.ip}</span>
+                <span className="text-gray-400">{formatNumber(item.count)}</span>
+              </div>
+              <MiniBar data={item.count} maxVal={maxActiveInternal} color="bg-emerald-500/60" />
             </div>
           )}
         />
