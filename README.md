@@ -48,7 +48,7 @@ Built for home network monitoring — runs as a single Docker container with zer
 - **AbuseIPDB API key** (free tier, optional) — for threat scoring on blocked IPs
   
 ---
-# 🚀 Quick Start
+## 🚀 Quick Start
 
 > 🖧 **Running Unraid?** Skip to the [Unraid Setup](#-unraid-setup) section for a no-terminal install guide.
 
@@ -87,7 +87,7 @@ Each firewall or traffic rule must have syslog individually enabled, or its logs
 
 Choose between two installation options: Option A — Pull Pre-built Image or Option B — Build from Source. Both options require you to set the .env file.
 
-#### Option A — Pull Pre-built Image (recommended)
+### Option A — Pull Pre-built Image (recommended)
 
 No cloning or building required. Create a directory anywhere and add two files:
 
