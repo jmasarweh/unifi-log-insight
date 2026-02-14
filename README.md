@@ -1,6 +1,6 @@
 # 🔍 UniFi Log Insight
 
----
+
 
 Real-time log analysis for UniFi Routers (and Gateways). Receives syslog over UDP, parses firewall/DHCP/Wi-Fi/system events, enriches with GeoIP, ASN, threat intelligence, and reverse DNS, stores everything in PostgreSQL, and serves a live React dashboard.
 
