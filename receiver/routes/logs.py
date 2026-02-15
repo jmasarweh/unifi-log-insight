@@ -101,8 +101,8 @@ def get_logs(
         }
     except Exception as e:
         conn.rollback()
-        logger.error("Error fetching logs: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Error fetching logs")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)
 
@@ -164,7 +164,8 @@ def get_log(log_id: int):
         raise
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Error fetching log detail")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)
 
@@ -232,7 +233,8 @@ def export_csv_endpoint(
         )
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Error exporting CSV")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)
 
@@ -254,7 +256,7 @@ def get_services():
         return {'services': services}
     except Exception as e:
         conn.rollback()
-        logger.error("Error fetching services: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception("Error fetching services")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)

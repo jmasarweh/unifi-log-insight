@@ -73,7 +73,7 @@ def enrich_ip(ip: str):
                     WHERE ip = %s::inet
                 """, [ip])
     except Exception:
-        pass  # Entry may not exist yet, that's fine
+        logger.debug("Could not backdate ip_threats for %s (may not exist yet)", ip, exc_info=True)
 
     # Call lookup — hits the API, writes back to ip_threats + memory cache
     result = abuseipdb.lookup(ip)
@@ -107,7 +107,7 @@ def enrich_ip(ip: str):
                 """, [ip])
                 logs_patched = cur.rowcount
     except Exception as e:
-        logger.error("Failed to patch logs for %s: %s", ip, e)
+        logger.exception("Failed to patch logs for %s", ip)
 
     return {
         'ip': ip,

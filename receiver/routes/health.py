@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from deps import get_conn, put_conn, APP_VERSION
 
@@ -71,6 +71,7 @@ def health():
         }
     except Exception as e:
         conn.rollback()
-        return {'status': 'error', 'detail': str(e)}
+        logger.exception("Health check failed")
+        raise HTTPException(status_code=503, detail="Service unavailable")
     finally:
         put_conn(conn)

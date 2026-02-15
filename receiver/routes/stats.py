@@ -270,7 +270,7 @@ def get_stats(
             'top_allowed_services': top_allowed_services,
             'top_active_internal_ips': top_active_internal_ips,
             'top_dns': top_dns,
-            'logs_per_hour': logs_over_time,
+            'logs_per_hour': logs_over_time,  # backward-compat alias for logs_over_time
             'logs_over_time': logs_over_time,
             'traffic_by_action': traffic_by_action,
         }
