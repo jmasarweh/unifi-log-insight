@@ -638,7 +638,7 @@ export default function FirewallRules() {
 
   useEffect(() => setExpandedGroups(new Set()), [selectedCell, filters])
 
-  useEffect(() => { loadPolicies() }, [])
+  useEffect(() => { loadPolicies() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadPolicies() {
     setLoading(true)
@@ -936,7 +936,7 @@ export default function FirewallRules() {
             })}
             {groupedPolicies.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-2 py-10 text-center text-sm text-[#676f79]">
+                <td colSpan={7} className="px-2 py-10 text-center text-sm text-[#676f79]">
                   No policies match the current filters
                 </td>
               </tr>

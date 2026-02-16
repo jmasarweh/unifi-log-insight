@@ -172,7 +172,7 @@ export default function LogStream({ version, latestRelease }) {
   // Load on filter change
   useEffect(() => {
     load(filters)
-  }, [filters])
+  }, [filters]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-refresh every 5s when on page 1 and no row expanded
   useEffect(() => {

@@ -25,6 +25,8 @@ def get_stats(
 
     bucket_map = {'1h': 'hour', '6h': 'hour', '24h': 'hour', '7d': 'day', '30d': 'day', '60d': 'week'}
     bucket = bucket_map.get(time_range, 'hour')
+    if bucket not in ('hour', 'day', 'week'):
+        bucket = 'hour'
 
     conn = get_conn()
     try:

@@ -5,7 +5,6 @@ Singletons (database pools, enrichers, UniFi client) are initialized here
 at import time and imported by route modules via `from deps import ...`.
 """
 
-import json
 import logging
 import os
 import subprocess
@@ -13,8 +12,8 @@ import time
 
 from psycopg2 import pool
 
-from db import Database, get_config, set_config, count_logs, encrypt_api_key, decrypt_api_key
-from enrichment import AbuseIPDBEnricher, is_public_ip
+from db import Database
+from enrichment import AbuseIPDBEnricher
 from unifi_api import UniFiAPI
 
 logger = logging.getLogger('api')

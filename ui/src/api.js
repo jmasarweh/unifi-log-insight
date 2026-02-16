@@ -146,7 +146,7 @@ export async function fetchFirewallPolicies() {
 }
 
 export async function patchFirewallPolicy(policyId, loggingEnabled, origin) {
-  const resp = await fetch(`${BASE}/firewall/policies/${policyId}`, {
+  const resp = await fetch(`${BASE}/firewall/policies/${encodeURIComponent(policyId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ loggingEnabled, origin })

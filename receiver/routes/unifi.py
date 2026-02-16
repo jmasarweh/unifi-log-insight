@@ -105,8 +105,8 @@ def unifi_network_config():
     try:
         return unifi_api.get_network_config()
     except Exception as e:
-        logger.error("Failed to fetch UniFi network config: %s", e)
-        raise HTTPException(status_code=502, detail=str(e))
+        logger.exception("Failed to fetch UniFi network config")
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @router.post("/api/settings/unifi/dismiss-upgrade")
@@ -126,8 +126,8 @@ def get_firewall_policies():
     try:
         return unifi_api.get_firewall_data()
     except Exception as e:
-        logger.error("Failed to fetch firewall policies: %s", e)
-        raise HTTPException(status_code=502, detail=str(e))
+        logger.exception("Failed to fetch firewall policies")
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @router.patch("/api/firewall/policies/{policy_id}")
@@ -163,7 +163,7 @@ def patch_firewall_policy(policy_id: str, body: dict):
                 status = 422
             else:
                 status = e.response.status_code
-        raise HTTPException(status_code=status, detail=msg)
+        raise HTTPException(status_code=status, detail=msg) from e
 
 
 @router.post("/api/firewall/policies/bulk-logging")
@@ -179,8 +179,8 @@ def bulk_update_logging(body: dict):
     try:
         return unifi_api.bulk_patch_logging(policies)
     except Exception as e:
-        logger.error("Bulk firewall update failed: %s", e)
-        raise HTTPException(status_code=502, detail=str(e))
+        logger.exception("Bulk firewall update failed")
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 # ── Phase 2: Device Endpoints ────────────────────────────────────────────

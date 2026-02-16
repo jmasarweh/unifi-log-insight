@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { fetchServices, fetchInterfaces } from '../api'
 import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES } from '../utils'
 

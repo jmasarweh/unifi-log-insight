@@ -63,16 +63,17 @@ def build_log_query(
         params.append(time_to)
 
     if src_ip:
-        conditions.append("src_ip::text LIKE %s")
-        params.append(f"%{src_ip}%")
+        conditions.append("src_ip::text LIKE %s ESCAPE '\\'")
+        params.append(f"%{_escape_like(src_ip)}%")
 
     if dst_ip:
-        conditions.append("dst_ip::text LIKE %s")
-        params.append(f"%{dst_ip}%")
+        conditions.append("dst_ip::text LIKE %s ESCAPE '\\'")
+        params.append(f"%{_escape_like(dst_ip)}%")
 
     if ip:
-        conditions.append("(src_ip::text LIKE %s OR dst_ip::text LIKE %s)")
-        params.extend([f"%{ip}%", f"%{ip}%"])
+        escaped_ip = _escape_like(ip)
+        conditions.append("(src_ip::text LIKE %s ESCAPE '\\' OR dst_ip::text LIKE %s ESCAPE '\\')")
+        params.extend([f"%{escaped_ip}%", f"%{escaped_ip}%"])
 
     if direction:
         directions = [d.strip() for d in direction.split(',')]
@@ -119,3 +120,8 @@ def build_log_query(
 
     where = " AND ".join(conditions) if conditions else "1=1"
     return where, params
+
+
+def _escape_like(value: str) -> str:
+    """Escape LIKE wildcard characters in user input."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

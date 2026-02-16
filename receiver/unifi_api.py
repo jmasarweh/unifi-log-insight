@@ -106,8 +106,8 @@ class UniFiAPI:
                 self._db.set_config('unifi_enabled', True)
                 self.enabled = True
                 logger.info("UniFi API auto-enabled (UNIFI_HOST + UNIFI_API_KEY env vars detected)")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Failed to auto-enable UniFi (UNIFI_HOST+UNIFI_API_KEY): %s", e)
 
     def _decrypt_db_key(self) -> str:
         """Read and decrypt API key from system_config."""

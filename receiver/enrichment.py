@@ -488,11 +488,14 @@ class Enricher:
         # Device name resolution (private IPs) — runs BEFORE public IP guard
         # so inter-VLAN and local-only traffic still gets device names
         if self.unifi and self.unifi.enabled:
-            if src_ip and not src_remote:
-                parsed['src_device_name'] = self.unifi.resolve_name(
-                    ip=src_ip, mac=parsed.get('mac_address'))
-            if dst_ip and not dst_remote:
-                parsed['dst_device_name'] = self.unifi.resolve_name(ip=dst_ip)
+            try:
+                if src_ip and not src_remote:
+                    parsed['src_device_name'] = self.unifi.resolve_name(
+                        ip=src_ip, mac=parsed.get('mac_address'))
+                if dst_ip and not dst_remote:
+                    parsed['dst_device_name'] = self.unifi.resolve_name(ip=dst_ip)
+            except Exception:
+                logger.debug("Device name resolution failed for src=%s dst=%s", src_ip, dst_ip, exc_info=True)
 
         if src_remote and not dst_remote:
             ip_to_enrich = src_ip

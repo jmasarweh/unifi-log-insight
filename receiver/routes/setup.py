@@ -1,6 +1,7 @@
 """Setup wizard and configuration endpoints."""
 
 import logging
+from typing import Optional
 
 from fastapi import APIRouter, HTTPException
 from psycopg2.extras import RealDictCursor
@@ -44,7 +45,7 @@ def wan_candidates():
 
 
 @router.get("/api/setup/network-segments")
-def network_segments(wan_interfaces: str = None):
+def network_segments(wan_interfaces: Optional[str] = None):
     """Discover ALL network interfaces with sample local IPs and suggested labels.
 
     wan_interfaces: comma-separated list from Step 1. Auto-labelled WAN/WAN1/WAN2.

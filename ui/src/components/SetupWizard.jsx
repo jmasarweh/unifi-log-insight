@@ -358,9 +358,8 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                       </thead>
                       <tbody>
                         {/* Active WAN interfaces */}
-                        {(apiNetConfig?.wan_interfaces || []).map((w, idx) => {
-                          if (!w.wan_ip) return null
-                          const iface = wanInterfaces[idx]
+                        {(apiNetConfig?.wan_interfaces || []).filter(w => w.wan_ip).map((w, activeIdx) => {
+                          const iface = w.physical_interface
                           return (
                             <tr key={iface} className="border-t border-gray-800">
                               <td className="px-4 py-2.5">
@@ -378,7 +377,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel }) {
                                   maxLength={20}
                                   value={interfaceLabels[iface] || ''}
                                   onChange={e => handleApiNetworkLabelChange(iface, e.target.value)}
-                                  placeholder={(apiNetConfig?.wan_interfaces || []).filter(x => x.wan_ip).length === 1 ? 'e.g., WAN' : `e.g., WAN ${idx + 1}`}
+                                  placeholder={(apiNetConfig?.wan_interfaces || []).filter(x => x.wan_ip).length === 1 ? 'e.g., WAN' : `e.g., WAN ${activeIdx + 1}`}
                                   className="w-32 px-2 py-1 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
                                 />
                               </td>

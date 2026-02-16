@@ -106,7 +106,7 @@ def enrich_ip(ip: str):
                       AND logs.rule_action = 'block'
                 """, [ip])
                 logs_patched = cur.rowcount
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to patch logs for %s", ip)
 
     return {
