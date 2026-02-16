@@ -11,10 +11,10 @@ Built for home network monitoring — runs as a single Docker container with zer
 <img width="1985" height="1108" alt="image" src="https://github.com/user-attachments/assets/56a6ac3a-275a-4245-aaef-1462b35ccdc2" />
 
 <img width="1831" height="1261" alt="image" src="https://github.com/user-attachments/assets/7c0934e5-2342-4b64-8407-eaecf018e42d" />
-**New Dashboard from v1.4 onwards.**
+New Dashboard from v1.4 onwards
 
 <img width="2165" height="1238" alt="image" src="https://github.com/user-attachments/assets/2cb5ba91-dd0c-4e2a-9527-12a4ed1099d8" />
-** New Setup and Firewall Syslog Bulk Control**
+New Setup and Firewall Syslog Bulk Control
 
 <img width="1826" height="1251" alt="image" src="https://github.com/user-attachments/assets/a1b43da1-3641-45fd-97dc-b00ecc47bde8" />
 
