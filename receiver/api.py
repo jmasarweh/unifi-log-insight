@@ -105,10 +105,6 @@ if os.path.exists(STATIC_DIR):
         # Otherwise serve index.html for SPA routing
         return FileResponse(_static_root / "index.html", headers=_NO_CACHE)
 
-    @app.get("/")
-    async def serve_root():
-        return FileResponse(os.path.join(STATIC_DIR, "index.html"), headers=_NO_CACHE)
-
     logger.info("Serving UI from %s", STATIC_DIR)
 else:
     logger.warning("Static directory %s not found — UI not available", STATIC_DIR)

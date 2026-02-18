@@ -11,6 +11,7 @@ import logging
 from contextlib import contextmanager
 
 import psycopg2
+import psycopg2.errors
 from psycopg2 import pool, extras
 from psycopg2.extras import Json
 
@@ -197,8 +198,21 @@ class Database:
         try:
             with self.get_conn() as conn:
                 with conn.cursor() as cur:
-                    for sql in migrations:
-                        cur.execute(sql)
+                    for i, sql in enumerate(migrations):
+                        try:
+                            cur.execute(f"SAVEPOINT sp_{i}")
+                            cur.execute(sql)
+                            cur.execute(f"RELEASE SAVEPOINT sp_{i}")
+                        except psycopg2.errors.InsufficientPrivilege:
+                            cur.execute(f"ROLLBACK TO SAVEPOINT sp_{i}")
+                            logger.warning(
+                                "Migration skipped (insufficient privilege): %.80s... "
+                                "Check object ownership and grant privileges to the app DB user.",
+                                sql,
+                            )
+                        except Exception:
+                            cur.execute(f"ROLLBACK TO SAVEPOINT sp_{i}")
+                            raise
             logger.info("Schema migrations applied.")
         except Exception:
             logger.exception("Schema migration failed")

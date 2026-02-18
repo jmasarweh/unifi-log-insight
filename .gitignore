@@ -29,6 +29,9 @@ issues.md
 .claude
 claude.md
 CLAUDE.md
+CLAUDE-architecture.md
+CLAUDE-database.md
+CLAUDE-parsers.md
 skills.md
 agents.md
 
@@ -38,4 +41,3 @@ agents.md
 unifi_logs_backup.dump
 nul
 ui/package-lock.json
-CLAUDE.md
