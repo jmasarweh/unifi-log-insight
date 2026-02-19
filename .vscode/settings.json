@@ -1,8 +1,0 @@
-{
-    "snyk.advanced.organization": "aed49871-f3a5-4ba3-a8f8-e78bce56c0f5",
-    "snyk.advanced.autoSelectOrganization": true,
-    "sonarlint.connectedMode.project": {
-        "connectionId": "previzia",
-        "projectKey": "jmasarweh_PVZ-LAB-AI"
-    }
-}
