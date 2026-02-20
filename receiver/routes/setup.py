@@ -1,5 +1,6 @@
 """Setup wizard and configuration endpoints."""
 
+import ipaddress as _ipaddress
 import logging
 import os
 from datetime import datetime, timezone
@@ -10,6 +11,10 @@ from psycopg2.extras import RealDictCursor
 
 from db import get_config, set_config, count_logs, encrypt_api_key, decrypt_api_key
 from deps import get_conn, put_conn, enricher_db, unifi_api, signal_receiver, APP_VERSION
+from parsers import (
+    VPN_PREFIX_BADGES, VPN_INTERFACE_PREFIXES, VPN_BADGE_CHOICES,
+    VPN_BADGE_LABELS, VPN_PREFIX_DESCRIPTIONS,
+)
 
 logger = logging.getLogger('api.setup')
 
@@ -26,6 +31,7 @@ def get_current_config():
         "config_version": get_config(enricher_db, "config_version", 1),
         "upgrade_v2_dismissed": get_config(enricher_db, "upgrade_v2_dismissed", False),
         "unifi_enabled": unifi_api.enabled,
+        "vpn_networks": get_config(enricher_db, "vpn_networks", {}),
     }
 
 
@@ -98,12 +104,30 @@ def network_segments(wan_interfaces: Optional[str] = None):
     # For WAN interfaces, fetch their public IP instead of a local IP
     wan_ips = enricher_db.get_wan_ips_by_interface(wan_list) if wan_list else {}
 
+    # Fetch VPN configs from UniFi API (if enabled) for auto-fill
+    vpn_by_iface = {}
+    if unifi_api.enabled:
+        try:
+            for vpn in unifi_api.get_vpn_networks():
+                iface = vpn.get('interface')
+                if iface:
+                    vpn_by_iface[iface] = vpn
+        except Exception as e:
+            logger.debug("Could not fetch VPN configs from UniFi API: %s", e)
+
+    # Inject API-discovered VPN interfaces not yet seen in logs
+    log_ifaces = {row['iface'] for row in interfaces}
+    for iface, vpn in vpn_by_iface.items():
+        if iface and iface not in log_ifaces:
+            interfaces.append({'iface': iface, 'sample_ips': []})
+
     # Generate suggested labels
     segments = []
     for row in interfaces:
         iface = row['iface']
         ips = row['sample_ips'] or []
         is_wan = iface in wan_list
+        is_vpn_iface = any(iface.startswith(p) for p in VPN_INTERFACE_PREFIXES)
 
         # WAN interfaces auto-labelled from Step 1
         if is_wan:
@@ -129,15 +153,36 @@ def network_segments(wan_interfaces: Optional[str] = None):
             suggested = f'Ethernet {num}' if num.isdigit() else iface
             display_ip = ips[0] if ips else ''
         else:
-            suggested = ''
+            suggested = 'VPN' if is_vpn_iface else ''
             display_ip = ips[0] if ips else ''
 
-        segments.append({
+        seg = {
             'interface': iface,
             'sample_local_ip': display_ip,
             'suggested_label': suggested,
             'is_wan': is_wan,
-        })
+        }
+        # Tag VPN interfaces with badge metadata for the UI
+        if not is_wan and is_vpn_iface:
+            seg['is_vpn'] = True
+            seg['suggested_badge'] = next(
+                (b for p, b in VPN_PREFIX_BADGES.items() if iface.startswith(p)), None
+            )
+            seg['badge_choices'] = VPN_BADGE_CHOICES
+            seg['badge_labels'] = VPN_BADGE_LABELS
+            seg['prefix_description'] = next(
+                (d for p, d in VPN_PREFIX_DESCRIPTIONS.items() if iface.startswith(p)), None
+            )
+            # Overlay UniFi API data when available (user can still override)
+            unifi_vpn = vpn_by_iface.get(iface)
+            if unifi_vpn:
+                if unifi_vpn.get('name'):
+                    seg['suggested_label'] = unifi_vpn['name']
+                if unifi_vpn.get('cidr'):
+                    seg['suggested_cidr'] = unifi_vpn['cidr']
+                if unifi_vpn.get('badge'):
+                    seg['suggested_badge'] = unifi_vpn['badge']
+        segments.append(seg)
 
     return {'segments': segments}
 
@@ -153,6 +198,8 @@ def complete_setup(body: dict):
 
     set_config(enricher_db, "wan_interfaces", body["wan_interfaces"])
     set_config(enricher_db, "interface_labels", body.get("interface_labels", {}))
+    if "vpn_networks" in body:
+        set_config(enricher_db, "vpn_networks", body["vpn_networks"])
     set_config(enricher_db, "setup_complete", True)
     set_config(enricher_db, "config_version", 2)
 
@@ -178,8 +225,10 @@ def complete_setup(body: dict):
 
 @router.get("/api/interfaces")
 def list_interfaces():
-    """Return all discovered interfaces with their labels."""
+    """Return all discovered interfaces with their labels and type metadata."""
     labels = get_config(enricher_db, "interface_labels", {})
+    wan_list = set(get_config(enricher_db, "wan_interfaces", ["ppp0"]))
+    vpn_networks = get_config(enricher_db, "vpn_networks", {})
 
     conn = get_conn()
     try:
@@ -199,10 +248,30 @@ def list_interfaces():
 
     result = []
     for iface in sorted(interfaces):
-        result.append({
+        entry = {
             'name': iface,
-            'label': labels.get(iface, iface)
-        })
+            'label': labels.get(iface, iface),
+        }
+        if iface in wan_list:
+            entry['iface_type'] = 'wan'
+        elif any(iface.startswith(p) for p in VPN_INTERFACE_PREFIXES):
+            entry['iface_type'] = 'vpn'
+            vpn_cfg = vpn_networks.get(iface, {})
+            if vpn_cfg.get('badge'):
+                entry['vpn_badge'] = vpn_cfg['badge']
+            entry['description'] = next(
+                (d for p, d in VPN_PREFIX_DESCRIPTIONS.items() if iface.startswith(p)), None
+            )
+        elif iface.startswith('br'):
+            entry['iface_type'] = 'vlan'
+            num = iface[2:]
+            if iface == 'br0':
+                entry['vlan_id'] = 1
+            elif num.isdigit():
+                entry['vlan_id'] = int(num)
+        elif iface.startswith('eth'):
+            entry['iface_type'] = 'eth'
+        result.append(entry)
 
     return {'interfaces': result}
 
@@ -211,7 +280,8 @@ def list_interfaces():
 
 # Keys that are always exported (user-configured settings)
 _EXPORTABLE_KEYS = [
-    'wan_interfaces', 'interface_labels', 'setup_complete', 'config_version',
+    'wan_interfaces', 'interface_labels', 'vpn_networks',
+    'setup_complete', 'config_version',
     'wizard_path', 'unifi_enabled', 'unifi_host', 'unifi_site',
     'unifi_verify_ssl', 'unifi_poll_interval', 'unifi_features',
     'unifi_controller_name', 'retention_days', 'dns_retention_days',
@@ -293,6 +363,38 @@ def import_config(body: dict):
     return result
 
 
+# ── VPN Network Configuration ────────────────────────────────────────────────
+
+@router.post("/api/config/vpn-networks")
+def save_vpn_networks(body: dict):
+    """Save VPN network configuration from Settings page."""
+    vpn = body.get('vpn_networks', {})
+    for iface, cfg in vpn.items():
+        cidr = cfg.get('cidr', '')
+        if cidr:
+            try:
+                _ipaddress.ip_network(cidr, strict=False)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid CIDR for {iface}: {cidr}") from None
+    # Read old config before overwriting, so we can clean up stale labels
+    old_vpn = get_config(enricher_db, 'vpn_networks') or {}
+    set_config(enricher_db, 'vpn_networks', vpn)
+    # Clean up labels for removed VPN interfaces, then merge new ones
+    labels = get_config(enricher_db, 'interface_labels') or {}
+    for iface in old_vpn:
+        if iface not in vpn:
+            labels.pop(iface, None)
+    vpn_labels = body.get('vpn_labels', {})
+    for iface, label in vpn_labels.items():
+        if label:
+            labels[iface] = label
+        else:
+            labels.pop(iface, None)
+    set_config(enricher_db, 'interface_labels', labels)
+    signal_receiver()
+    return {"success": True}
+
+
 # ── Retention Configuration ──────────────────────────────────────────────────
 
 @router.get("/api/config/retention")
@@ -372,6 +474,23 @@ def update_retention(body: dict):
         set_config(enricher_db, 'dns_retention_days', dns_days)
 
     return {"success": True}
+
+
+@router.post("/api/config/retention/cleanup")
+def run_retention_cleanup_now():
+    """Run retention cleanup immediately using the current saved settings."""
+    general = get_config(enricher_db, 'retention_days')
+    if general is None:
+        general = int(os.environ.get('RETENTION_DAYS', '60'))
+    else:
+        general = int(general)
+    dns = get_config(enricher_db, 'dns_retention_days')
+    if dns is None:
+        dns = int(os.environ.get('DNS_RETENTION_DAYS', '10'))
+    else:
+        dns = int(dns)
+    deleted = enricher_db.run_retention_cleanup(general, dns)
+    return {"success": True, "deleted": deleted}
 
 
 def _estimate_log_counts() -> dict:

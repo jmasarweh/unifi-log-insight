@@ -40,6 +40,7 @@ def build_log_query(
     search: Optional[str],
     service: Optional[str],
     interface: Optional[str],
+    vpn_only: bool = False,
 ) -> tuple[str, list]:
     """Build WHERE clause and params from filters."""
     conditions = []
@@ -80,6 +81,10 @@ def build_log_query(
 
     if direction:
         directions = [d.strip() for d in direction.split(',')]
+        # When VPN filter is active, always include 'vpn' direction so
+        # VPN↔LAN traffic isn't excluded by the direction filter.
+        if vpn_only and 'vpn' not in directions:
+            directions.append('vpn')
         placeholders = ','.join(['%s'] * len(directions))
         conditions.append(f"direction IN ({placeholders})")
         params.extend(directions)
@@ -121,6 +126,15 @@ def build_log_query(
         conditions.append(f"(interface_in IN ({placeholders}) OR interface_out IN ({placeholders}))")
         params.extend(ifaces)
         params.extend(ifaces)  # Twice: once for interface_in, once for interface_out
+
+    if vpn_only:
+        from parsers import VPN_INTERFACE_PREFIXES
+        vpn_parts = []
+        for pfx in VPN_INTERFACE_PREFIXES:
+            vpn_parts.append("interface_in LIKE %s")
+            vpn_parts.append("interface_out LIKE %s")
+            params.extend([f"{pfx}%", f"{pfx}%"])
+        conditions.append(f"({' OR '.join(vpn_parts)})")
 
     where = " AND ".join(conditions) if conditions else "1=1"
     return where, params

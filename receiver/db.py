@@ -237,9 +237,9 @@ class Database:
         local Unix socket (pg_hba.conf: local all all trust) to run the ALTER,
         then gate it so it only runs once.
         """
-        if self.get_config('fn_ownership_fixed'):
-            return
         try:
+            if self.get_config('fn_ownership_fixed'):
+                return
             fix_conn = psycopg2.connect(
                 dbname='unifi_logs', user='postgres',
                 host='/var/run/postgresql',
@@ -801,10 +801,14 @@ class Database:
         return detected
 
     def get_wan_ip_candidates(self) -> list[dict]:
-        """Return all non-bridge firewall interfaces with their WAN IPs.
+        """Return non-bridge, non-VPN firewall interfaces with their WAN IPs.
 
         Used by the setup wizard to discover candidate WAN interfaces.
         """
+        from parsers import VPN_INTERFACE_PREFIXES
+        vpn_excludes = " ".join(
+            f"AND interface_in NOT LIKE '{pfx}%%'" for pfx in VPN_INTERFACE_PREFIXES
+        )
         with self.get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(f"""
@@ -818,6 +822,7 @@ class Database:
                     WHERE log_type = 'firewall'
                       AND interface_in IS NOT NULL
                       AND interface_in NOT LIKE 'br%%'
+                      {vpn_excludes}
                     GROUP BY interface_in
                     ORDER BY event_count DESC
                 """)

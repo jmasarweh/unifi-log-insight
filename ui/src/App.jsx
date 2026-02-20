@@ -5,8 +5,9 @@ import SettingsOverlay from './components/SettingsOverlay'
 import { DashboardSkeleton } from './components/Dashboard'
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'))
-import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal } from './api'
+import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, fetchInterfaces } from './api'
 import { loadInterfaceLabels } from './utils'
+import { isVpnInterface } from './vpnUtils'
 
 const TABS = [
   { id: 'logs', label: 'Log Stream' },
@@ -55,11 +56,12 @@ export default function App() {
   const [latestRelease, setLatestRelease] = useState(null)
   const [showWizard, setShowWizard] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
-  const [showReconfig, setShowReconfig] = useState(false)
+  const [settingsReconfig, setSettingsReconfig] = useState(false)
   const [config, setConfig] = useState(null)
   const [configLoaded, setConfigLoaded] = useState(false)
   const [showMigrationBanner, setShowMigrationBanner] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
+  const [showVpnToast, setShowVpnToast] = useState(false)
 
   const reloadConfig = () => {
     return fetchConfig().then(cfg => {
@@ -112,6 +114,25 @@ export default function App() {
     return () => clearInterval(interval)
   }, [])
 
+  // Detect unlabeled VPN interfaces and show toast
+  useEffect(() => {
+    if (!config || !configLoaded) return
+    const vpnNets = config.vpn_networks || {}
+    const wanSet = new Set(config.wan_interfaces || [])
+
+    fetchInterfaces().then(data => {
+      const unlabeled = (data.interfaces || []).filter(i => {
+        if (wanSet.has(i.name) || i.name.startsWith('br') || i.name.startsWith('eth')) return false
+        if (vpnNets[i.name]) return false
+        return isVpnInterface(i.name)
+      })
+      if (!unlabeled.length) { setShowVpnToast(false); return }
+      const dismissed = localStorage.getItem('vpn_toast_dismissed')
+      if (dismissed && Date.now() - parseInt(dismissed) < 6 * 3600 * 1000) return
+      setShowVpnToast(true)
+    }).catch(() => {})
+  }, [config, configLoaded])
+
   useEffect(() => {
     const cached = sessionStorage.getItem('latest_release')
     if (cached) {
@@ -153,29 +174,15 @@ export default function App() {
     }} />
   }
 
-  // Show reconfigure wizard as overlay
-  if (showReconfig) {
-    return <SetupWizard
-      reconfigMode
-      onComplete={() => {
-        reloadConfig().catch(() => {})
-        setShowReconfig(false)
-      }}
-      onCancel={() => { setShowReconfig(false); setShowSettings(true) }}
-    />
-  }
-
-  // Show settings overlay
+  // Show settings overlay (also hosts reconfigure wizard)
   if (showSettings) {
     return <SettingsOverlay
       onClose={() => {
         reloadConfig().catch(() => {})
         setShowSettings(false)
+        setSettingsReconfig(false)
       }}
-      onRestartWizard={() => {
-        setShowSettings(false)
-        setShowReconfig(true)
-      }}
+      startInReconfig={settingsReconfig}
     />
   }
 
@@ -206,7 +213,7 @@ export default function App() {
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { setShowUpgradeModal(false); setShowReconfig(true) }}
+                onClick={() => { setShowUpgradeModal(false); setSettingsReconfig(true); setShowSettings(true) }}
                 className="flex-1 px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white transition-colors"
               >
                 Set Up Now
@@ -250,6 +257,30 @@ export default function App() {
               localStorage.setItem('migration_banner_dismissed', '1')
             }}
             className="text-blue-400 hover:text-blue-300 ml-4"
+          >
+            &#x2715;
+          </button>
+        </div>
+      )}
+
+      {/* VPN toast */}
+      {showVpnToast && (
+        <div className="flex items-center justify-between px-4 py-2 bg-teal-500/10 border-b border-teal-500/30 text-xs text-teal-400">
+          <span>
+            Unlabeled VPN networks found!{' '}
+            <button
+              onClick={() => { setShowVpnToast(false); setShowSettings(true) }}
+              className="underline hover:text-teal-300"
+            >
+              Configure them here
+            </button>
+          </span>
+          <button
+            onClick={() => {
+              setShowVpnToast(false)
+              localStorage.setItem('vpn_toast_dismissed', String(Date.now()))
+            }}
+            className="text-teal-400 hover:text-teal-300 ml-4"
           >
             &#x2715;
           </button>
@@ -317,8 +348,13 @@ export default function App() {
             className="ml-2 p-1.5 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
             title="Settings"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-              <path fillRule="evenodd" d="M7.84 1.804A1 1 0 0 1 8.82 1h2.36a1 1 0 0 1 .98.804l.331 1.652a6.993 6.993 0 0 1 1.929 1.115l1.598-.54a1 1 0 0 1 1.186.447l1.18 2.044a1 1 0 0 1-.205 1.251l-1.267 1.113a7.047 7.047 0 0 1 0 2.228l1.267 1.113a1 1 0 0 1 .206 1.25l-1.18 2.045a1 1 0 0 1-1.187.447l-1.598-.54a6.993 6.993 0 0 1-1.929 1.115l-.33 1.652a1 1 0 0 1-.98.804H8.82a1 1 0 0 1-.98-.804l-.331-1.652a6.993 6.993 0 0 1-1.929-1.115l-1.598.54a1 1 0 0 1-1.186-.447l-1.18-2.044a1 1 0 0 1 .205-1.251l1.267-1.114a7.05 7.05 0 0 1 0-2.227L1.821 7.773a1 1 0 0 1-.206-1.25l1.18-2.045a1 1 0 0 1 1.187-.447l1.598.54A6.992 6.992 0 0 1 7.51 3.456l.33-1.652ZM10 13a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" />
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <line x1="3.5" y1="5" x2="20.5" y2="5" />
+              <circle cx="9" cy="5" r="2" />
+              <line x1="3.5" y1="12" x2="20.5" y2="12" />
+              <circle cx="15" cy="12" r="2" />
+              <line x1="3.5" y1="19" x2="20.5" y2="19" />
+              <circle cx="7" cy="19" r="2" />
             </svg>
           </button>
         </div>

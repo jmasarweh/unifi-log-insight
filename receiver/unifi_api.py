@@ -83,6 +83,14 @@ class UniFiAPI:
         else:
             self.verify_ssl = self._db.get_config('unifi_verify_ssl', True)
 
+        # Suppress noisy InsecureRequestWarning when SSL verification is
+        # disabled AND log level is INFO. DEBUG/WARNING+ still see them.
+        import warnings, urllib3
+        if not self.verify_ssl and logger.getEffectiveLevel() == logging.INFO:
+            warnings.filterwarnings('ignore', category=urllib3.exceptions.InsecureRequestWarning)
+        else:
+            warnings.filterwarnings('default', category=urllib3.exceptions.InsecureRequestWarning)
+
         self.features = self._db.get_config('unifi_features', {
             'client_names': True, 'device_discovery': True,
             'network_config': True, 'firewall_management': True,
@@ -432,6 +440,71 @@ class UniFiAPI:
             'wan_interfaces': wan_interfaces,
             'networks': networks,
         }
+
+    # ── VPN Network Discovery ─────────────────────────────────────────────
+
+    # Maps UniFi vpn_type → (interface_prefix, badge)
+    _VPN_TYPE_MAP = {
+        'wireguard-server': ('wgsrv', 'WGD SRV'),
+        'wireguard-client': ('wgclt', 'WGD CLT'),
+        'site-magic-wan':   ('wgsts', 'S MAGIC'),
+        'teleport':         ('tlprt', 'TELEPORT'),
+        'ipsec-vpn':        ('vti',   'S2S IPSEC'),
+        'openvpn-server':   ('tun',   'OVPN SRV'),
+        'openvpn-client':   ('tun',   'OVPN CLT'),
+        'l2tp-server':      ('l2tp',  'L2TP SRV'),
+    }
+
+    def get_vpn_networks(self) -> list:
+        """Fetch VPN network configs from Classic API (/rest/networkconf).
+
+        Returns list of dicts with normalised fields:
+            interface, name, badge, cidr, vpn_type, enabled
+        """
+        if not self.enabled:
+            return []
+
+        try:
+            data = self._get('rest/networkconf')
+            networks = data.get('data', [])
+        except Exception as e:
+            logger.warning("Failed to fetch VPN networkconf: %s", e)
+            return []
+
+        results = []
+        for net in networks:
+            vpn_type = net.get('vpn_type', '')
+            if not vpn_type:
+                continue
+
+            mapping = self._VPN_TYPE_MAP.get(vpn_type)
+            if not mapping:
+                logger.debug("Unknown vpn_type %r, skipping", vpn_type)
+                continue
+
+            prefix, badge = mapping
+
+            # Derive interface name from prefix + wireguard_id (falls back to bare prefix)
+            iface = None
+            if prefix:
+                wg_id = net.get('wireguard_id')
+                if wg_id is not None:
+                    iface = f'{prefix}{wg_id}'
+                # else: no reliable way to derive interface name — leave as None
+
+            # Extract network CIDR from ip_subnet (e.g. "10.10.70.1/29")
+            cidr = net.get('ip_subnet', '')
+
+            results.append({
+                'interface': iface,
+                'name': (net.get('name') or '').strip(),
+                'badge': badge,
+                'cidr': cidr,
+                'vpn_type': vpn_type,
+                'enabled': net.get('enabled', True),
+            })
+
+        return results
 
     def get_settings_info(self) -> dict:
         """Return current config with source indicators for Settings UI."""

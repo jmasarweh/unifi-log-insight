@@ -25,19 +25,25 @@ function ThreatBadge({ score, categories }) {
   )
 }
 
-function IPCell({ ip, port, deviceName, vlan }) {
+function IPCell({ ip, port, deviceName, vlan, networkLabel }) {
   if (!ip) return <span className="text-gray-700">—</span>
 
-  if (deviceName) {
+  const badge = vlan != null ? (
+    <span className="text-[10px] px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
+      VLAN {vlan}
+    </span>
+  ) : networkLabel ? (
+    <span className="text-[10px] px-1 py-0 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">
+      {networkLabel}
+    </span>
+  ) : null
+
+  if (deviceName || badge) {
     return (
       <div className="min-w-0 leading-tight">
         <div className="flex items-center gap-1">
-          <span className="text-gray-200 text-[12px] truncate" title={deviceName}>{deviceName}</span>
-          {vlan != null && (
-            <span className="text-[10px] px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
-              VLAN {vlan}
-            </span>
-          )}
+          {deviceName && <span className="text-gray-200 text-[12px] truncate" title={deviceName}>{deviceName}</span>}
+          {badge}
         </div>
         <span className="inline-flex items-baseline gap-0.5 min-w-0">
           <span className="text-gray-500 text-[11px] truncate">{ip}</span>
@@ -126,7 +132,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Source */}
         <td className="px-2 py-1.5 text-[13px] whitespace-nowrap sm:max-w-[180px] sm:truncate">
-          <IPCell ip={log.src_ip} port={log.src_port} deviceName={log.src_device_name} vlan={log.src_device_vlan} />
+          <IPCell ip={log.src_ip} port={log.src_port} deviceName={log.src_device_name} vlan={log.src_device_vlan} networkLabel={log.src_device_network} />
         </td>
 
         {/* Direction */}
@@ -136,7 +142,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Destination */}
         <td className="px-2 py-1.5 text-[13px] whitespace-nowrap sm:max-w-[180px] sm:truncate">
-          <IPCell ip={log.dst_ip} port={log.dst_port} deviceName={log.dst_device_name} vlan={log.dst_device_vlan} />
+          <IPCell ip={log.dst_ip} port={log.dst_port} deviceName={log.dst_device_name} vlan={log.dst_device_vlan} networkLabel={log.dst_device_network} />
         </td>
 
         {/* Country */}

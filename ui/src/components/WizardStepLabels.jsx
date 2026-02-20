@@ -1,35 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { fetchNetworkSegments } from '../api'
+import { suggestVpnType } from '../vpnUtils'
+import VpnNetworkTable from './VpnNetworkTable'
 
-function isLocalIP(ip) {
-  if (!ip) return false
-  // IPv6 private/reserved ranges
-  if (ip.includes(':')) {
-    const lower = ip.toLowerCase()
-    if (lower === '::1' || lower === '::') return true
-    if (lower.startsWith('fc') || lower.startsWith('fd')) return true
-    if (lower.startsWith('fe80')) return true
-    if (lower.startsWith('ff')) return true
-    return false
-  }
-  // IPv4
-  const parts = ip.split('.').map(Number)
-  if (parts.length !== 4 || parts.some(p => isNaN(p))) return false
-  const [a, b] = parts
-  // RFC1918
-  if (a === 10) return true
-  if (a === 172 && b >= 16 && b <= 31) return true
-  if (a === 192 && b === 168) return true
-  // Loopback (127.0.0.0/8)
-  if (a === 127) return true
-  // Link-local (169.254.0.0/16)
-  if (a === 169 && b === 254) return true
-  // Carrier-grade NAT (100.64.0.0/10 → 100.64–127.x.x)
-  if (a === 100 && b >= 64 && b <= 127) return true
-  return false
-}
-
-const LABEL_REGEX = /[^a-zA-Z0-9 _-]/g
+const LABEL_REGEX = /[^a-zA-Z0-9 ._-]/g
 
 function vlanIdToInterface(id) {
   if (id === 1) return 'br0'
@@ -43,13 +17,34 @@ function getVlanId(iface) {
   return match ? parseInt(match[1]) : null
 }
 
-export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNext, onBack, nextLabel, disabled }) {
+export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, vpnConfigs, onVpnUpdate, onNext, onBack, nextLabel, disabled }) {
   const [segments, setSegments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [vlanId, setVlanId] = useState('')
   const [vlanLabel, setVlanLabel] = useState('')
   const initializedRef = useRef(false)
+
+  // Partition segments into WAN / VLAN / VPN
+  const { wanSegments, vlanSegments, vpnSegments } = useMemo(() => {
+    const wanSet = new Set(wanInterfaces || [])
+    const wan = []
+    const vlan = []
+    const vpn = []
+    for (const seg of segments) {
+      if (wanSet.has(seg.interface)) wan.push(seg)
+      else if (seg.is_vpn) vpn.push(seg)
+      else vlan.push(seg)
+    }
+    // Sort VPN: configured (with CIDR) first, then alphabetical
+    vpn.sort((a, b) => {
+      const aCidr = !!(vpnConfigs || {})[a.interface]?.cidr
+      const bCidr = !!(vpnConfigs || {})[b.interface]?.cidr
+      if (aCidr !== bCidr) return bCidr - aCidr
+      return a.interface.localeCompare(b.interface)
+    })
+    return { wanSegments: wan, vlanSegments: vlan, vpnSegments: vpn }
+  }, [segments, wanInterfaces, vpnConfigs])
 
   useEffect(() => {
     if (initializedRef.current) return
@@ -72,12 +67,35 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
         const initial = { ...labels }
         let changed = false
         for (const seg of segs) {
-          if (seg.suggested_label && !initial[seg.interface]) {
-            initial[seg.interface] = seg.suggested_label
-            changed = true
+          if (!initial[seg.interface]) {
+            if (seg.is_vpn) {
+              // VPN interfaces: label = type abbreviation from backend or client-side detection
+              initial[seg.interface] = seg.suggested_badge || suggestVpnType(seg.interface) || ''
+            } else if (seg.suggested_label) {
+              initial[seg.interface] = seg.suggested_label
+            }
+            if (initial[seg.interface]) changed = true
           }
         }
         if (changed) onUpdate(initial)
+
+        // Initialize VPN configs for detected VPN interfaces
+        if (onVpnUpdate) {
+          const currentVpn = vpnConfigs || {}
+          const vpnInit = { ...currentVpn }
+          let vpnChanged = false
+          for (const seg of segs) {
+            if (seg.is_vpn && !vpnInit[seg.interface]) {
+              vpnInit[seg.interface] = {
+                badge: 'VPN',
+                cidr: seg.suggested_cidr || '',
+                type: seg.suggested_badge || suggestVpnType(seg.interface) || '',
+              }
+              vpnChanged = true
+            }
+          }
+          if (vpnChanged) onVpnUpdate(vpnInit)
+        }
 
         setLoading(false)
       })
@@ -88,9 +106,29 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
   }, [wanInterfaces, onUpdate])
 
   const handleLabelChange = (iface, value) => {
-    // Strip disallowed characters
     const sanitized = value.replace(LABEL_REGEX, '')
     onUpdate({ ...labels, [iface]: sanitized })
+  }
+
+  const handleVpnTypeChange = (iface, newType) => {
+    // VPN Type dropdown: store type in vpnConfigs and pre-fill badge + label
+    if (onVpnUpdate) {
+      const current = vpnConfigs || {}
+      onVpnUpdate({ ...current, [iface]: { ...current[iface], type: newType, badge: 'VPN' } })
+    }
+    onUpdate({ ...labels, [iface]: newType })
+  }
+
+  const handleVpnBadgeChange = (iface, badge) => {
+    if (!onVpnUpdate) return
+    const current = vpnConfigs || {}
+    onVpnUpdate({ ...current, [iface]: { ...current[iface], badge } })
+  }
+
+  const handleVpnCidrChange = (iface, cidr) => {
+    if (!onVpnUpdate) return
+    const current = vpnConfigs || {}
+    onVpnUpdate({ ...current, [iface]: { ...current[iface], cidr } })
   }
 
   // Detect duplicate labels
@@ -116,7 +154,6 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
     if (!iface) return
     if (segments.some(s => s.interface === iface)) return
     setSegments(prev => [...prev, { interface: iface, sample_local_ip: null, suggested_label: '', is_wan: false, manual: true }])
-    // Set label immediately if provided
     const trimmedLabel = vlanLabel.replace(LABEL_REGEX, '').trim()
     if (trimmedLabel) {
       onUpdate({ ...labels, [iface]: trimmedLabel })
@@ -169,64 +206,40 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
         </div>
       )}
 
-      {!loading && !error && segments.length > 0 && (
-        <div className="border border-gray-800 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-800">
-                <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Interface</th>
-                <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Sample IP</th>
-                <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Label</th>
-              </tr>
-            </thead>
-            <tbody>
-              {segments.map((seg) => (
-                <tr key={seg.interface} className="border-b border-gray-800/50">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono text-gray-300">{seg.interface}</span>
-                      {seg.is_wan && (
+      {/* ── WAN Interfaces ──────────────────────────────────── */}
+      {!loading && !error && wanSegments.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wider">WAN Interfaces</h3>
+          <div className="border border-gray-800 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Interface</th>
+                  <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Sample IP</th>
+                  <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Network Label</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wanSegments.map(seg => (
+                  <tr key={seg.interface} className="border-b border-gray-800/50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-300">{seg.interface}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
                           WAN
                         </span>
-                      )}
-                      {getVlanId(seg.interface) !== null && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30">
-                          VLAN {getVlanId(seg.interface)}
-                        </span>
-                      )}
-                      {seg.manual && (
-                        <button
-                          onClick={() => handleRemoveManualInterface(seg.interface)}
-                          className="text-gray-500 hover:text-red-400 text-xs transition-colors"
-                          title="Remove"
-                          aria-label={`Remove ${seg.interface}`}
-                        >
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-gray-400">
-                        {seg.sample_local_ip || '—'}
-                      </span>
-                      {seg.sample_local_ip && isLocalIP(seg.sample_local_ip) && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                          Local
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-mono text-gray-400">{seg.sample_local_ip || '\u2014'}</span>
+                    </td>
+                    <td className="px-4 py-3">
                       <input
                         type="text"
-                        maxLength={20}
+                        maxLength={11}
                         value={labels[seg.interface] || ''}
                         onChange={(e) => handleLabelChange(seg.interface, e.target.value)}
-                        placeholder={seg.suggested_label || 'e.g., Main LAN, IoT, Guest'}
+                        placeholder={seg.suggested_label || 'e.g., WAN 1'}
                         className={`w-full px-3 py-1.5 bg-gray-800 border rounded text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
                           duplicateLabels.has(seg.interface) ? 'border-yellow-500/50' : 'border-gray-700'
                         }`}
@@ -234,13 +247,77 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
                       {duplicateLabels.has(seg.interface) && (
                         <p className="text-[11px] text-yellow-400 mt-1">Duplicate label</p>
                       )}
-                    </div>
-                  </td>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* ── VLAN / Network Labels ──────────────────────────── */}
+      {!loading && !error && vlanSegments.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wider">Network Labels</h3>
+          <div className="border border-gray-800 rounded-lg overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-800">
+                  <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Interface</th>
+                  <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Sample IP</th>
+                  <th className="text-left text-xs font-medium text-gray-300 px-4 py-3">Network Label</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {vlanSegments.map(seg => (
+                  <tr key={seg.interface} className="border-b border-gray-800/50">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-300">{seg.interface}</span>
+                        {getVlanId(seg.interface) !== null && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30">
+                            VLAN {getVlanId(seg.interface)}
+                          </span>
+                        )}
+                        {seg.manual && (
+                          <button
+                            onClick={() => handleRemoveManualInterface(seg.interface)}
+                            className="text-gray-500 hover:text-red-400 text-xs transition-colors"
+                            title="Remove"
+                            aria-label={`Remove ${seg.interface}`}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs font-mono text-gray-400">{seg.sample_local_ip || '\u2014'}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <input
+                          type="text"
+                          maxLength={11}
+                          value={labels[seg.interface] || ''}
+                          onChange={(e) => handleLabelChange(seg.interface, e.target.value)}
+                          placeholder={seg.suggested_label || 'e.g., Main LAN'}
+                          className={`w-full px-3 py-1.5 bg-gray-800 border rounded text-sm text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 ${
+                            duplicateLabels.has(seg.interface) ? 'border-yellow-500/50' : 'border-gray-700'
+                          }`}
+                        />
+                        {duplicateLabels.has(seg.interface) && (
+                          <p className="text-[11px] text-yellow-400 mt-1">Duplicate label</p>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
       )}
 
       {/* Add VLAN interface */}
@@ -289,6 +366,35 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, onNe
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── VPN Networks ────────────────────────────────────── */}
+      {!loading && !error && vpnSegments.length > 0 && (
+        <section>
+          <h3 className="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wider">
+            VPN Networks
+            <span className="ml-2 text-[10px] font-medium normal-case tracking-normal px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Experimental</span>
+          </h3>
+          <VpnNetworkTable
+            entries={vpnSegments.map(seg => {
+              const vpnCfg = (vpnConfigs || {})[seg.interface] || {}
+              return {
+                iface: seg.interface,
+                sampleIp: seg.sample_local_ip,
+                badge: vpnCfg.badge || '',
+                type: vpnCfg.type || '',
+                label: labels[seg.interface] || '',
+                cidr: vpnCfg.cidr || '',
+              }
+            })}
+            showSampleIp
+            onBadgeChange={handleVpnBadgeChange}
+            onTypeChange={handleVpnTypeChange}
+            onLabelChange={handleLabelChange}
+            onCidrChange={handleVpnCidrChange}
+            borderColor="border-gray-800"
+          />
+        </section>
       )}
 
       {!loading && !error && (

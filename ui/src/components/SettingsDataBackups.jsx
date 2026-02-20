@@ -1,17 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  fetchRetentionConfig, updateRetentionConfig,
+  fetchRetentionConfig, updateRetentionConfig, runRetentionCleanup,
   exportConfig, importConfig
 } from '../api'
 
-const RETENTION_STEPS = [60, 120, 180, 270, 365]
-
-function formatNumber(n) {
-  if (n == null) return '\u2014'
-  if (n >= 1_000_000) return `~${(n / 1_000_000).toFixed(1)}M`
-  if (n >= 1_000) return `~${(n / 1_000).toFixed(0)}K`
-  return String(n)
-}
+const RETENTION_PRESETS = [30, 60, 90, 120, 180, 365]
 
 export default function SettingsDataBackups() {
   // Retention state
@@ -20,9 +13,11 @@ export default function SettingsDataBackups() {
   const [dnsRetentionDays, setDnsRetentionDays] = useState(10)
   const [retentionSaving, setRetentionSaving] = useState(false)
   const [retentionMsg, setRetentionMsg] = useState(null)
+  const [showCleanup, setShowCleanup] = useState(false)
+  const [cleaningUp, setCleaningUp] = useState(false)
 
   // Export/Import state
-  const [exportMode, setExportMode] = useState(null) // null | 'choosing' | 'exporting'
+  const [exporting, setExporting] = useState(false)
   const [importPreview, setImportPreview] = useState(null)
   const [importMsg, setImportMsg] = useState(null)
   const fileInputRef = useRef(null)
@@ -44,10 +39,18 @@ export default function SettingsDataBackups() {
     setRetentionSaving(true)
     setRetentionMsg(null)
     try {
+      const wasLowered = retention && (
+        retentionDays < retention.retention_days || dnsRetentionDays < retention.dns_retention_days
+      )
       await updateRetentionConfig({ retention_days: retentionDays, dns_retention_days: dnsRetentionDays })
       setRetention(prev => ({ ...prev, retention_days: retentionDays, dns_retention_days: dnsRetentionDays }))
       setRetentionMsg({ type: 'success', text: 'Retention settings saved' })
-      setTimeout(() => setRetentionMsg(null), 3000)
+      if (wasLowered) {
+        setShowCleanup(true)
+      } else {
+        setShowCleanup(false)
+        setTimeout(() => setRetentionMsg(null), 3000)
+      }
     } catch (e) {
       setRetentionMsg({ type: 'error', text: e.message })
     } finally {
@@ -55,9 +58,24 @@ export default function SettingsDataBackups() {
     }
   }
 
+  async function handleCleanupNow() {
+    setCleaningUp(true)
+    setRetentionMsg(null)
+    try {
+      const result = await runRetentionCleanup()
+      setRetentionMsg({ type: 'success', text: `Cleanup complete — ${result.deleted.toLocaleString()} logs removed` })
+      setShowCleanup(false)
+      setTimeout(() => setRetentionMsg(null), 5000)
+    } catch (e) {
+      setRetentionMsg({ type: 'error', text: 'Cleanup failed: ' + e.message })
+    } finally {
+      setCleaningUp(false)
+    }
+  }
+
   // ── Export handlers ──
   async function handleExport(includeApiKey) {
-    setExportMode('exporting')
+    setExporting(true)
     try {
       const data = await exportConfig(includeApiKey)
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
@@ -71,7 +89,7 @@ export default function SettingsDataBackups() {
     } catch (e) {
       alert('Export failed: ' + e.message)
     } finally {
-      setExportMode(null)
+      setExporting(false)
     }
   }
 
@@ -132,33 +150,27 @@ export default function SettingsDataBackups() {
             </div>
             <input
               type="range"
-              min={0}
-              max={RETENTION_STEPS.length - 1}
-              value={RETENTION_STEPS.indexOf(retentionDays) >= 0 ? RETENTION_STEPS.indexOf(retentionDays) : 0}
-              onChange={e => setRetentionDays(RETENTION_STEPS[e.target.value])}
+              min={1}
+              max={365}
+              value={retentionDays}
+              onChange={e => setRetentionDays(Number(e.target.value))}
               className="w-full accent-blue-500"
             />
-            <div className="flex justify-between mt-1">
-              {RETENTION_STEPS.map(step => (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {RETENTION_PRESETS.map(preset => (
                 <button
-                  key={step}
-                  onClick={() => setRetentionDays(step)}
-                  className={`text-[10px] font-mono ${retentionDays === step ? 'text-blue-400 font-semibold' : 'text-gray-500'}`}
+                  key={preset}
+                  onClick={() => setRetentionDays(preset)}
+                  className={`text-[11px] font-mono px-2 py-0.5 rounded border transition-colors ${
+                    retentionDays === preset
+                      ? 'border-blue-500 text-blue-400 bg-blue-500/10'
+                      : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'
+                  }`}
                 >
-                  {step}d
+                  {preset}d
                 </button>
               ))}
             </div>
-            {/* Estimated log counts */}
-            {retention?.estimates && (
-              <div className="flex justify-between mt-1">
-                {RETENTION_STEPS.map(step => (
-                  <span key={step} className="text-[10px] text-gray-600 font-mono">
-                    {formatNumber(retention.estimates[String(step)])}
-                  </span>
-                ))}
-              </div>
-            )}
             {retentionDays > 120 && (
               <div className="mt-2 flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
                 <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -211,6 +223,15 @@ export default function SettingsDataBackups() {
                   {retentionMsg.text}
                 </span>
               )}
+              {showCleanup && (
+                <button
+                  onClick={handleCleanupNow}
+                  disabled={cleaningUp}
+                  className="px-4 py-1.5 rounded text-xs font-medium border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 transition-colors disabled:opacity-50"
+                >
+                  {cleaningUp ? 'Cleaning up...' : 'Run Cleanup Now'}
+                </button>
+              )}
               <button
                 onClick={saveRetention}
                 disabled={!retentionDirty || retentionSaving}
@@ -236,53 +257,44 @@ export default function SettingsDataBackups() {
           {/* Export */}
           <div>
             <h3 className="text-sm font-medium text-gray-300 mb-2">Export Configuration</h3>
-            {exportMode === 'choosing' ? (
-              <div className="space-y-2">
-                <button
-                  onClick={() => handleExport(false)}
-                  className="w-full text-left rounded-lg border border-gray-700 hover:border-gray-500 p-3 transition-colors"
-                >
-                  <div className="text-sm font-medium text-gray-200">Everything (without API Key)</div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    WAN Config, Network Labels, UniFi Connection (Host, Site, SSL, Polling), Retention Settings
-                  </p>
-                  <p className="text-[11px] text-blue-400/70 mt-1.5">
+            <div className="space-y-2">
+              <button
+                onClick={() => handleExport(false)}
+                disabled={exporting}
+                className="w-full text-left rounded-lg border border-gray-700 hover:border-gray-500 p-3 transition-colors disabled:opacity-50"
+              >
+                <div className="text-sm font-medium text-gray-200">Everything without API Key</div>
+                <p className="text-xs text-gray-500 mt-1">
+                  WAN Config, Network Labels, UniFi Connection (Host, Site, SSL, Polling), Retention Settings
+                </p>
+                <div className="flex items-start gap-2 mt-1.5 bg-blue-500/10 border border-blue-500/30 rounded px-2.5 py-1.5">
+                  <svg className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-[11px] text-blue-400/90">
                     You'll need to re-enter your UniFi API key after import, or regenerate one from your controller.
                   </p>
-                </button>
-                <button
-                  onClick={() => handleExport(true)}
-                  className="w-full text-left rounded-lg border border-gray-700 hover:border-gray-500 p-3 transition-colors"
-                >
-                  <div className="text-sm font-medium text-gray-200">Everything + API Key</div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    All settings above plus your UniFi API key
-                  </p>
-                  <div className="flex items-start gap-2 mt-1.5">
-                    <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                    </svg>
-                    <p className="text-xs text-yellow-400/90">
-                      Your API key will be included in plaintext. Store this file securely.
-                    </p>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setExportMode(null)}
-                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setExportMode('choosing')}
-                disabled={exportMode === 'exporting'}
-                className="px-4 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-              >
-                {exportMode === 'exporting' ? 'Exporting...' : 'Export Configuration'}
+                </div>
               </button>
-            )}
+              <button
+                onClick={() => handleExport(true)}
+                disabled={exporting}
+                className="w-full text-left rounded-lg border border-gray-700 hover:border-gray-500 p-3 transition-colors disabled:opacity-50"
+              >
+                <div className="text-sm font-medium text-gray-200">Everything + API Key</div>
+                <p className="text-xs text-gray-500 mt-1">
+                  All settings above plus your UniFi API key
+                </p>
+                <div className="flex items-start gap-2 mt-1.5 bg-yellow-500/10 border border-yellow-500/30 rounded px-2.5 py-1.5">
+                  <svg className="w-3.5 h-3.5 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-[11px] text-yellow-400/90">
+                    Your API key will be included in plaintext. Store this file securely.
+                  </p>
+                </div>
+              </button>
+            </div>
           </div>
 
           {/* Divider */}

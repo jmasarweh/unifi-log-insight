@@ -194,6 +194,18 @@ export async function importConfig(config) {
   return resp.json()
 }
 
+// ── VPN Network Configuration ───────────────────────────────────────────────
+
+export async function saveVpnNetworks(vpnNetworks, vpnLabels = {}) {
+  const resp = await fetch(`${BASE}/config/vpn-networks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vpn_networks: vpnNetworks, vpn_labels: vpnLabels })
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 // ── Retention Configuration ─────────────────────────────────────────────────
 
 export async function fetchRetentionConfig() {
@@ -208,6 +220,12 @@ export async function updateRetentionConfig(config) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config)
   })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function runRetentionCleanup() {
+  const resp = await fetch(`${BASE}/config/retention/cleanup`, { method: 'POST' })
   if (!resp.ok) throw new Error(`API error: ${resp.status}`)
   return resp.json()
 }

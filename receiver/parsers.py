@@ -73,6 +73,44 @@ WIFI_ASSOC  = re.compile(r'STA\s+([0-9a-f:]+)\s+.*?(associated|disassociated|dea
 WAN_INTERFACES = {'ppp0'}  # Default fallback
 INTERFACE_LABELS = {}  # Default to empty (raw names)
 
+# VPN interface prefix → auto-detected badge abbreviation (max 8 chars)
+VPN_PREFIX_BADGES = {
+    'wgsrv': 'WGD SRV',
+    'wgclt': 'WGD CLT',
+    'wgsts': 'S MAGIC',
+    'tlprt': 'TELEPORT',
+    'vti':   'S2S IPSEC',
+    'l2tp':  'L2TP SRV',
+}
+# All known VPN interface prefixes (including ones without auto-detection)
+VPN_INTERFACE_PREFIXES = ('wgsrv', 'wgclt', 'wgsts', 'tlprt', 'vti', 'tun', 'vtun', 'l2tp')
+# Badge abbreviation → human-readable full name (for UI dropdowns)
+VPN_BADGE_LABELS = {
+    'WGD SRV':   'WireGuard Server',
+    'WGD CLT':   'WireGuard Client',
+    'OVPN SRV':  'OpenVPN Server',
+    'OVPN CLT':  'OpenVPN Client',
+    'L2TP SRV':  'L2TP Server',
+    'TELEPORT':  'Teleport',
+    'S MAGIC':   'Site Magic',
+    'S2S IPSEC': 'Site-to-Site IPsec',
+}
+# Ordered list of badge choices for UI dropdowns
+VPN_BADGE_CHOICES = [
+    'WGD SRV', 'WGD CLT', 'OVPN SRV', 'OVPN CLT', 'L2TP SRV', 'TELEPORT', 'S MAGIC', 'S2S IPSEC',
+]
+# Interface prefix → human-readable description (shown under interface name)
+VPN_PREFIX_DESCRIPTIONS = {
+    'wgsrv': 'WireGuard Server',
+    'wgclt': 'WireGuard Client',
+    'wgsts': 'Site Magic',
+    'tlprt': 'Teleport',
+    'vti':   'Site-to-Site IPsec',
+    'tun':   'OpenVPN / Tunnel',
+    'vtun':  'OpenVPN / Tunnel',
+    'l2tp':  'L2TP Server',
+}
+
 MONTHS = {
     'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
     'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
@@ -160,7 +198,12 @@ def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str 
     if not is_wan_in and is_wan_out:
         return 'outbound'
     if not is_wan_in and not is_wan_out and iface_in != iface_out:
-        return 'inter_vlan'
+        # VPN tunnel ↔ LAN is VPN traffic, not inter-VLAN
+        is_vpn = any(
+            (iface_in or '').startswith(p) or (iface_out or '').startswith(p)
+            for p in VPN_INTERFACE_PREFIXES
+        )
+        return 'vpn' if is_vpn else 'inter_vlan'
 
     return 'local'
 

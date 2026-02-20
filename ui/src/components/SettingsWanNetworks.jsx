@@ -1,8 +1,111 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { saveVpnNetworks } from '../api'
+import { suggestVpnType, BADGE_LABELS, BADGE_CHOICES } from '../vpnUtils'
+import VpnNetworkTable from './VpnNetworkTable'
 
-export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCards, networkCards, onRestartWizard }) {
+export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCards, networkCards, onRestartWizard, vpnNetworks, interfaceLabels, onVpnSaved }) {
   const [imgLoaded, setImgLoaded] = useState(false)
   const gatewayImgUrl = unifiEnabled ? '/api/unifi/gateway-image' : null
+
+  // VPN editing state
+  const [editVpn, setEditVpn] = useState({})  // {iface: {badge, cidr, label}}
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState(null)
+
+  // Build VPN list from configured networks only
+  // Normalize type: if the stored value isn't a known BADGE_CHOICES key
+  // (e.g. old format or missing), fall back to prefix-based detection.
+  const vpnEntries = useMemo(() => {
+    return Object.keys(vpnNetworks || {}).sort((a, b) => a.localeCompare(b)).map(iface => {
+      const storedType = vpnNetworks[iface]?.type || ''
+      return {
+        iface,
+        badge: vpnNetworks[iface]?.badge || '',
+        cidr: vpnNetworks[iface]?.cidr || '',
+        label: interfaceLabels?.[iface] || '',
+        type: BADGE_CHOICES.includes(storedType) ? storedType : (suggestVpnType(iface) || ''),
+      }
+    })
+  }, [vpnNetworks, interfaceLabels])
+
+  const startEditing = () => {
+    const init = {}
+    for (const entry of vpnEntries) {
+      init[entry.iface] = {
+        badge: entry.badge || 'VPN',
+        cidr: entry.cidr || '',
+        label: entry.label || suggestVpnType(entry.iface) || '',
+        type: entry.type || suggestVpnType(entry.iface) || '',
+      }
+    }
+    setEditVpn(init)
+    setEditing(true)
+    setSaveMsg(null)
+  }
+
+  const cancelEditing = () => {
+    setEditing(false)
+    setEditVpn({})
+    setSaveMsg(null)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaveMsg(null)
+    try {
+      const vpn = {}
+      const labels = {}
+      for (const [iface, cfg] of Object.entries(editVpn)) {
+        if (cfg.badge) {
+          const cidr = cfg.cidr || ''
+          if (cidr && !/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(cidr) && !/^[0-9a-fA-F:]+\/\d{1,3}$/.test(cidr)) {
+            setSaveMsg(`Invalid CIDR for ${iface}: ${cidr}`)
+            setSaving(false)
+            return
+          }
+          vpn[iface] = { badge: cfg.badge, cidr, type: cfg.type || '' }
+        }
+        labels[iface] = cfg.label || ''
+      }
+      await saveVpnNetworks(vpn, labels)
+      setEditing(false)
+      setSaveMsg('Saved')
+      if (onVpnSaved) onVpnSaved()
+      setTimeout(() => setSaveMsg(null), 3000)
+    } catch (err) {
+      setSaveMsg(`Error: ${err.message}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Build sorted entries for the shared table component
+  const editEntries = useMemo(() => {
+    return Object.entries(editVpn).sort(([a], [b]) => {
+      const aIdx = vpnEntries.findIndex(e => e.iface === a)
+      const bIdx = vpnEntries.findIndex(e => e.iface === b)
+      if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx
+      if (aIdx >= 0) return -1
+      if (bIdx >= 0) return 1
+      return a.localeCompare(b)
+    }).map(([iface, cfg]) => ({
+      iface,
+      badge: cfg.badge || '',
+      type: cfg.type || '',
+      label: cfg.label || '',
+      cidr: cfg.cidr || '',
+    }))
+  }, [editVpn, vpnEntries])
+
+  // Compute add form props
+  const addFormProps = useMemo(() => {
+    return {
+      availableTypes: BADGE_CHOICES,
+      existingInterfaces: Object.keys(editVpn),
+      onAdd: (iface, cfg) => setEditVpn(prev => ({ ...prev, [iface]: cfg })),
+    }
+  }, [editVpn])
 
   return (
     <div className="space-y-8">
@@ -154,6 +257,119 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
           </div>
         )}
       </section>
+
+      {/* ── VPN Networks ──────────────────────────────────────── */}
+        <section>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
+              VPN Networks
+              <span className="ml-2 text-[10px] font-medium normal-case tracking-normal px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Experimental</span>
+            </h2>
+            <div className="flex items-center gap-2">
+              {saveMsg && (
+                <span className={`text-xs ${saveMsg.startsWith('Error') ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {saveMsg}
+                </span>
+              )}
+              {!editing ? (
+                <button
+                  onClick={startEditing}
+                  className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+                >
+                  Edit
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={cancelEditing}
+                    disabled={saving}
+                    className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2 -mt-1 mb-3">
+            <p className="text-xs text-yellow-400">
+              L2TP, Site Magic, and OpenVPN Client detection is based on tentative interface prefixes not yet confirmed on real gateways.
+              If detection is incorrect, please report your interface names on{' '}
+              <a href="https://github.com/jmasarweh/unifi-log-insight/issues" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">GitHub</a> or{' '}
+              <a href="https://www.reddit.com/r/Ubiquiti/" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">r/Ubiquiti</a>.
+            </p>
+          </div>
+
+          {editing ? (
+            <VpnNetworkTable
+              entries={editEntries}
+              showRemove
+              onBadgeChange={(iface, val) => setEditVpn(prev => ({
+                ...prev, [iface]: { ...prev[iface], badge: val }
+              }))}
+              onTypeChange={(iface, val) => setEditVpn(prev => ({
+                ...prev, [iface]: { ...prev[iface], type: val, badge: 'VPN', label: val }
+              }))}
+              onLabelChange={(iface, val) => setEditVpn(prev => ({
+                ...prev, [iface]: { ...prev[iface], label: val }
+              }))}
+              onCidrChange={(iface, val) => setEditVpn(prev => ({
+                ...prev, [iface]: { ...prev[iface], cidr: val }
+              }))}
+              onRemove={iface => setEditVpn(prev => {
+                const next = { ...prev }
+                delete next[iface]
+                return next
+              })}
+              addForm={addFormProps}
+            />
+          ) : vpnEntries.length > 0 ? (
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {vpnEntries.map(entry => {
+                const fullName = BADGE_LABELS[entry.type] || entry.iface
+                return (
+                  <div key={entry.iface} className="flex items-center gap-3 rounded-lg border border-teal-500/20 bg-gray-950 px-4 py-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-200 truncate">
+                          {fullName}
+                        </span>
+                        {entry.badge && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">
+                            {entry.badge}
+                          </span>
+                        )}
+                        {!entry.badge && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 shrink-0">
+                            No badge
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
+                        {entry.label && <span className="text-xs text-gray-500">{entry.label}</span>}
+                        <span className="text-xs font-mono text-gray-500">{entry.iface}</span>
+                        {entry.cidr && (
+                          <span className="text-xs font-mono text-gray-600">{entry.cidr}</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center text-sm text-gray-500">
+              No VPN networks configured
+            </div>
+          )}
+        </section>
     </div>
   )
 }

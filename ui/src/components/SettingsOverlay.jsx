@@ -3,6 +3,7 @@ import { fetchConfig, fetchUniFiSettings, fetchUniFiNetworkConfig } from '../api
 import SettingsWanNetworks from './SettingsWanNetworks'
 import SettingsFirewall from './SettingsFirewall'
 import SettingsDataBackups from './SettingsDataBackups'
+import SetupWizard from './SetupWizard'
 
 function getVlanId(iface) {
   if (iface === 'br0') return 1
@@ -42,11 +43,13 @@ const SECTIONS = [
   },
 ]
 
-export default function SettingsOverlay({ onClose, onRestartWizard }) {
+export default function SettingsOverlay({ onClose, startInReconfig }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
   const [netConfig, setNetConfig] = useState(null)
   const [activeSection, setActiveSection] = useState('wan-networks')
+  const [reconfigMode, setReconfigMode] = useState(!!startInReconfig)
+  const [wizardPath, setWizardPath] = useState(null)
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {})
@@ -97,6 +100,20 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
       }
     })
 
+  const handleRestartWizard = () => {
+    setReconfigMode(true)
+    setWizardPath(null)
+    setActiveSection('wan-networks')
+  }
+
+  const reloadAll = () => {
+    fetchConfig().then(setConfig).catch(() => {})
+    fetchUniFiSettings().then(data => {
+      setUnifiSettings(data)
+      if (data?.enabled) fetchUniFiNetworkConfig().then(setNetConfig).catch(() => {})
+    }).catch(() => {})
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       {/* Header */}
@@ -108,7 +125,23 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
           </svg>
           <div>
             <h1 className="text-lg font-semibold text-gray-200">UniFi Log Insight</h1>
-            <p className="text-xs text-gray-400">Settings</p>
+            {reconfigMode ? (
+              <p className="text-xs text-gray-400">
+                Settings
+                <span className="text-gray-600 mx-1">&rsaquo;</span>
+                WAN &amp; Networks
+                <span className="text-gray-600 mx-1">&rsaquo;</span>
+                <span className="text-gray-300">Reconfigure</span>
+                {wizardPath === 'unifi_api' && (
+                  <><span className="text-gray-600 mx-1">&rsaquo;</span><span className="text-gray-300">UniFi API</span></>
+                )}
+                {wizardPath === 'log_detection' && (
+                  <><span className="text-gray-600 mx-1">&rsaquo;</span><span className="text-gray-300">Log Detection</span></>
+                )}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400">Settings</p>
+            )}
           </div>
         </div>
         <button
@@ -128,7 +161,10 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
           {SECTIONS.map(section => (
             <button
               key={section.id}
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => {
+                if (reconfigMode) { setReconfigMode(false); setWizardPath(null) }
+                setActiveSection(section.id)
+              }}
               className={`w-full flex items-center gap-3 px-5 py-2.5 text-sm transition-colors ${
                 activeSection === section.id
                   ? 'bg-gray-800/60 text-white border-r-2 border-blue-500'
@@ -144,23 +180,42 @@ export default function SettingsOverlay({ onClose, onRestartWizard }) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto py-8 px-6">
           <div className="max-w-6xl mx-auto">
-            {activeSection === 'wan-networks' && (
-              <SettingsWanNetworks
-                unifiEnabled={unifiEnabled}
-                unifiSettings={unifiSettings}
-                wanCards={wanCards}
-                networkCards={networkCards}
-                onRestartWizard={onRestartWizard}
+            {reconfigMode ? (
+              <SetupWizard
+                embedded
+                reconfigMode
+                onComplete={() => {
+                  setReconfigMode(false)
+                  setWizardPath(null)
+                  reloadAll()
+                }}
+                onCancel={() => { setReconfigMode(false); setWizardPath(null) }}
+                onPathChange={setWizardPath}
               />
-            )}
-            {activeSection === 'firewall' && (
-              <SettingsFirewall
-                unifiEnabled={unifiEnabled}
-                onRestartWizard={onRestartWizard}
-              />
-            )}
-            {activeSection === 'data-backups' && (
-              <SettingsDataBackups />
+            ) : (
+              <>
+                {activeSection === 'wan-networks' && (
+                  <SettingsWanNetworks
+                    unifiEnabled={unifiEnabled}
+                    unifiSettings={unifiSettings}
+                    wanCards={wanCards}
+                    networkCards={networkCards}
+                    onRestartWizard={handleRestartWizard}
+                    vpnNetworks={config?.vpn_networks || {}}
+                    interfaceLabels={config?.interface_labels || {}}
+                    onVpnSaved={() => fetchConfig().then(setConfig).catch(() => {})}
+                  />
+                )}
+                {activeSection === 'firewall' && (
+                  <SettingsFirewall
+                    unifiEnabled={unifiEnabled}
+                    onRestartWizard={handleRestartWizard}
+                  />
+                )}
+                {activeSection === 'data-backups' && (
+                  <SettingsDataBackups />
+                )}
+              </>
             )}
           </div>
         </div>

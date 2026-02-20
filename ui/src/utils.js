@@ -77,6 +77,7 @@ export const DIRECTION_ICONS = {
   inter_vlan: '↔',
   nat: '⤴\uFE0E',
   local: '⟳',
+  vpn: '⛨',
 }
 
 // Module-level variables (populated on app load via loadInterfaceLabels)
@@ -144,6 +145,7 @@ export const DIRECTION_COLORS = {
   inter_vlan: 'text-gray-300',
   nat: 'text-yellow-400',
   local: 'text-gray-400',
+  vpn: 'text-teal-400',
 }
 
 // Convert time range string (e.g. '7d', '24h') to days

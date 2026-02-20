@@ -104,6 +104,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     filters.log_type,              // types narrowed
     filters.rule_action,           // actions narrowed
     filters.direction,             // directions narrowed
+    filters.vpn_only,              // VPN filter active
     filters.time_range !== '24h' ? filters.time_range : null,
     ipSearch,
     ruleSearch,
@@ -182,19 +183,57 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
         <div className="h-5 w-px bg-gray-700" />
 
         <div className="flex items-center gap-1">
-          {DIRECTIONS.map(dir => (
-            <button
-              key={dir}
-              onClick={() => toggleDirection(dir)}
-              className={`px-2 py-1 rounded text-xs font-medium uppercase transition-all ${
-                activeDirections.includes(dir)
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-500 hover:text-gray-400'
-              }`}
-            >
-              <span className={activeDirections.includes(dir) ? DIRECTION_COLORS[dir] : ''}>{DIRECTION_ICONS[dir]}</span> {dir === 'inter_vlan' ? 'vlan' : dir}
-            </button>
-          ))}
+          {DIRECTIONS.map(dir => {
+            const dirLocked = !!filters.vpn_only
+            if (dir === 'nat') {
+              return (
+                <React.Fragment key={dir}>
+                  <button
+                    onClick={() => !dirLocked && toggleDirection(dir)}
+                    className={`px-2 py-1 rounded text-xs font-medium uppercase transition-all ${
+                      dirLocked
+                        ? 'bg-gray-700 text-white opacity-40 cursor-not-allowed'
+                        : activeDirections.includes(dir)
+                          ? 'bg-gray-700 text-white'
+                          : 'text-gray-500 hover:text-gray-400'
+                    }`}
+                  >
+                    <span className={activeDirections.includes(dir) ? DIRECTION_COLORS[dir] : ''}>{DIRECTION_ICONS[dir]}</span> {dir}
+                  </button>
+                  <button
+                    onClick={() => onChange({
+                      ...filters,
+                      vpn_only: filters.vpn_only ? null : true,
+                      // When activating VPN, clear direction filter so all directions show
+                      ...(!filters.vpn_only ? { direction: null } : {}),
+                    })}
+                    className={`px-2 py-1 rounded text-xs font-medium uppercase transition-all ${
+                      filters.vpn_only
+                        ? 'bg-gray-700 text-white'
+                        : 'text-gray-500 hover:text-gray-400'
+                    }`}
+                  >
+                    <span className={filters.vpn_only ? 'text-teal-400' : ''}>⛨</span> vpn
+                  </button>
+                </React.Fragment>
+              )
+            }
+            return (
+              <button
+                key={dir}
+                onClick={() => !dirLocked && toggleDirection(dir)}
+                className={`px-2 py-1 rounded text-xs font-medium uppercase transition-all ${
+                  dirLocked
+                    ? 'bg-gray-700 text-white opacity-40 cursor-not-allowed'
+                    : activeDirections.includes(dir)
+                      ? 'bg-gray-700 text-white'
+                      : 'text-gray-500 hover:text-gray-400'
+                }`}
+              >
+                <span className={activeDirections.includes(dir) ? DIRECTION_COLORS[dir] : ''}>{DIRECTION_ICONS[dir]}</span> {dir === 'inter_vlan' ? 'vlan' : dir}
+              </button>
+            )
+          })}
         </div>
 
         <div className="h-5 w-px bg-gray-700" />
@@ -318,44 +357,54 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             >✕</button>
           )}
           {showInterfaceDropdown && (
-            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
-              {interfaces
-                .filter(iface =>
-                  iface.name.toLowerCase().includes(interfaceSearch.toLowerCase()) ||
-                  iface.label.toLowerCase().includes(interfaceSearch.toLowerCase())
+            <div className="absolute top-full left-0 mt-1 w-64 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
+              {(() => {
+                const q = interfaceSearch.toLowerCase()
+                const filtered = interfaces.filter(iface =>
+                  iface.name.toLowerCase().includes(q) ||
+                  iface.label.toLowerCase().includes(q) ||
+                  (iface.description || '').toLowerCase().includes(q)
                 )
-                .slice(0, 50)
-                .map(iface => (
-                  <div
-                    key={iface.name}
-                    onClick={() => {
-                      const updated = selectedInterfaces.includes(iface.name)
-                        ? selectedInterfaces.filter(i => i !== iface.name)
-                        : [...selectedInterfaces, iface.name]
-                      setSelectedInterfaces(updated)
-                      onChange({ ...filters, interface: updated.length ? updated.join(',') : null })
-                      setInterfaceSearch('')
-                    }}
-                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                      selectedInterfaces.includes(iface.name)
-                        ? 'bg-blue-500/20 text-blue-400'
-                        : 'text-gray-300 hover:bg-gray-800'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono">{iface.name}</span>
-                      {iface.label !== iface.name && (
-                        <span className="text-gray-400 ml-2">{iface.label}</span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              {interfaces.filter(iface =>
-                iface.name.toLowerCase().includes(interfaceSearch.toLowerCase()) ||
-                iface.label.toLowerCase().includes(interfaceSearch.toLowerCase())
-              ).length === 0 && (
-                <div className="px-3 py-2 text-xs text-gray-400">No matching interfaces</div>
-              )}
+                return filtered.length === 0
+                  ? <div className="px-3 py-2 text-xs text-gray-400">No matching interfaces</div>
+                  : filtered.slice(0, 50).map(iface => {
+                      const displayName = iface.iface_type === 'vpn' && iface.description
+                        ? iface.description
+                        : (iface.label !== iface.name ? iface.label : (iface.description || iface.name))
+                      return (
+                        <div
+                          key={iface.name}
+                          onClick={() => {
+                            const updated = selectedInterfaces.includes(iface.name)
+                              ? selectedInterfaces.filter(i => i !== iface.name)
+                              : [...selectedInterfaces, iface.name]
+                            setSelectedInterfaces(updated)
+                            onChange({ ...filters, interface: updated.length ? updated.join(',') : null })
+                            setInterfaceSearch('')
+                          }}
+                          className={`px-3 py-1.5 cursor-pointer transition-colors ${
+                            selectedInterfaces.includes(iface.name)
+                              ? 'bg-blue-500/20 text-blue-400'
+                              : 'text-gray-300 hover:bg-gray-800'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs truncate">{displayName}</span>
+                            {iface.iface_type === 'wan' && (
+                              <span className="text-[9px] px-1 py-0 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">WAN</span>
+                            )}
+                            {iface.iface_type === 'vpn' && (
+                              <span className="text-[9px] px-1 py-0 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">VPN</span>
+                            )}
+                            {iface.iface_type === 'vlan' && iface.vlan_id != null && (
+                              <span className="text-[9px] px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">VLAN {iface.vlan_id}</span>
+                            )}
+                          </div>
+                          <span className="text-[10px] font-mono text-gray-500">{iface.name}</span>
+                        </div>
+                      )
+                    })
+              })()}
             </div>
           )}
         </div>

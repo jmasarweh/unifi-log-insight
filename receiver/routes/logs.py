@@ -2,6 +2,7 @@
 
 import csv
 import io
+import ipaddress
 import logging
 from datetime import datetime
 from typing import Optional
@@ -12,8 +13,73 @@ from psycopg2.extras import RealDictCursor
 
 from db import get_config
 from deps import get_conn, put_conn, enricher_db
+from parsers import VPN_PREFIX_DESCRIPTIONS
 from query_helpers import build_log_query
 from services import get_service_description
+
+
+def _build_vpn_cidr_map(vpn_networks):
+    """Pre-parse VPN CIDRs into (network_obj, gateway_ip, badge, type_name) tuples.
+
+    The first usable IP in each CIDR is the VPN gateway (e.g. .1 in a /24).
+    """
+    result = []
+    for iface, cfg in vpn_networks.items():
+        cidr, badge = cfg.get('cidr', ''), cfg.get('badge', '')
+        if cidr and badge:
+            try:
+                net = ipaddress.ip_network(cidr, strict=False)
+                gw_ip = net.network_address + 1
+                # Derive type name from interface prefix, not badge
+                type_name = next(
+                    (d for p, d in VPN_PREFIX_DESCRIPTIONS.items() if iface.startswith(p)),
+                    badge
+                )
+                result.append((net, gw_ip, badge, type_name))
+            except ValueError:
+                pass
+    return result
+
+
+def _annotate_vpn_badges(logs, vpn_cidrs, exclude_ips=None):
+    """Annotate logs with VPN gateway badges and device type names.
+
+    Follows the same pattern as gateway/WAN annotation: only tags IPs that
+    are explicitly within a configured VPN CIDR.
+
+    Gateway IP (first in CIDR) → device_name='Gateway' + badge.
+    Other IPs in pool → device_name=VPN type name (e.g. 'WireGuard Server'), no badge.
+    """
+    if not vpn_cidrs:
+        return
+    skip_ips = exclude_ips or set()
+
+    for log in logs:
+        for prefix in ('src', 'dst'):
+            if log.get(f'{prefix}_device_vlan') is not None:
+                continue
+            if log.get(f'{prefix}_device_network'):
+                continue
+
+            name_key = f'{prefix}_device_name'
+            ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
+            if not ip_str or ip_str in skip_ips:
+                continue
+
+            try:
+                ip_obj = ipaddress.ip_address(ip_str)
+                for net, gw_ip, badge, type_name in vpn_cidrs:
+                    if ip_obj in net:
+                        if ip_obj == gw_ip:
+                            if not log.get(name_key):
+                                log[name_key] = 'Gateway'
+                            log[f'{prefix}_device_network'] = badge
+                        else:
+                            if not log.get(name_key):
+                                log[name_key] = type_name
+                        break
+            except ValueError:
+                pass
 
 logger = logging.getLogger('api.logs')
 
@@ -37,6 +103,7 @@ def get_logs(
     search: Optional[str] = Query(None, description="Full-text search in raw_log"),
     service: Optional[str] = Query(None, description="Comma-separated service names"),
     interface: Optional[str] = Query(None, description="Comma-separated interface names"),
+    vpn_only: bool = Query(False, description="Show only VPN traffic"),
     sort: str = Query("timestamp", description="Sort field"),
     order: str = Query("desc", description="asc or desc"),
     page: int = Query(1, ge=1),
@@ -46,7 +113,7 @@ def get_logs(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
         rule_name, country, threat_min, search, service,
-        interface,
+        interface, vpn_only,
     )
 
     # Whitelist sort columns
@@ -119,6 +186,12 @@ def get_logs(
                         log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
                     elif ip_str in wan_ip_names:
                         log[name_key] = wan_ip_names[ip_str]
+
+        # Annotate VPN badges
+        vpn_networks = get_config(enricher_db, 'vpn_networks') or {}
+        if vpn_networks:
+            exclude_ips = set(wan_ip_names.keys()) | set(gateway_vlans.keys())
+            _annotate_vpn_badges(logs, _build_vpn_cidr_map(vpn_networks), exclude_ips)
 
         conn.commit()
         return {
@@ -236,6 +309,12 @@ def get_log(log_id: int):
                 elif ip_str in wan_ip_names:
                     log[name_key] = wan_ip_names[ip_str]
 
+        # Annotate VPN badges
+        vpn_networks = get_config(enricher_db, 'vpn_networks') or {}
+        if vpn_networks:
+            exclude_ips = set(wan_ip_names.keys()) | set(gateway_vlans.keys())
+            _annotate_vpn_badges([log], _build_vpn_cidr_map(vpn_networks), exclude_ips)
+
         # Enrich with IANA service description for expanded detail view
         desc = get_service_description(log.get('dst_port'), log.get('protocol'))
         if desc:
@@ -270,12 +349,13 @@ def export_csv_endpoint(
     search: Optional[str] = Query(None),
     service: Optional[str] = Query(None),
     interface: Optional[str] = Query(None),
+    vpn_only: bool = Query(False),
     limit: int = Query(10000, ge=1, le=100000),
 ):
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
-        rule_name, country, threat_min, search, service, interface,
+        rule_name, country, threat_min, search, service, interface, vpn_only,
     )
 
     export_columns = [
@@ -289,10 +369,11 @@ def export_csv_endpoint(
         'abuse_is_tor',
     ]
 
-    # CSV header includes device name + VLAN columns resolved via live JOIN
+    # CSV header includes device name + VLAN + VPN network columns resolved via live JOIN
     csv_columns = export_columns + [
         'src_device_name', 'dst_device_name',
         'src_device_vlan', 'dst_device_vlan',
+        'src_device_network', 'dst_device_network',
     ]
 
     conn = get_conn()
@@ -320,9 +401,12 @@ def export_csv_endpoint(
             )
             rows = cur.fetchall()
 
-        # Annotate gateway/WAN IPs in CSV rows
+        # Annotate gateway/WAN IPs and VPN badges in CSV rows
         gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
         wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
+        vpn_networks = get_config(enricher_db, 'vpn_networks') or {}
+        vpn_cidrs = _build_vpn_cidr_map(vpn_networks) if vpn_networks else []
+        csv_exclude_ips = set(wan_ip_names.keys()) | set(gateway_vlans.keys())
         src_ip_idx = export_columns.index('src_ip')
         dst_ip_idx = export_columns.index('dst_ip')
         src_name_idx = len(export_columns)      # first appended column
@@ -332,18 +416,39 @@ def export_csv_endpoint(
         writer = csv.writer(output)
         writer.writerow(csv_columns)
         for row in rows:
-            row = list(row) + [None, None]  # append vlan columns
-            for ip_idx, name_idx, vlan_idx in [
-                (src_ip_idx, src_name_idx, len(row) - 2),
-                (dst_ip_idx, dst_name_idx, len(row) - 1),
+            # append vlan + network columns (4 total)
+            row = list(row) + [None, None, None, None]
+            src_vlan_idx = src_name_idx + 2
+            dst_vlan_idx = src_name_idx + 3
+            src_net_idx = src_name_idx + 4
+            dst_net_idx = src_name_idx + 5
+            for ip_idx, name_idx, vlan_idx, net_idx in [
+                (src_ip_idx, src_name_idx, src_vlan_idx, src_net_idx),
+                (dst_ip_idx, dst_name_idx, dst_vlan_idx, dst_net_idx),
             ]:
+                ip_str = str(row[ip_idx] or '').split('/')[0]
                 if not row[name_idx]:
-                    ip_str = str(row[ip_idx] or '').split('/')[0]
                     if ip_str in gateway_vlans:
                         row[name_idx] = 'Gateway'
                         row[vlan_idx] = gateway_vlans[ip_str].get('vlan')
                     elif ip_str in wan_ip_names:
                         row[name_idx] = wan_ip_names[ip_str]
+                # VPN annotation — same CIDR-based pattern as gateway/WAN
+                if row[vlan_idx] is None and row[net_idx] is None and ip_str and ip_str not in csv_exclude_ips and vpn_cidrs:
+                    try:
+                        ip_obj = ipaddress.ip_address(ip_str)
+                        for net, gw_ip, badge, type_name in vpn_cidrs:
+                            if ip_obj in net:
+                                if ip_obj == gw_ip:
+                                    if not row[name_idx]:
+                                        row[name_idx] = 'Gateway'
+                                    row[net_idx] = badge
+                                else:
+                                    if not row[name_idx]:
+                                        row[name_idx] = type_name
+                                break
+                    except ValueError:
+                        pass
             writer.writerow([str(v) if v is not None else '' for v in row])
 
         output.seek(0)
