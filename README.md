@@ -152,7 +152,7 @@ ABUSEIPDB_API_KEY=your_key_here
 MAXMIND_ACCOUNT_ID=your_account_id
 MAXMIND_LICENSE_KEY=your_license_key
 
-# Timezone for scheduled tasks (used by cron for MaxMind updates)
+# Timezone for scheduled tasks (used by cron for MaxMind updates). See https://gist.github.com/Soheab/3bec6dd6c1e90962ef46b8545823820d for supported timezones
 TZ=Europe/London
 
 # Log level (DEBUG shows periodic stats and all access logs; default: INFO)
@@ -276,7 +276,7 @@ graph LR
 | `ABUSEIPDB_API_KEY` | Enables threat scoring on blocked inbound IPs. Free tier: 1,000 check lookups/day + 5 blacklist pulls/day |
 | `MAXMIND_ACCOUNT_ID` | Enables GeoIP auto-update. Without it, manually place `.mmdb` files |
 | `MAXMIND_LICENSE_KEY` | Paired with account ID for auto-update |
-| `TZ` | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York` |
+| `TZ` | Timezone for cron schedules. Defaults to UTC. Examples: `Europe/London`, `Asia/Amman`, `America/New_York`. [See supported timezones](https://gist.github.com/Soheab/3bec6dd6c1e90962ef46b8545823820d) |
 | `LOG_LEVEL` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. Defaults to `INFO`. Set to `WARNING` for quiet steady-state. Use `DEBUG` for troubleshooting |
 | `UNIFI_HOST` | *(optional)* UniFi Controller URL (e.g., `https://192.168.1.1`). Can also be set via the Settings UI |
 | `UNIFI_API_KEY` | *(optional)* UniFi API key (Local Admin). Can also be set via the Settings UI where it's stored encrypted |
@@ -306,7 +306,7 @@ Retention is configurable via the **Settings > Data & Backups** slider, or via `
 
 ## 🗺️ MaxMind Auto-Update
 
-When credentials are configured, GeoLite2 databases update automatically on **Wednesday and Saturday at 7:00 AM** (local time per `TZ`). This aligns with MaxMind's Tuesday/Friday publish schedule, giving a buffer for propagation.
+When credentials are configured, GeoLite2 databases update automatically on **Wednesday and Saturday at 7:00 AM** (local time per `TZ` — [supported timezones](https://gist.github.com/Soheab/3bec6dd6c1e90962ef46b8545823820d)). This aligns with MaxMind's Tuesday/Friday publish schedule, giving a buffer for propagation.
 
 The receiver hot-reloads databases via signal — no container restart required.
 
@@ -471,7 +471,7 @@ Install directly from Unraid's Docker UI — no terminal needed.
    | Key | Value |
    |---|---|
    | `POSTGRES_PASSWORD` | *(your password)* |
-   | `TZ` | *(your timezone, e.g. `America/New_York`)* |
+   | `TZ` | *(your timezone, e.g. `America/New_York`)* [See supported timezones](https://gist.github.com/Soheab/3bec6dd6c1e90962ef46b8545823820d) |
    | `ABUSEIPDB_API_KEY` | *(optional — get free key at [abuseipdb.com](https://www.abuseipdb.com/register))* |
    | `MAXMIND_ACCOUNT_ID` | *(optional — get free account at [maxmind.com](https://www.maxmind.com/en/geolite2/signup))* |
    | `MAXMIND_LICENSE_KEY` | *(paired with account ID)* |
