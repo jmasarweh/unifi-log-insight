@@ -131,6 +131,12 @@ export async function dismissUpgradeModal() {
   return resp.json()
 }
 
+export async function dismissVpnToast() {
+  const resp = await fetch(`${BASE}/settings/unifi/dismiss-vpn-toast`, { method: 'POST' })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 export async function fetchUniFiNetworkConfig() {
   const resp = await fetch(`${BASE}/setup/unifi-network-config`)
   if (!resp.ok) throw new Error(`API error: ${resp.status}`)

@@ -11,7 +11,7 @@ import os
 import logging
 import requests
 
-from db import get_config
+from db import get_config, get_wan_ips_from_config
 
 logger = logging.getLogger('blacklist')
 
@@ -74,7 +74,7 @@ class BlacklistFetcher:
                     entries.append((ip, score, ['blacklist']))
 
             # Filter out WAN/gateway IPs to prevent self-contamination
-            wan_ips_cfg = get_config(self.db, 'wan_ips') or []
+            wan_ips_cfg = get_wan_ips_from_config(self.db)
             gateway_ips_cfg = get_config(self.db, 'gateway_ips') or []
             excluded = set()
             for ip_str in wan_ips_cfg + gateway_ips_cfg:

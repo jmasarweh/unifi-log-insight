@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { fetchWANCandidates } from '../api'
+import { IFACE_REGEX } from '../utils'
 
 const COMMON_WAN_INTERFACES = [
   { name: 'ppp0',  desc: 'PPPoE (DSL/Fiber)', note: 'Most Common' },
@@ -16,6 +17,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [manualInput, setManualInput] = useState('')
+  const [manualError, setManualError] = useState('')
   const [rescanning, setRescanning] = useState(false)
   const pollRef = useRef(null)
 
@@ -41,11 +43,9 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
       .catch(() => setRescanning(false))
   }
 
-  // Poll until candidates arrive AND at least one has a WAN IP
-  const allResolved = candidates.length > 0 && candidates.some(c => c.wan_ip)
-
+  // Poll for new candidates while this step is mounted (user can rescan manually too)
   useEffect(() => {
-    if (loading || error || allResolved) {
+    if (loading || error) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
       return
     }
@@ -58,7 +58,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
         .catch(() => {})
     }, 5000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [loading, error, allResolved])
+  }, [loading, error])
 
   const handleToggle = (iface) => {
     if (selected.includes(iface)) {
@@ -70,7 +70,13 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
 
   const handleAddManual = () => {
     const trimmed = manualInput.trim()
-    if (trimmed && !selected.includes(trimmed)) {
+    if (!trimmed) return
+    if (!IFACE_REGEX.test(trimmed)) {
+      setManualError('Interface name must start with letters followed by a number (e.g., ppp0, eth4, usb0).')
+      return
+    }
+    setManualError('')
+    if (!selected.includes(trimmed)) {
       onSelect([...selected, trimmed])
       setManualInput('')
     }
@@ -252,7 +258,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
             <input
               type="text"
               value={manualInput}
-              onChange={(e) => setManualInput(e.target.value)}
+              onChange={(e) => { setManualInput(e.target.value); if (manualError) setManualError('') }}
               onKeyDown={(e) => e.key === 'Enter' && handleAddManual()}
               placeholder="e.g., eth5, wan0, enp3s0"
               className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm font-mono text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
@@ -269,6 +275,9 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
               Add
             </button>
           </div>
+          {manualError && (
+            <p className="text-[11px] text-red-400 mt-1.5">{manualError}</p>
+          )}
         </div>
       )}
 

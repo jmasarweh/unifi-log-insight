@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 # ── WAN IP auto-detection ────────────────────────────────────────────────────
 _wan_ip = None
+WAN_IPS = set()  # All known WAN IPs (derived from config); replaces single _wan_ip for exclusion
+_wan_ip_by_iface_present = False  # True when authoritative wan_ip_by_iface exists
 
 
 def get_wan_ip() -> str:
@@ -80,6 +82,8 @@ VPN_PREFIX_BADGES = {
     'wgsts': 'S MAGIC',
     'tlprt': 'TELEPORT',
     'vti':   'S2S IPSEC',
+    'tun':   'OVPN TUN',
+    'vtun':  'OVPN VTN',
     'l2tp':  'L2TP SRV',
 }
 # All known VPN interface prefixes (including ones without auto-detection)
@@ -90,6 +94,8 @@ VPN_BADGE_LABELS = {
     'WGD CLT':   'WireGuard Client',
     'OVPN SRV':  'OpenVPN Server',
     'OVPN CLT':  'OpenVPN Client',
+    'OVPN TUN':  'OpenVPN / Tunnel 1',
+    'OVPN VTN':  'OpenVPN / Tunnel 2',
     'L2TP SRV':  'L2TP Server',
     'TELEPORT':  'Teleport',
     'S MAGIC':   'Site Magic',
@@ -97,7 +103,7 @@ VPN_BADGE_LABELS = {
 }
 # Ordered list of badge choices for UI dropdowns
 VPN_BADGE_CHOICES = [
-    'WGD SRV', 'WGD CLT', 'OVPN SRV', 'OVPN CLT', 'L2TP SRV', 'TELEPORT', 'S MAGIC', 'S2S IPSEC',
+    'WGD SRV', 'WGD CLT', 'OVPN SRV', 'OVPN CLT', 'OVPN TUN', 'OVPN VTN', 'L2TP SRV', 'TELEPORT', 'S MAGIC', 'S2S IPSEC',
 ]
 # Interface prefix → human-readable description (shown under interface name)
 VPN_PREFIX_DESCRIPTIONS = {
@@ -106,8 +112,8 @@ VPN_PREFIX_DESCRIPTIONS = {
     'wgsts': 'Site Magic',
     'tlprt': 'Teleport',
     'vti':   'Site-to-Site IPsec',
-    'tun':   'OpenVPN / Tunnel',
-    'vtun':  'OpenVPN / Tunnel',
+    'tun':   'OpenVPN / Tunnel 1',
+    'vtun':  'OpenVPN / Tunnel 2',
     'l2tp':  'L2TP Server',
 }
 
@@ -164,12 +170,17 @@ def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str 
         return None
 
     # Auto-learn WAN IP from WAN_LOCAL rules (IN=WAN interface, public DST)
-    if iface_in in WAN_INTERFACES and 'WAN_LOCAL' in (rule_name or '') and dst_ip:
+    # Only when UniFi API is unavailable and no wan_ip_by_iface is present
+    if (not _wan_ip_by_iface_present
+            and iface_in in WAN_INTERFACES and 'WAN_LOCAL' in (rule_name or '') and dst_ip):
         try:
             ip = ipaddress.ip_address(dst_ip)
-            if ip.is_global and not ip.is_multicast and str(ip) != _wan_ip:
-                _wan_ip = str(ip)
-                logger.info("Auto-detected WAN IP: %s", _wan_ip)
+            if ip.is_global and not ip.is_multicast:
+                ip_str = str(ip)
+                if ip_str != _wan_ip:
+                    _wan_ip = ip_str
+                    WAN_IPS.add(ip_str)
+                    logger.info("Auto-detected WAN IP: %s", _wan_ip)
         except ValueError:
             pass
 
@@ -177,8 +188,8 @@ def derive_direction(iface_in: str, iface_out: str, rule_name: str, src_ip: str 
     if _is_broadcast_or_multicast(dst_ip):
         return 'local'
 
-    # Traffic from/to the router's own WAN IP
-    if _wan_ip and src_ip == _wan_ip:
+    # Traffic from the router's own WAN IP staying local (not going out WAN)
+    if src_ip and src_ip in WAN_IPS and iface_out not in WAN_INTERFACES:
         return 'local'
 
     # NAT rules (explicit DNAT/PREROUTING)
@@ -471,18 +482,28 @@ def parse_log(raw_log: str) -> dict | None:
 
 
 def reload_config_from_db(db):
-    """Reload WAN interfaces, labels, and WAN IP from system_config table.
+    """Reload WAN interfaces, labels, and WAN IPs from system_config table.
 
     Called by main.py on startup and via SIGUSR2 signal after reconfiguration.
-    Updates module-level WAN_INTERFACES, INTERFACE_LABELS, and _wan_ip.
+    Updates module-level WAN_INTERFACES, INTERFACE_LABELS, WAN_IPS, and _wan_ip.
     """
-    global WAN_INTERFACES, INTERFACE_LABELS, _wan_ip
-    from db import get_config
+    global WAN_INTERFACES, INTERFACE_LABELS, _wan_ip, WAN_IPS, _wan_ip_by_iface_present
+    from db import get_config, get_wan_ips_from_config
 
     wan_list = get_config(db, 'wan_interfaces', ['ppp0'])
     WAN_INTERFACES = set(wan_list)
     INTERFACE_LABELS = get_config(db, 'interface_labels', {})
+
+    # Populate WAN_IPS from wan_ip_by_iface (preferred) or legacy wan_ips
+    wan_ips_list = get_wan_ips_from_config(db)
+    WAN_IPS = set(wan_ips_list)
+
+    # Track whether authoritative wan_ip_by_iface exists
+    _wan_ip_by_iface_present = bool(get_config(db, 'wan_ip_by_iface'))
+
     saved_wan_ip = get_config(db, 'wan_ip')
     if saved_wan_ip:
         _wan_ip = saved_wan_ip
-    logger.info("Config reloaded: WAN=%s, Labels=%d", WAN_INTERFACES, len(INTERFACE_LABELS))
+        WAN_IPS.add(saved_wan_ip)
+    logger.info("Config reloaded: WAN=%s, WAN_IPS=%s, Labels=%d",
+                WAN_INTERFACES, WAN_IPS, len(INTERFACE_LABELS))

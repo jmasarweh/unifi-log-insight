@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { testUniFiConnection } from '../api'
 
 function normalizeHost(raw) {
@@ -8,53 +8,101 @@ function normalizeHost(raw) {
   return `https://${h}`
 }
 
-export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envHost, savedHost, savedApiKey }) {
+export default function UniFiConnectionForm({
+  onSuccess, onSkip, envApiKey, envHost, savedHost, savedApiKey,
+  savedUsername, savedControllerType,
+}) {
+  const [controllerType, setControllerType] = useState(savedControllerType || 'unifi_os')
   const [host, setHost] = useState(envHost || savedHost || '')
   const [apiKey, setApiKey] = useState('')
   const [useSaved, setUseSaved] = useState(!!savedApiKey)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [useSavedCredentials, setUseSavedCredentials] = useState(!!savedUsername)
   const [site, setSite] = useState('default')
   const [verifySsl, setVerifySsl] = useState(true)
   const [showAdvanced, setShowAdvanced] = useState(true)
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+  const [phase, setPhase] = useState(null) // null → 'connected' → 'fetching'
+  const timeoutRef = useRef(null)
 
-  const hasKey = envApiKey || useSaved || apiKey.trim()
+  const isSelfHosted = controllerType === 'self_hosted'
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    }
+  }, [])
+
+  const hasCredentials = isSelfHosted
+    ? useSavedCredentials || (username.trim() && password.trim())
+    : envApiKey || useSaved || apiKey.trim()
+
+  const handleTypeChange = (type) => {
+    setControllerType(type)
+    setResult(null)
+    setError(null)
+  }
 
   const handleTest = async () => {
+    // Clear any pending timeout from a previous attempt
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     setTesting(true)
     setError(null)
     setResult(null)
+    setPhase(null)
     try {
       const normalizedHost = normalizeHost(host)
       const params = {
         host: normalizedHost,
         site,
         verify_ssl: verifySsl,
+        controller_type: controllerType,
       }
-      if (envApiKey) {
-        params.use_env_key = true
-      } else if (useSaved) {
-        params.use_saved_key = true
+
+      if (isSelfHosted) {
+        if (useSavedCredentials) {
+          params.use_saved_credentials = true
+        } else {
+          params.username = username.trim()
+          params.password = password
+        }
       } else {
-        params.api_key = apiKey.trim()
+        if (envApiKey) {
+          params.use_env_key = true
+        } else if (useSaved) {
+          params.use_saved_key = true
+        } else {
+          params.api_key = apiKey.trim()
+        }
       }
+
       const res = await testUniFiConnection(params)
       if (res.success) {
         setResult(res)
-        setTimeout(() => onSuccess({
-          host: normalizedHost,
-          site,
-          verify_ssl: verifySsl,
-          use_env_key: !!envApiKey,
-          controller_name: res.controller_name,
-          version: res.version,
-          site_name: res.site_name,
-        }), 1500)
+        setPhase('connected')
+        timeoutRef.current = setTimeout(() => {
+          setPhase('fetching')
+          onSuccess({
+            host: normalizedHost,
+            site,
+            verify_ssl: verifySsl,
+            use_env_key: !!envApiKey,
+            controller_type: controllerType,
+            controller_name: res.controller_name,
+            version: res.version,
+            site_name: res.site_name,
+          })
+        }, 1500)
       } else {
+        setPhase(null)
         setError(res.error || 'Connection failed')
       }
     } catch (err) {
+      setPhase(null)
       setError(err.message || 'Connection failed')
     } finally {
       setTesting(false)
@@ -70,12 +118,41 @@ export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envH
         <p>Connecting your UniFi controller enables:</p>
         <ul className="list-disc ml-4 space-y-0.5">
           <li>Auto-detection of WAN and network configuration</li>
-          <li>Firewall rule syslog management</li>
+          {!isSelfHosted && <li>Firewall rule syslog management</li>}
           <li>Device name resolution</li>
         </ul>
       </div>
 
-      {envApiKey && (
+      {/* Controller type selector */}
+      <div className="mb-4">
+        <label className="block text-xs font-medium text-gray-300 mb-2">Controller Type</label>
+        <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-gray-900 border border-gray-700">
+          <button
+            type="button"
+            onClick={() => handleTypeChange('unifi_os')}
+            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+              !isSelfHosted
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Cloud Gateway (UniFi OS)
+          </button>
+          <button
+            type="button"
+            onClick={() => handleTypeChange('self_hosted')}
+            className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
+              isSelfHosted
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:text-gray-200'
+            }`}
+          >
+            Local Gateway (Self-Hosted)
+          </button>
+        </div>
+      </div>
+
+      {envApiKey && !isSelfHosted && (
         <div className="mb-4 px-3 py-2 rounded bg-blue-500/10 border border-blue-500/30 text-xs text-blue-400">
           API key detected from environment variable
         </div>
@@ -88,7 +165,7 @@ export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envH
             type="text"
             value={host}
             onChange={e => { setHost(e.target.value); setResult(null); setError(null) }}
-            placeholder="192.168.1.1"
+            placeholder={isSelfHosted ? '192.168.1.1:8443' : '192.168.1.1'}
             disabled={!!envHost}
             className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
           />
@@ -97,7 +174,63 @@ export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envH
           )}
         </div>
 
-        {!envApiKey && (
+        {/* Credential fields — conditional on controller type */}
+        {isSelfHosted ? (
+          <div className="space-y-3">
+            {useSavedCredentials ? (
+              <div>
+                <label className="block text-xs font-medium text-gray-300 mb-1">Credentials</label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-400">
+                    &#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022; (saved)
+                  </div>
+                  <button
+                    onClick={() => { setUseSavedCredentials(false); setResult(null); setError(null) }}
+                    className="px-3 py-2 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors whitespace-nowrap"
+                  >
+                    Change
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1">Username</label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={e => { setUsername(e.target.value); setResult(null); setError(null) }}
+                    placeholder="admin"
+                    autoComplete="username"
+                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-300 mb-1">Password</label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={e => { setPassword(e.target.value); setResult(null); setError(null) }}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+                {savedUsername && !username.trim() && (
+                  <button
+                    onClick={() => { setUseSavedCredentials(true); setResult(null); setError(null) }}
+                    className="text-[10px] text-blue-400 hover:text-blue-300"
+                  >
+                    Use saved credentials
+                  </button>
+                )}
+              </>
+            )}
+            <p className="text-[10px] text-gray-500 mt-1">
+              Self-hosted controllers require username/password authentication
+            </p>
+          </div>
+        ) : !envApiKey ? (
           <div>
             <label className="block text-xs font-medium text-gray-300 mb-1">API Key</label>
             {useSaved ? (
@@ -148,7 +281,7 @@ export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envH
               )}
             </p>
           </div>
-        )}
+        ) : null}
 
         <button
           onClick={() => setShowAdvanced(!showAdvanced)}
@@ -188,14 +321,24 @@ export default function UniFiConnectionForm({ onSuccess, onSkip, envApiKey, envH
 
         {result && result.success && (
           <div className="px-3 py-2 rounded bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-400">
-            Connected to {result.controller_name} (v{result.version})
+            {phase === 'fetching' ? (
+              <span className="flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" opacity="0.3" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                Retrieving configuration...
+              </span>
+            ) : (
+              <>Connected to {result.controller_name} (v{result.version})</>
+            )}
           </div>
         )}
 
         {!(result && result.success) && (
           <button
             onClick={handleTest}
-            disabled={testing || !host.trim() || !hasKey}
+            disabled={testing || !host.trim() || !hasCredentials}
             className="w-full px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {testing ? 'Testing...' : 'Test & Connect'}

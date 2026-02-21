@@ -273,6 +273,7 @@ export default function SettingsDataBackups() {
                   </svg>
                   <p className="text-[11px] text-blue-400/90">
                     You'll need to re-enter your UniFi API key after import, or regenerate one from your controller.
+                    Self-hosted credentials (username/password) are never exported.
                   </p>
                 </div>
               </button>

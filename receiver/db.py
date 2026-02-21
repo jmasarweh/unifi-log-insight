@@ -469,7 +469,7 @@ class Database:
         except ValueError:
             normalized = ip
         excluded = set()
-        for ip_str in (self.get_config('wan_ips') or []) + (self.get_config('gateway_ips') or []):
+        for ip_str in get_wan_ips_from_config(self) + (self.get_config('gateway_ips') or []):
             try:
                 excluded.add(str(ipaddress.ip_address(ip_str)))
             except ValueError:
@@ -661,6 +661,7 @@ class Database:
                                COALESCE(device_name, hostname, oui) as name
                         FROM unifi_clients
                         WHERE COALESCE(device_name, hostname, oui) IS NOT NULL
+                        ORDER BY last_seen ASC NULLS FIRST, mac
                     """)
                     for mac, ip, name in cur.fetchall():
                         if mac:
@@ -672,6 +673,7 @@ class Database:
                                COALESCE(device_name, model) as name
                         FROM unifi_devices
                         WHERE COALESCE(device_name, model) IS NOT NULL
+                        ORDER BY updated_at ASC NULLS FIRST, mac
                     """)
                     for mac, ip, name in cur.fetchall():
                         if mac:
@@ -719,55 +721,56 @@ class Database:
                 return {row[0]: row[1] for row in cur.fetchall() if row[1]}
 
     def detect_wan_ip(self) -> str | None:
-        """Detect WAN IPs (IPv4 + IPv6) from firewall logs and persist to system_config.
+        """Detect WAN IPs and persist to system_config.
 
-        Uses the configured WAN interfaces to find the most common public dst_ip
-        per address family. Stores the primary (IPv4) as 'wan_ip' and all WAN IPs
-        as 'wan_ips' list for exclusion from dashboard stats.
+        When UniFi API is enabled AND wan_ip_by_iface exists, derives wan_ips
+        from the map (no log computation). Otherwise computes per-interface
+        WAN IPs from logs via get_wan_ips_by_interface() and stores
+        wan_ip_by_iface automatically.
+
         Returns the primary detected WAN IP or None.
         """
         wan_interfaces = self.get_config('wan_interfaces', ['ppp0'])
         if not wan_interfaces:
             return None
 
-        # Detect most common public dst_ip per address family (v4 and v6)
-        detected = []
-        with self.get_conn() as conn:
-            with conn.cursor() as cur:
-                placeholders = ','.join(['%s'] * len(wan_interfaces))
-                cur.execute(f"""
-                    SELECT MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
-                        WHERE dst_ip IS NOT NULL AND {self._PRIVATE_IP_FILTER}
-                          AND family(dst_ip) = 4
-                    ) AS wan_ip4,
-                    MODE() WITHIN GROUP (ORDER BY host(dst_ip)) FILTER (
-                        WHERE dst_ip IS NOT NULL AND {self._PRIVATE_IP_FILTER}
-                          AND family(dst_ip) = 6
-                    ) AS wan_ip6
-                    FROM logs
-                    WHERE log_type = 'firewall'
-                      AND interface_in IN ({placeholders})
-                """, wan_interfaces)
-                row = cur.fetchone()
-                if row:
-                    if row[0]:
-                        detected.append(row[0])
-                    if row[1]:
-                        detected.append(row[1])
+        unifi_enabled = self.get_config('unifi_enabled', False)
+        wan_ip_by_iface = self.get_config('wan_ip_by_iface')
 
-        primary = detected[0] if detected else None
+        if unifi_enabled and wan_ip_by_iface:
+            # UniFi API is authoritative — derive from map, don't compute from logs
+            wan_ips = [wan_ip_by_iface[iface] for iface in wan_interfaces
+                       if iface in wan_ip_by_iface and wan_ip_by_iface[iface]]
+            primary = wan_ips[0] if wan_ips else None
+        else:
+            # Compute per-interface WAN IPs from logs
+            iface_ips = self.get_wan_ips_by_interface(wan_interfaces)
 
+            # Store wan_ip_by_iface (auto-populate for legacy installs)
+            if iface_ips:
+                current_map = self.get_config('wan_ip_by_iface')
+                if current_map != iface_ips:
+                    self.set_config('wan_ip_by_iface', iface_ips)
+                    logger.info("wan_ip_by_iface auto-populated from logs: %s", iface_ips)
+
+            # Derive ordered wan_ips following wan_interfaces order
+            wan_ips = [iface_ips[iface] for iface in wan_interfaces
+                       if iface in iface_ips and iface_ips[iface]]
+            primary = wan_ips[0] if wan_ips else None
+
+        # Persist primary wan_ip
         if primary:
             current = self.get_config('wan_ip')
             if primary != current:
                 self.set_config('wan_ip', primary)
                 logger.info("WAN IP detected and persisted: %s", primary)
 
-        current_list = self.get_config('wan_ips', [])
-        if sorted(detected) != sorted(current_list):
-            self.set_config('wan_ips', detected)
-            if len(detected) > 1:
-                logger.info("WAN IPs detected (dual-stack): %s", detected)
+        # Persist wan_ips list
+        current_list = self.get_config('wan_ips') or []
+        if sorted(wan_ips) != sorted(current_list):
+            self.set_config('wan_ips', wan_ips)
+            if len(wan_ips) > 1:
+                logger.info("WAN IPs detected (multi-WAN): %s", wan_ips)
 
         return primary
 
@@ -842,6 +845,23 @@ def get_config(db, key: str, default=None):
 def set_config(db, key: str, value):
     """Standalone helper: set config using Database instance."""
     return db.set_config(key, value)
+
+
+def get_wan_ips_from_config(db) -> list[str]:
+    """Derive ordered WAN IP list from wan_ip_by_iface + wan_interfaces.
+
+    Falls back to legacy 'wan_ips' config key if 'wan_ip_by_iface' doesn't
+    exist (pre-multi-WAN installs that haven't re-run the wizard).
+    Returns list of WAN IP strings (may be empty).
+    """
+    wan_ip_by_iface = db.get_config('wan_ip_by_iface')
+    if wan_ip_by_iface:
+        wan_interfaces = db.get_config('wan_interfaces', [])
+        # Derive ordered list following wan_interfaces order
+        return [wan_ip_by_iface[iface] for iface in wan_interfaces
+                if iface in wan_ip_by_iface and wan_ip_by_iface[iface]]
+    # Legacy fallback: use wan_ips config key directly
+    return db.get_config('wan_ips') or []
 
 
 def count_logs(db, log_type='firewall'):

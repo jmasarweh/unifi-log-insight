@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Query, HTTPException
 from psycopg2.extras import RealDictCursor
 
-from db import get_config
+from db import get_config, get_wan_ips_from_config
 from deps import get_conn, put_conn, enricher_db
 from query_helpers import parse_time_range
 
@@ -74,11 +74,8 @@ def get_stats(
             top_blocked_countries = [dict(r) for r in cur.fetchall()]
 
             # Top blocked external IPs (public src_ip only, exclude WAN IPs)
-            wan_ips = get_config(enricher_db, 'wan_ips') or []
-            wan_ip = get_config(enricher_db, 'wan_ip')
+            wan_ips = get_wan_ips_from_config(enricher_db)
             exclude_ips = ['0.0.0.0']
-            if wan_ip:
-                exclude_ips.append(wan_ip)
             for ip in wan_ips:
                 if ip not in exclude_ips:
                     exclude_ips.append(ip)
@@ -98,6 +95,7 @@ def get_stats(
             top_blocked_ips = [dict(r) for r in cur.fetchall()]
 
             # Top blocked internal IPs (private src_ip only — inter-VLAN / outbound blocks)
+            # Recency guard: cutoff-anchored (scales with time range, not fixed to NOW())
             cur.execute(
                 "WITH top_ips AS ("
                 "  SELECT src_ip, host(src_ip) as ip, COUNT(*) as count "
@@ -106,12 +104,16 @@ def get_stats(
                 "  AND (src_ip << '10.0.0.0/8' OR src_ip << '172.16.0.0/12' "
                 "      OR src_ip << '192.168.0.0/16') "
                 "  GROUP BY src_ip ORDER BY count DESC LIMIT 10"
-                ") SELECT t.ip, t.count, "
-                "  COALESCE(c.device_name, c.hostname, c.oui) as device_name "
+                ") SELECT t.ip, t.count, c.device_name "
                 "FROM top_ips t "
-                "LEFT JOIN unifi_clients c ON c.ip = t.src_ip "
+                "LEFT JOIN LATERAL ("
+                "    SELECT COALESCE(device_name, hostname, oui) as device_name "
+                "    FROM unifi_clients "
+                "    WHERE ip = t.src_ip AND last_seen >= %s - INTERVAL '1 day' "
+                "    ORDER BY last_seen DESC NULLS LAST LIMIT 1"
+                ") c ON true "
                 "ORDER BY t.count DESC",
-                [cutoff]
+                [cutoff, cutoff]
             )
             top_blocked_internal_ips = [dict(r) for r in cur.fetchall()]
 
@@ -212,7 +214,8 @@ def get_stats(
                 "AND host(dst_ip) != ALL(%s) "
                 "AND NOT (dst_ip << '10.0.0.0/8' OR dst_ip << '172.16.0.0/12' "
                 "    OR dst_ip << '192.168.0.0/16' OR dst_ip << '127.0.0.0/8' "
-                "    OR dst_ip << '169.254.0.0/16' OR dst_ip << '224.0.0.0/4' "
+                "    OR dst_ip << '0.0.0.0/8' OR dst_ip << '169.254.0.0/16' "
+                "    OR dst_ip << '224.0.0.0/4' OR dst_ip << '240.0.0.0/4' "
                 "    OR dst_ip << 'fe80::/10' OR dst_ip << 'fc00::/7' "
                 "    OR dst_ip << 'ff00::/8' OR dst_ip << '::1/128') "
                 "GROUP BY dst_ip ORDER BY count DESC LIMIT 10",
@@ -242,7 +245,8 @@ def get_stats(
             # Top active internal IPs (most allowed traffic by source, exclude gateway IPs)
             gateway_ips = get_config(enricher_db, 'gateway_ips') or []
             gw_filter = "  AND host(src_ip) != ALL(%s) " if gateway_ips else ""
-            params = [cutoff, gateway_ips] if gateway_ips else [cutoff]
+            # Params: [cutoff (WHERE), gateway_ips (gw_filter), cutoff (LATERAL recency)]
+            params = [cutoff, gateway_ips, cutoff] if gateway_ips else [cutoff, cutoff]
             cur.execute(
                 "WITH top_ips AS ("
                 "  SELECT src_ip, host(src_ip) as ip, COUNT(*) as count "
@@ -252,10 +256,14 @@ def get_stats(
                 "      OR src_ip << '192.168.0.0/16') "
                 + gw_filter +
                 "  GROUP BY src_ip ORDER BY count DESC LIMIT 10"
-                ") SELECT t.ip, t.count, "
-                "  COALESCE(c.device_name, c.hostname, c.oui) as device_name "
+                ") SELECT t.ip, t.count, c.device_name "
                 "FROM top_ips t "
-                "LEFT JOIN unifi_clients c ON c.ip = t.src_ip "
+                "LEFT JOIN LATERAL ("
+                "    SELECT COALESCE(device_name, hostname, oui) as device_name "
+                "    FROM unifi_clients "
+                "    WHERE ip = t.src_ip AND last_seen >= %s - INTERVAL '1 day' "
+                "    ORDER BY last_seen DESC NULLS LAST LIMIT 1"
+                ") c ON true "
                 "ORDER BY t.count DESC",
                 params
             )

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import UniFiConnectionForm from './UniFiConnectionForm'
 import WizardStepWAN from './WizardStepWAN'
 import WizardStepLabels from './WizardStepLabels'
@@ -6,8 +6,40 @@ import FirewallRules from './FirewallRules'
 import VpnNetworkTable from './VpnNetworkTable'
 import { fetchConfig, fetchUniFiNetworkConfig, fetchUniFiSettings, fetchNetworkSegments, saveSetupConfig } from '../api'
 import { suggestVpnType } from '../vpnUtils'
+import { IFACE_REGEX } from '../utils'
 
 const LABEL_REGEX = /[^a-zA-Z0-9 ._-]/g
+// Derive WAN sort order from networkgroup: WAN→1, WAN2→2, WAN3→3, etc.
+function wanGroupOrder(group) {
+  if (!group) return 999
+  if (group === 'WAN') return 1
+  const n = parseInt(group.slice(3), 10)
+  return isNaN(n) ? 999 : n
+}
+
+function buildWanEntries(wanIfaces) {
+  if (!wanIfaces?.length) return []
+  // Sort by WAN group order, active before inactive, original index as tie-breaker
+  const sorted = wanIfaces.map((w, i) => ({ ...w, _origIdx: i }))
+  sorted.sort((a, b) => {
+    const aOrder = wanGroupOrder(a.networkgroup)
+    const bOrder = wanGroupOrder(b.networkgroup)
+    if (aOrder !== bOrder) return aOrder - bOrder
+    const aActive = a.active ? 1 : 0
+    const bActive = b.active ? 1 : 0
+    if (aActive !== bActive) return bActive - aActive
+    return a._origIdx - b._origIdx
+  })
+  const claimed = new Set()
+  return sorted.map(w => {
+    if (w.physical_interface && !claimed.has(w.physical_interface)) {
+      claimed.add(w.physical_interface)
+      return w
+    }
+    // Collision or missing: clear so user enters it
+    return { ...w, physical_interface: '', detected_from: 'none' }
+  })
+}
 
 export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedded, onPathChange }) {
   const [step, setStep] = useState(1)
@@ -22,6 +54,9 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
   const [envHost, setEnvHost] = useState('')
   const [savedHost, setSavedHost] = useState('')
   const [savedApiKey, setSavedApiKey] = useState(false)
+  const [savedUsername, setSavedUsername] = useState(false)
+  const [savedControllerType, setSavedControllerType] = useState(null)
+  const [supportsFirewall, setSupportsFirewall] = useState(true)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
 
   // Full network config from UniFi API (for API-path steps 2-3)
@@ -31,6 +66,12 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
   const [editingWan, setEditingWan] = useState({})
   // VPN segments detected from logs (for API path step 3)
   const [vpnSegments, setVpnSegments] = useState([])
+  // Manual WAN entry (API path fallback when API returns no WANs)
+  const [manualWanInput, setManualWanInput] = useState('')
+  const [manualWanError, setManualWanError] = useState('')
+
+  // Ordered, de-duped WAN entries from API (drives rendering + state)
+  const wanEntries = useMemo(() => buildWanEntries(apiNetConfig?.wan_interfaces), [apiNetConfig])
 
   // Pre-populate with current config in reconfigure mode
   useEffect(() => {
@@ -53,6 +94,9 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
       else if (settings.api_key_set) setSavedApiKey(true)
       if (settings.host_source === 'env') setEnvHost(settings.host)
       if (settings.host && settings.host_source !== 'env') setSavedHost(settings.host)
+      if (settings.username_set) setSavedUsername(true)
+      if (settings.controller_type) setSavedControllerType(settings.controller_type)
+      if (settings.supports_firewall !== undefined) setSupportsFirewall(settings.supports_firewall)
       setSettingsLoaded(true)
     }).catch(() => setSettingsLoaded(true))
   }, [])
@@ -64,12 +108,13 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
 
   const getSteps = () => {
     if (wizardPath === 'unifi_api') {
-      return [
+      const steps = [
         { num: 1, label: 'UniFi Connection' },
         { num: 2, label: 'WAN Configuration' },
         { num: 3, label: 'Network Labels' },
-        { num: 4, label: 'Firewall Rules' },
       ]
+      if (supportsFirewall) steps.push({ num: 4, label: 'Firewall Rules' })
+      return steps
     }
     if (wizardPath === 'log_detection') {
       return [
@@ -90,31 +135,34 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
   const handleBack = () => setStep(s => Math.max(s - 1, 1))
 
   // Step 1: UniFi connection success
-  const handleUniFiSuccess = async () => {
+  const handleUniFiSuccess = async (connectionData) => {
     setWizardPath('unifi_api')
+
+    // Self-hosted controllers don't support firewall management
+    if (connectionData?.controller_type === 'self_hosted') {
+      setSupportsFirewall(false)
+    }
 
     // Auto-populate WAN + Networks from API
     try {
       const netConfig = await fetchUniFiNetworkConfig()
       setApiNetConfig(netConfig)
-      if (netConfig.wan_interfaces?.length) {
-        // Only select active WANs (those with a wan_ip); inactive WANs shown dimmed
-        setWanInterfaces(
-          netConfig.wan_interfaces.filter(w => w.active || w.wan_ip).map(w => w.physical_interface)
-        )
-        const newLabels = { ...interfaceLabels }
-        const totalWans = netConfig.wan_interfaces.length
-        netConfig.wan_interfaces.forEach((w, idx) => {
-          newLabels[w.physical_interface] = totalWans === 1 ? 'WAN' : `WAN ${idx + 1}`
+      const entries = buildWanEntries(netConfig.wan_interfaces)
+      const newLabels = { ...interfaceLabels }
+      if (entries.length) {
+        // Include all WANs (active + inactive)
+        setWanInterfaces(entries.map(w => w.physical_interface))
+        entries.forEach((w, idx) => {
+          newLabels[w.physical_interface] = entries.length === 1 ? 'WAN' : `WAN ${idx + 1}`
         })
         for (const n of netConfig.networks || []) {
           newLabels[n.interface] = n.name || n.interface
         }
         setInterfaceLabels(newLabels)
       }
-      // Also fetch VPN segments from logs
+      // Also fetch VPN segments from logs — pass ALL WAN interfaces
       try {
-        const wans = netConfig.wan_interfaces?.filter(w => w.active || w.wan_ip).map(w => w.physical_interface) || []
+        const wans = entries.map(w => w.physical_interface)
         const segData = await fetchNetworkSegments(wans)
         const vpnSegs = (segData.segments || []).filter(s => s.is_vpn)
         setVpnSegments(vpnSegs)
@@ -192,6 +240,34 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
     setInterfaceLabels(newLabels)
   }
 
+  // API path: add a manual WAN (fallback when API returns no WANs)
+  const handleAddManualWan = () => {
+    const trimmed = manualWanInput.trim()
+    if (!trimmed) return
+    if (!IFACE_REGEX.test(trimmed)) {
+      setManualWanError('Interface name must start with letters followed by a number (e.g., ppp0, eth4, usb0).')
+      return
+    }
+    if (wanInterfaces.includes(trimmed)) {
+      setManualWanError('This interface is already in the WAN list.')
+      return
+    }
+    setManualWanError('')
+    const label = `WAN ${wanInterfaces.length + 1}`
+    setWanInterfaces(prev => [...prev, trimmed])
+    setInterfaceLabels(prev => ({ ...prev, [trimmed]: label }))
+    setManualWanInput('')
+  }
+
+  const removeManualWan = (iface) => {
+    setWanInterfaces(prev => prev.filter(i => i !== iface))
+    setInterfaceLabels(prev => {
+      const next = { ...prev }
+      delete next[iface]
+      return next
+    })
+  }
+
   // API path: update a network label
   const handleApiNetworkLabelChange = (iface, value) => {
     setInterfaceLabels(prev => ({ ...prev, [iface]: value.replace(LABEL_REGEX, '') }))
@@ -202,13 +278,26 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
     setSaving(true)
     setSaveError(null)
     try {
-      // wanInterfaces already only contains active WANs (inactive excluded at selection time)
-      await saveSetupConfig({
+      // wanInterfaces contains all WANs (active + inactive)
+      const payload = {
         wan_interfaces: wanInterfaces,
         interface_labels: interfaceLabels,
         vpn_networks: vpnNetworks,
         wizard_path: wizardPath,
-      })
+      }
+      // Include wan_ip_by_iface for UniFi API path
+      if (wizardPath === 'unifi_api' && wanEntries.length) {
+        const wanIpByIface = {}
+        wanEntries.forEach((w, idx) => {
+          if (w.wan_ip) {
+            wanIpByIface[wanInterfaces[idx]] = w.wan_ip
+          }
+        })
+        if (Object.keys(wanIpByIface).length) {
+          payload.wan_ip_by_iface = wanIpByIface
+        }
+      }
+      await saveSetupConfig(payload)
       onComplete()
     } catch (err) {
       setSaveError(err.message)
@@ -284,11 +373,19 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                   envHost={envHost}
                   savedHost={savedHost}
                   savedApiKey={savedApiKey}
+                  savedUsername={savedUsername}
+                  savedControllerType={savedControllerType}
                 />
               )}
 
               {/* Step 2: WAN Configuration (API path) */}
-              {step === 2 && wizardPath === 'unifi_api' && (
+              {step === 2 && wizardPath === 'unifi_api' && (() => {
+                const manualWans = wanInterfaces.slice(wanEntries.length)
+                const hasInvalidWan = (wanEntries.length > 0 && wanEntries.some((_, idx) => {
+                  const iface = editingWan[idx] !== undefined ? editingWan[idx].trim() : wanInterfaces[idx]
+                  return !iface || !IFACE_REGEX.test(iface)
+                })) || manualWans.some(iface => !iface || !IFACE_REGEX.test(iface))
+                return (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-xl font-semibold text-gray-200 mb-2">WAN Configuration</h2>
@@ -302,118 +399,137 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                     Auto-detected from UniFi Controller
                   </div>
 
-                  {(apiNetConfig?.wan_interfaces || []).some(w => (w.active || !!w.wan_ip) && w.detected_from !== 'device') && (
-                    <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
-                      <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                      </svg>
-                      <div>
-                        <p className="text-xs text-yellow-400/90 mb-1.5">
-                          Could not detect the physical interface from your gateway &mdash; using a best guess.
-                          Verify it matches your hardware:
-                        </p>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-gray-400 font-mono" style={{ maxWidth: '16rem' }}>
-                          <span>UDR (PPPoE):</span><span>ppp0</span>
-                          <span>UDR (DHCP):</span><span>eth3</span>
-                          <span>UDM / UDM-SE:</span><span>eth8</span>
-                          <span>UDM-Pro:</span><span>eth8 or eth9</span>
-                          <span>USG:</span><span>eth0</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   <div className="space-y-3">
-                    {(() => {
-                      let activeIdx = 0
-                      return (apiNetConfig?.wan_interfaces || []).map((w) => {
-                        const isActive = w.active || !!w.wan_ip
-                        const wanIdx = isActive ? activeIdx++ : -1
-                        const currentIface = wanIdx >= 0 ? wanInterfaces[wanIdx] : w.physical_interface
-                        const isGuess = w.detected_from !== 'device'
-                        return (
-                          <div key={w.networkgroup || w.name} className="p-4 rounded-lg border border-gray-700">
-                            <div className="flex items-center gap-3 mb-3">
+                    {wanEntries.map((w, idx) => {
+                      const isActive = w.active || !!w.wan_ip
+                      const currentIface = wanInterfaces[idx] || w.physical_interface
+                      const isGuess = w.detected_from !== 'device'
+                      const ifaceValue = editingWan[idx] !== undefined ? editingWan[idx] : currentIface
+                      const ifaceInvalid = ifaceValue && !IFACE_REGEX.test(ifaceValue)
+                      return (
+                        <div key={w.networkgroup || w.name} className="p-4 rounded-lg border border-gray-700">
+                          <div className="flex items-center gap-3 mb-3">
+                            <span className="text-sm font-semibold text-gray-200">{w.name.replace(/\s*\(WAN\d*\)\s*$/i, '')}</span>
+                            {interfaceLabels[currentIface] && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
+                                {interfaceLabels[currentIface]}
+                              </span>
+                            )}
+                            {w.wan_ip && (
+                              <span className="text-xs font-mono text-gray-400">{w.wan_ip}</span>
+                            )}
+                            {!isActive && (
+                              <span className="text-xs text-yellow-400/80">Inactive</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-4 text-xs text-gray-400">
+                            <span>Type: {w.type || 'unknown'}</span>
+                            <span>|</span>
+                            <div className="flex items-center gap-2">
+                              <label className="text-gray-400">Interface:</label>
                               <input
-                                type="checkbox"
-                                readOnly
-                                checked={isActive}
-                                disabled={!isActive}
-                                className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 pointer-events-none"
+                                type="text"
+                                value={ifaceValue}
+                                onChange={e => handleApiWanInterfaceChange(idx, e.target.value)}
+                                onBlur={() => commitWanEdit(idx)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.target.blur() } }}
+                                className={`w-24 px-2 py-1 rounded bg-gray-900 border font-mono text-xs text-gray-200 focus:border-blue-500 focus:outline-none ${
+                                  ifaceInvalid ? 'border-red-500/50' :
+                                  isGuess && currentIface === w.physical_interface ? 'border-yellow-500/50' : 'border-gray-600'
+                                }`}
                               />
-                              <span className="text-sm font-semibold text-gray-200">{w.name.replace(/\s*\(WAN\d*\)\s*$/i, '')}</span>
-                              {interfaceLabels[currentIface] && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 shrink-0">
-                                  {interfaceLabels[currentIface]}
-                                </span>
+                              {currentIface !== w.physical_interface && (
+                                <button
+                                  type="button"
+                                  onClick={() => resetWanInterface(idx, w.physical_interface)}
+                                  className="text-gray-500 hover:text-gray-300 transition-colors"
+                                  title={`Reset to ${w.physical_interface}`}
+                                >
+                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                    <path fillRule="evenodd" d="M7.793 2.232a.75.75 0 01-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 010 10.75H10.75a.75.75 0 010-1.5h2.875a3.875 3.875 0 000-7.75H3.622l4.146 3.957a.75.75 0 01-1.036 1.085l-5.5-5.25a.75.75 0 010-1.085l5.5-5.25a.75.75 0 011.06.025z" clipRule="evenodd" />
+                                  </svg>
+                                </button>
                               )}
-                              {w.wan_ip && (
-                                <span className="text-xs font-mono text-gray-400">{w.wan_ip}</span>
-                              )}
-                              {!isActive && (
-                                <span className="text-xs text-yellow-400/80">Inactive</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-4 ml-7 text-xs text-gray-400">
-                              <span>Type: {w.type || 'unknown'}</span>
-                              {isActive && (
-                                <>
-                                  <span>|</span>
-                                  <div className="flex items-center gap-2">
-                                    <label className="text-gray-400">Interface:</label>
-                                    <input
-                                      type="text"
-                                      value={editingWan[wanIdx] !== undefined ? editingWan[wanIdx] : currentIface}
-                                      onChange={e => handleApiWanInterfaceChange(wanIdx, e.target.value)}
-                                      onBlur={() => commitWanEdit(wanIdx)}
-                                      onKeyDown={e => { if (e.key === 'Enter') { e.target.blur() } }}
-                                      className={`w-24 px-2 py-1 rounded bg-gray-900 border font-mono text-xs text-gray-200 focus:border-blue-500 focus:outline-none ${
-                                        isGuess && currentIface === w.physical_interface ? 'border-yellow-500/50' : 'border-gray-600'
-                                      }`}
-                                    />
-                                    {currentIface !== w.physical_interface && (
-                                      <button
-                                        type="button"
-                                        onClick={() => resetWanInterface(wanIdx, w.physical_interface)}
-                                        className="text-gray-500 hover:text-gray-300 transition-colors"
-                                        title={`Reset to ${w.physical_interface}`}
-                                      >
-                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                                          <path fillRule="evenodd" d="M7.793 2.232a.75.75 0 01-.025 1.06L3.622 7.25h10.003a5.375 5.375 0 010 10.75H10.75a.75.75 0 010-1.5h2.875a3.875 3.875 0 000-7.75H3.622l4.146 3.957a.75.75 0 01-1.036 1.085l-5.5-5.25a.75.75 0 010-1.085l5.5-5.25a.75.75 0 011.06.025z" clipRule="evenodd" />
-                                        </svg>
-                                      </button>
-                                    )}
-                                    {currentIface !== w.physical_interface
-                                      ? <span className="text-gray-500">(user edited)</span>
-                                      : isGuess
-                                        ? <span className="text-yellow-400/80">(best guess &mdash; edit if needed)</span>
-                                        : <span className="text-emerald-400/80">Verified from Gateway</span>
-                                    }
-                                  </div>
-                                </>
-                              )}
+                              {currentIface !== w.physical_interface
+                                ? <span className="text-gray-500">(user edited)</span>
+                                : isGuess
+                                  ? <span className="text-yellow-400/80">(best guess &mdash; edit if needed)</span>
+                                  : <span className="text-emerald-400/80">Verified from Gateway</span>
+                              }
                             </div>
                           </div>
-                        )
-                      })
-                    })()}
+                          {ifaceInvalid && (
+                            <p className="text-[11px] text-red-400 mt-1.5">
+                              Interface name must start with letters followed by a number (e.g., ppp0, eth4, usb0).
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
 
-                  {(!apiNetConfig?.wan_interfaces?.length) && (
-                    <div className="text-center py-8 text-gray-400 text-sm">
-                      No WAN interfaces detected from your controller.
+                  {wanEntries.length === 0 && (
+                    <div>
+                      <p className="text-sm text-gray-400 mb-3">
+                        No WAN interfaces detected from your controller. Add your WAN interface manually.
+                      </p>
+                      {manualWans.length > 0 && (
+                        <div className="space-y-2 mb-3">
+                          {manualWans.map(iface => (
+                            <div key={iface} className="flex items-center gap-3 px-4 py-2.5 border border-gray-700 rounded-lg">
+                              <span className="text-sm font-mono font-semibold text-gray-200">{iface}</span>
+                              {interfaceLabels[iface] && (
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                  {interfaceLabels[iface]}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => removeManualWan(iface)}
+                                className="text-gray-500 hover:text-red-400 text-xs ml-auto transition-colors"
+                                title="Remove"
+                              >
+                                &#x2715;
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="text"
+                          value={manualWanInput}
+                          onChange={(e) => { setManualWanInput(e.target.value); if (manualWanError) setManualWanError('') }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleAddManualWan()}
+                          placeholder="e.g., eth0, ppp0, eth8"
+                          className="flex-1 max-w-xs px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm font-mono text-gray-300 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                        />
+                        <button
+                          onClick={handleAddManualWan}
+                          disabled={!manualWanInput.trim()}
+                          className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                            manualWanInput.trim()
+                              ? 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+                              : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {manualWanError && (
+                        <p className="text-[11px] text-red-400 mt-1.5">{manualWanError}</p>
+                      )}
                     </div>
                   )}
 
-                  {(apiNetConfig?.wan_interfaces || []).some(w => !w.active && !w.wan_ip) && (
-                    <div className="flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
-                      <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  {wanEntries.some(w => !w.active && !w.wan_ip) && (
+                    <div className="flex items-start gap-2 bg-blue-500/10 border border-blue-500/30 rounded px-3 py-2">
+                      <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <p className="text-xs text-yellow-400/90">
-                        Inactive WAN interfaces are excluded from labeling. If you activate
-                        them later, re-run the setup wizard via Settings &rarr; Reconfigure
-                        to label them correctly.
+                      <p className="text-xs text-blue-400/90">
+                        Inactive WANs can still receive traffic (e.g. failover). Configure the interface name
+                        so logs from that interface are labelled correctly.
                       </p>
                     </div>
                   )}
@@ -427,13 +543,19 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                     </button>
                     <button
                       onClick={() => setStep(3)}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white transition-all"
+                      disabled={hasInvalidWan}
+                      className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
+                        hasInvalidWan
+                          ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
+                          : 'bg-blue-500 hover:bg-blue-600 text-white'
+                      }`}
                     >
                       Next
                     </button>
                   </div>
                 </div>
-              )}
+                )
+              })()}
 
               {/* Step 2: WAN Detection (log detection path) */}
               {step === 2 && wizardPath === 'log_detection' && (
@@ -464,7 +586,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                   </div>
 
                   {/* ── WAN Interfaces ──────────────────────────────── */}
-                  {(apiNetConfig?.wan_interfaces || []).some(w => w.wan_ip) && (
+                  {(wanEntries.length > 0 || wanInterfaces.length > wanEntries.length) && (
                     <section>
                       <h3 className="text-sm font-semibold text-gray-300 mb-2 uppercase tracking-wider">WAN Interfaces</h3>
                       <div className="overflow-hidden rounded-lg border border-gray-700">
@@ -477,8 +599,9 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                             </tr>
                           </thead>
                           <tbody>
-                            {(apiNetConfig?.wan_interfaces || []).filter(w => w.wan_ip).map((w, activeIdx) => {
-                              const iface = wanInterfaces[activeIdx] || w.physical_interface
+                            {wanEntries.map((w, idx) => {
+                              const isActive = w.active || !!w.wan_ip
+                              const iface = wanInterfaces[idx] || w.physical_interface
                               return (
                                 <tr key={iface} className="border-t border-gray-800">
                                   <td className="px-4 py-2.5">
@@ -487,22 +610,53 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
                                         WAN
                                       </span>
+                                      {!isActive && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+                                          Inactive
+                                        </span>
+                                      )}
                                     </div>
                                   </td>
-                                  <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{w.wan_ip}</td>
+                                  <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{w.wan_ip || '\u2014'}</td>
                                   <td className="px-4 py-2.5">
                                     <input
                                       type="text"
                                       maxLength={11}
                                       value={interfaceLabels[iface] || ''}
                                       onChange={e => handleApiNetworkLabelChange(iface, e.target.value)}
-                                      placeholder={(apiNetConfig?.wan_interfaces || []).filter(x => x.wan_ip).length === 1 ? 'e.g., WAN' : `e.g., WAN ${activeIdx + 1}`}
+                                      placeholder={wanEntries.length === 1 && wanInterfaces.length === 1 ? 'e.g., WAN' : `e.g., WAN ${idx + 1}`}
                                       className="w-32 px-2 py-1 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
                                     />
                                   </td>
                                 </tr>
                               )
                             })}
+                            {wanInterfaces.slice(wanEntries.length).map((iface, i) => (
+                              <tr key={iface} className="border-t border-gray-800">
+                                <td className="px-4 py-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono text-gray-300">{iface}</span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                                      WAN
+                                    </span>
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-700 text-gray-400 border border-gray-600">
+                                      Manual
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-2.5 font-mono text-xs text-gray-400">{'\u2014'}</td>
+                                <td className="px-4 py-2.5">
+                                  <input
+                                    type="text"
+                                    maxLength={11}
+                                    value={interfaceLabels[iface] || ''}
+                                    onChange={e => handleApiNetworkLabelChange(iface, e.target.value)}
+                                    placeholder={`e.g., WAN ${wanEntries.length + i + 1}`}
+                                    className="w-32 px-2 py-1 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                                  />
+                                </td>
+                              </tr>
+                            ))}
                           </tbody>
                         </table>
                       </div>
@@ -600,7 +754,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                     </section>
                   )}
 
-                  {(!apiNetConfig?.wan_interfaces?.some(w => w.wan_ip) && !apiNetConfig?.networks?.length && !vpnSegments.length) && (
+                  {(!wanInterfaces.length && !apiNetConfig?.networks?.length && !vpnSegments.length) && (
                     <div className="text-center py-8 text-gray-400 text-sm">
                       No networks detected from your controller.
                     </div>
@@ -614,12 +768,18 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                       Back
                     </button>
                     <button
-                      onClick={() => setStep(4)}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white transition-all"
+                      onClick={supportsFirewall ? () => setStep(4) : handleFinish}
+                      disabled={!supportsFirewall && saving}
+                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 transition-all"
                     >
-                      Next
+                      {supportsFirewall ? 'Next' : (saving ? 'Saving...' : 'Finish')}
                     </button>
                   </div>
+                  {!supportsFirewall && saveError && (
+                    <div className="mt-4 px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-xs text-red-400">
+                      Failed to save: {saveError}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -645,8 +805,8 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                 </div>
               )}
 
-              {/* Step 4: Firewall Rules (API path only) */}
-              {step === 4 && wizardPath === 'unifi_api' && (
+              {/* Step 4: Firewall Rules (API path + Cloud Gateway only) */}
+              {step === 4 && wizardPath === 'unifi_api' && supportsFirewall && (
                 <div className="space-y-6">
                   <div>
                     <h2 className="text-lg font-semibold text-gray-200 mb-1">Firewall Rules Syslog</h2>

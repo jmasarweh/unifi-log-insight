@@ -470,8 +470,8 @@ class Enricher:
             self.abuseipdb.exclude_ip(wan_ip)
             # Refresh full wan_ips + gateway_ips from DB
             if self._db:
-                from db import get_config
-                for ip in get_config(self._db, 'wan_ips') or []:
+                from db import get_config, get_wan_ips_from_config
+                for ip in get_wan_ips_from_config(self._db):
                     self._excluded_ips.add(ip)
                     if ip not in self.abuseipdb._excluded_ips:
                         self.abuseipdb.exclude_ip(ip)

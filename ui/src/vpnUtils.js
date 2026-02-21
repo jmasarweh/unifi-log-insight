@@ -9,13 +9,15 @@
 // Interface prefixes that identify VPN tunnels
 export const VPN_PREFIXES = ['wgsrv', 'wgclt', 'wgsts', 'tlprt', 'vti', 'tun', 'vtun', 'l2tp']
 
-// Prefix → type abbreviation (only for prefixes where type is unambiguous)
+// Prefix → type abbreviation
 export const VPN_PREFIX_BADGES = {
   wgsrv: 'WGD SRV',
   wgclt: 'WGD CLT',
   wgsts: 'S MAGIC',
   tlprt: 'TELEPORT',
   vti: 'S2S IPSEC',
+  tun: 'OVPN TUN',
+  vtun: 'OVPN VTN',
   l2tp: 'L2TP SRV',
 }
 
@@ -25,6 +27,8 @@ export const BADGE_LABELS = {
   'WGD CLT':   'WireGuard Client',
   'OVPN SRV':  'OpenVPN Server',
   'OVPN CLT':  'OpenVPN Client',
+  'OVPN TUN':  'OpenVPN / Tunnel 1',
+  'OVPN VTN':  'OpenVPN / Tunnel 2',
   'L2TP SRV':  'L2TP Server',
   'TELEPORT':  'Teleport',
   'S MAGIC':   'Site Magic',
@@ -33,7 +37,7 @@ export const BADGE_LABELS = {
 
 // Ordered list of VPN type choices for dropdowns
 export const BADGE_CHOICES = [
-  'WGD SRV', 'WGD CLT', 'OVPN SRV', 'OVPN CLT', 'L2TP SRV', 'TELEPORT', 'S MAGIC', 'S2S IPSEC',
+  'WGD SRV', 'WGD CLT', 'OVPN SRV', 'OVPN CLT', 'OVPN TUN', 'OVPN VTN', 'L2TP SRV', 'TELEPORT', 'S MAGIC', 'S2S IPSEC',
 ]
 
 // Interface prefix → human-readable description (shown under interface name)
@@ -43,15 +47,15 @@ export const VPN_PREFIX_DESCRIPTIONS = {
   wgsts: 'Site Magic',
   tlprt: 'Teleport',
   vti:   'Site-to-Site IPsec',
-  tun:   'OpenVPN / Tunnel',
-  vtun:  'OpenVPN / Tunnel',
+  tun:   'OpenVPN / Tunnel 1',
+  vtun:  'OpenVPN / Tunnel 2',
   l2tp:  'L2TP Server',
 }
 
-// Type abbreviation → interface prefix (reverse of VPN_PREFIX_BADGES, plus ambiguous types)
+// Type abbreviation → interface prefix (reverse of VPN_PREFIX_BADGES)
 export const BADGE_TO_PREFIX = {
-  'WGD SRV': 'wgsrv', 'WGD CLT': 'wgclt', 'OVPN SRV': 'tun',
-  'OVPN CLT': 'tun', 'L2TP SRV': 'l2tp', 'TELEPORT': 'tlprt',
+  'WGD SRV': 'wgsrv', 'WGD CLT': 'wgclt', 'OVPN TUN': 'tun',
+  'OVPN VTN': 'vtun', 'L2TP SRV': 'l2tp', 'TELEPORT': 'tlprt',
   'S MAGIC': 'wgsts', 'S2S IPSEC': 'vti',
 }
 
@@ -80,7 +84,7 @@ export function isVpnInterface(iface) {
 
 /**
  * Return the BADGE_CHOICES value for a known VPN prefix.
- * e.g. wgsrv1 → "WGD SRV", tlprt0 → "TELEPORT", tun0 → "" (unknown)
+ * e.g. wgsrv1 → "WGD SRV", tlprt0 → "TELEPORT", tun0 → "OVPN TUN"
  */
 export function suggestVpnType(iface) {
   for (const [prefix, badge] of Object.entries(VPN_PREFIX_BADGES)) {

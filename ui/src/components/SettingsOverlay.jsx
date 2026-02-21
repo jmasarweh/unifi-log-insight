@@ -11,7 +11,7 @@ function getVlanId(iface) {
   return match ? parseInt(match[1]) : null
 }
 
-const SECTIONS = [
+const BASE_SECTIONS = [
   {
     id: 'wan-networks',
     label: 'WAN & Networks',
@@ -43,7 +43,7 @@ const SECTIONS = [
   },
 ]
 
-export default function SettingsOverlay({ onClose, startInReconfig }) {
+export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [] }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
   const [netConfig, setNetConfig] = useState(null)
@@ -60,6 +60,8 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
       }
     }).catch(() => {})
   }, [])
+
+  const sections = BASE_SECTIONS
 
   const savedWanInterfaces = config?.wan_interfaces || []
   const labels = config?.interface_labels || {}
@@ -82,7 +84,7 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
     : savedWanInterfaces.map(iface => ({
         iface,
         name: labels[iface] || iface,
-        wanIp: null,
+        wanIp: (config?.wan_ip_by_iface || {})[iface] || null,
         active: null,
         type: null,
       }))
@@ -158,7 +160,7 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
       <main className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
         <nav className="w-52 shrink-0 border-r border-gray-800 bg-gray-950 py-4 overflow-y-auto">
-          {SECTIONS.map(section => (
+          {sections.map(section => (
             <button
               key={section.id}
               onClick={() => {
@@ -204,11 +206,13 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
                     vpnNetworks={config?.vpn_networks || {}}
                     interfaceLabels={config?.interface_labels || {}}
                     onVpnSaved={() => fetchConfig().then(setConfig).catch(() => {})}
+                    unlabeledVpn={unlabeledVpn}
                   />
                 )}
                 {activeSection === 'firewall' && (
                   <SettingsFirewall
                     unifiEnabled={unifiEnabled}
+                    supportsFirewall={unifiSettings?.supports_firewall !== false}
                     onRestartWizard={handleRestartWizard}
                   />
                 )}

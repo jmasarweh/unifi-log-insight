@@ -202,12 +202,12 @@ class BackfillTask:
 
         Gated by 'enrichment_wan_fix_pending' config flag — runs once.
         """
-        from db import get_config, set_config
+        from db import get_config, set_config, get_wan_ips_from_config
 
         if not get_config(self.db, 'enrichment_wan_fix_pending', False):
             return 0
 
-        wan_ips = get_config(self.db, 'wan_ips') or []
+        wan_ips = get_wan_ips_from_config(self.db)
         if not wan_ips:
             # No WAN IPs known yet — skip and retry next cycle
             return 0
@@ -304,12 +304,12 @@ class BackfillTask:
         Gated by 'abuse_hostname_fix_done' config flag — runs once.
         """
         from psycopg2.extras import RealDictCursor
-        from db import get_config, set_config
+        from db import get_config, set_config, get_wan_ips_from_config
 
         if get_config(self.db, 'abuse_hostname_fix_done', False):
             return 0
 
-        wan_ips = get_config(self.db, 'wan_ips') or []
+        wan_ips = get_wan_ips_from_config(self.db)
         if not wan_ips:
             # No WAN IPs known yet — skip and retry next cycle
             return 0
@@ -424,8 +424,8 @@ class BackfillTask:
         the remote party's threat data.
         Returns number of rows updated.
         """
-        from db import get_config
-        wan_ips = get_config(self.db, 'wan_ips') or []
+        from db import get_wan_ips_from_config
+        wan_ips = get_wan_ips_from_config(self.db)
 
         with self.db.get_conn() as conn:
             with conn.cursor() as cur:
@@ -479,8 +479,8 @@ class BackfillTask:
         Two-pass: src_ip first (skip WAN IPs), then dst_ip for remaining gaps.
         Returns number of rows updated.
         """
-        from db import get_config
-        wan_ips = get_config(self.db, 'wan_ips') or []
+        from db import get_wan_ips_from_config
+        wan_ips = get_wan_ips_from_config(self.db)
 
         with self.db.get_conn() as conn:
             with conn.cursor() as cur:

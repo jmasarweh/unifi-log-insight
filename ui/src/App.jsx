@@ -5,7 +5,7 @@ import SettingsOverlay from './components/SettingsOverlay'
 import { DashboardSkeleton } from './components/Dashboard'
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'))
-import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, fetchInterfaces } from './api'
+import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dismissVpnToast, fetchInterfaces } from './api'
 import { loadInterfaceLabels } from './utils'
 import { isVpnInterface } from './vpnUtils'
 
@@ -62,6 +62,8 @@ export default function App() {
   const [showMigrationBanner, setShowMigrationBanner] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showVpnToast, setShowVpnToast] = useState(false)
+  const [unlabeledVpn, setUnlabeledVpn] = useState([])
+  const [showWanToast, setShowWanToast] = useState(false)
 
   const reloadConfig = () => {
     return fetchConfig().then(cfg => {
@@ -126,11 +128,22 @@ export default function App() {
         if (vpnNets[i.name]) return false
         return isVpnInterface(i.name)
       })
+      setUnlabeledVpn(unlabeled)
       if (!unlabeled.length) { setShowVpnToast(false); return }
-      const dismissed = localStorage.getItem('vpn_toast_dismissed')
-      if (dismissed && Date.now() - parseInt(dismissed) < 6 * 3600 * 1000) return
+      if (config.vpn_toast_dismissed) return
       setShowVpnToast(true)
     }).catch(() => {})
+  }, [config, configLoaded])
+
+  // Prompt multi-WAN users to reconfigure when WAN IP mapping is missing
+  useEffect(() => {
+    if (!config || !configLoaded) return
+    if ((config.wan_interfaces || []).length < 2) return
+    const ipMap = config.wan_ip_by_iface || {}
+    if (Object.keys(ipMap).length > 0) return // Already has WAN IP mapping
+    const dismissed = localStorage.getItem('wan_toast_dismissed')
+    if (dismissed && Date.now() - parseInt(dismissed) < 7 * 24 * 3600 * 1000) return
+    setShowWanToast(true)
   }, [config, configLoaded])
 
   useEffect(() => {
@@ -183,6 +196,7 @@ export default function App() {
         setSettingsReconfig(false)
       }}
       startInReconfig={settingsReconfig}
+      unlabeledVpn={unlabeledVpn}
     />
   }
 
@@ -263,23 +277,51 @@ export default function App() {
         </div>
       )}
 
+      {/* WAN detection toast */}
+      {showWanToast && (
+        <div className="flex items-center justify-between px-4 py-2 bg-blue-500/10 border-b border-blue-500/30 text-xs text-blue-400">
+          <span>
+            Multiple WAN interfaces detected without IP mapping.{' '}
+            <button
+              onClick={() => { setShowWanToast(false); setSettingsReconfig(true); setShowSettings(true) }}
+              className="underline hover:text-blue-300"
+            >
+              Reconfigure to resolve WAN IPs
+            </button>
+          </span>
+          <button
+            onClick={() => {
+              setShowWanToast(false)
+              localStorage.setItem('wan_toast_dismissed', String(Date.now()))
+            }}
+            className="text-blue-400 hover:text-blue-300 ml-4"
+          >
+            &#x2715;
+          </button>
+        </div>
+      )}
+
       {/* VPN toast */}
       {showVpnToast && (
         <div className="flex items-center justify-between px-4 py-2 bg-teal-500/10 border-b border-teal-500/30 text-xs text-teal-400">
           <span>
-            Unlabeled VPN networks found!{' '}
+            Unlabeled VPN networks found.{' '}
             <button
               onClick={() => { setShowVpnToast(false); setShowSettings(true) }}
               className="underline hover:text-teal-300"
             >
               Configure them here
             </button>
+            {' | '}
+            <button
+              onClick={() => { setShowVpnToast(false); dismissVpnToast().catch(() => {}) }}
+              className="underline hover:text-teal-300"
+            >
+              Dismiss
+            </button>
           </span>
           <button
-            onClick={() => {
-              setShowVpnToast(false)
-              localStorage.setItem('vpn_toast_dismissed', String(Date.now()))
-            }}
+            onClick={() => setShowVpnToast(false)}
             className="text-teal-400 hover:text-teal-300 ml-4"
           >
             &#x2715;

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from psycopg2.extras import RealDictCursor
 
-from db import get_config
+from db import get_config, get_wan_ips_from_config
 from deps import get_conn, put_conn, enricher_db
 from parsers import VPN_PREFIX_DESCRIPTIONS
 from query_helpers import build_log_query
@@ -148,9 +148,18 @@ def get_logs(
                             d2.device_name, d2.model) AS dst_device_name
                     FROM page
                     LEFT JOIN unifi_clients c1 ON c1.mac = page.mac_address
-                    LEFT JOIN unifi_clients c2 ON c2.ip = page.dst_ip
+                    -- No recency filter: log queries resolve names across all time
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, hostname, oui
+                        FROM unifi_clients WHERE ip = page.dst_ip
+                        ORDER BY last_seen DESC NULLS LAST LIMIT 1
+                    ) c2 ON true
                     LEFT JOIN unifi_devices d1 ON d1.mac = page.mac_address
-                    LEFT JOIN unifi_devices d2 ON d2.ip = page.dst_ip
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, model
+                        FROM unifi_devices WHERE ip = page.dst_ip
+                        ORDER BY updated_at DESC NULLS LAST LIMIT 1
+                    ) d2 ON true
                     ORDER BY page.{sort_col} {sort_dir}""",
                 params + [per_page, offset]
             )
@@ -211,7 +220,7 @@ def get_logs(
 
 @router.get("/api/logs/{log_id}")
 def get_log(log_id: int):
-    wan_ips = get_config(enricher_db, 'wan_ips') or []
+    wan_ips = get_wan_ips_from_config(enricher_db)
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -274,9 +283,17 @@ def get_log(log_id: int):
                 LEFT JOIN ip_threats t2 ON t2.ip = l.dst_ip
                     AND NOT (l.dst_ip = ANY(%s::inet[]))
                 LEFT JOIN unifi_clients c1 ON c1.mac = l.mac_address
-                LEFT JOIN unifi_clients c2 ON c2.ip = l.dst_ip
+                LEFT JOIN LATERAL (
+                    SELECT device_name, hostname, oui
+                    FROM unifi_clients WHERE ip = l.dst_ip
+                    ORDER BY last_seen DESC NULLS LAST LIMIT 1
+                ) c2 ON true
                 LEFT JOIN unifi_devices d1 ON d1.mac = l.mac_address
-                LEFT JOIN unifi_devices d2 ON d2.ip = l.dst_ip
+                LEFT JOIN LATERAL (
+                    SELECT device_name, model
+                    FROM unifi_devices WHERE ip = l.dst_ip
+                    ORDER BY updated_at DESC NULLS LAST LIMIT 1
+                ) d2 ON true
                 WHERE l.id = %s
             """, [wan_ips, wan_ips, log_id])
             row = cur.fetchone()
@@ -393,9 +410,17 @@ def export_csv_endpoint(
                             d2.device_name, d2.model) AS dst_device_name
                     FROM filtered f
                     LEFT JOIN unifi_clients c1 ON c1.mac = f.mac_address
-                    LEFT JOIN unifi_clients c2 ON c2.ip = f.dst_ip
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, hostname, oui
+                        FROM unifi_clients WHERE ip = f.dst_ip
+                        ORDER BY last_seen DESC NULLS LAST LIMIT 1
+                    ) c2 ON true
                     LEFT JOIN unifi_devices d1 ON d1.mac = f.mac_address
-                    LEFT JOIN unifi_devices d2 ON d2.ip = f.dst_ip
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, model
+                        FROM unifi_devices WHERE ip = f.dst_ip
+                        ORDER BY updated_at DESC NULLS LAST LIMIT 1
+                    ) d2 ON true
                     ORDER BY f.timestamp DESC""",
                 params + [limit]
             )

@@ -32,6 +32,8 @@ def get_current_config():
         "upgrade_v2_dismissed": get_config(enricher_db, "upgrade_v2_dismissed", False),
         "unifi_enabled": unifi_api.enabled,
         "vpn_networks": get_config(enricher_db, "vpn_networks", {}),
+        "wan_ip_by_iface": get_config(enricher_db, "wan_ip_by_iface", {}),
+        "vpn_toast_dismissed": get_config(enricher_db, "vpn_toast_dismissed", False),
     }
 
 
@@ -212,6 +214,28 @@ def complete_setup(body: dict):
         set_config(enricher_db, "unifi_enabled", True)
         unifi_api.reload_config()
 
+    # Persist wan_ip_by_iface and derive wan_ips / wan_ip
+    if "wan_ip_by_iface" in body and body["wan_ip_by_iface"]:
+        # UniFi API path: UI provides the map
+        wan_ip_by_iface = body["wan_ip_by_iface"]
+        set_config(enricher_db, "wan_ip_by_iface", wan_ip_by_iface)
+        # Derive ordered wan_ips following wan_interfaces order
+        wan_ips = [wan_ip_by_iface[iface] for iface in body["wan_interfaces"]
+                   if iface in wan_ip_by_iface and wan_ip_by_iface[iface]]
+        if wan_ips:
+            set_config(enricher_db, "wan_ips", wan_ips)
+            set_config(enricher_db, "wan_ip", wan_ips[0])
+    elif wizard_path == "log_detection":
+        # Log-detection path: compute wan_ip_by_iface from logs
+        iface_ips = enricher_db.get_wan_ips_by_interface(body["wan_interfaces"])
+        if iface_ips:
+            set_config(enricher_db, "wan_ip_by_iface", iface_ips)
+            wan_ips = [iface_ips[iface] for iface in body["wan_interfaces"]
+                       if iface in iface_ips and iface_ips[iface]]
+            if wan_ips:
+                set_config(enricher_db, "wan_ips", wan_ips)
+                set_config(enricher_db, "wan_ip", wan_ips[0])
+
     # Trigger direction backfill if WAN interfaces actually changed
     new_wan = set(body["wan_interfaces"])
     if new_wan != current_wan:
@@ -284,8 +308,11 @@ _EXPORTABLE_KEYS = [
     'setup_complete', 'config_version',
     'wizard_path', 'unifi_enabled', 'unifi_host', 'unifi_site',
     'unifi_verify_ssl', 'unifi_poll_interval', 'unifi_features',
-    'unifi_controller_name', 'retention_days', 'dns_retention_days',
+    'unifi_controller_name', 'unifi_controller_type',
+    'retention_days', 'dns_retention_days',
 ]
+# NOTE: unifi_username, unifi_password, and unifi_site_id are NEVER exported
+# (security + site_id is controller-specific and would break on import).
 
 # Key that is only exported when explicitly requested
 _API_KEY_CONFIG_KEY = 'unifi_api_key'

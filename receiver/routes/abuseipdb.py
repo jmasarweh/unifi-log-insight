@@ -7,7 +7,7 @@ import time
 
 from fastapi import APIRouter, HTTPException
 
-from db import get_config
+from db import get_config, get_wan_ips_from_config
 from enrichment import is_public_ip
 from deps import abuseipdb, enricher_db
 
@@ -40,7 +40,7 @@ def enrich_ip(ip: str):
         raise HTTPException(status_code=400, detail="Not a public IP")
 
     # Reject WAN/gateway IPs — enriching these contaminates log rows
-    wan_ips = get_config(enricher_db, 'wan_ips') or []
+    wan_ips = get_wan_ips_from_config(enricher_db)
     gateway_ips = get_config(enricher_db, 'gateway_ips') or []
     excluded = set()
     for ip_str in wan_ips + gateway_ips:
