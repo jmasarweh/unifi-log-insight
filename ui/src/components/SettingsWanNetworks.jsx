@@ -29,21 +29,6 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
     })
   }, [vpnNetworks, interfaceLabels])
 
-  const startEditing = () => {
-    const init = {}
-    for (const entry of vpnEntries) {
-      init[entry.iface] = {
-        badge: entry.badge || 'VPN',
-        cidr: entry.cidr || '',
-        label: entry.label || suggestVpnType(entry.iface) || '',
-        type: entry.type || suggestVpnType(entry.iface) || '',
-      }
-    }
-    setEditVpn(init)
-    setEditing(true)
-    setSaveMsg(null)
-  }
-
   const configureDiscovered = (ifaces) => {
     const init = {}
     for (const entry of vpnEntries) {
@@ -62,6 +47,8 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
     setEditing(true)
     setSaveMsg(null)
   }
+
+  const startEditing = () => configureDiscovered([])
 
   const cancelEditing = () => {
     setEditing(false)

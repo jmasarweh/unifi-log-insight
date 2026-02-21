@@ -101,6 +101,9 @@ export default function SettingsDiagnostics() {
     navigator.clipboard.writeText(fullJson).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    }).catch(() => {
+      setCopied('failed')
+      setTimeout(() => setCopied(false), 2000)
     })
   }
 
@@ -204,7 +207,7 @@ export default function SettingsDiagnostics() {
               onClick={handleCopy}
               className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
             >
-              {copied ? 'Copied!' : 'Copy All JSON'}
+              {copied === 'failed' ? 'Copy failed' : copied ? 'Copied!' : 'Copy All JSON'}
             </button>
             <button
               onClick={handleDownload}
