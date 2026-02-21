@@ -325,15 +325,6 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
               )}
             </div>
           </div>
-          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2 -mt-1 mb-3">
-            <p className="text-xs text-yellow-400">
-              L2TP, Site Magic, and OpenVPN Client detection is based on tentative interface prefixes not yet confirmed on real gateways.
-              If detection is incorrect, please report your interface names on{' '}
-              <a href="https://github.com/jmasarweh/unifi-log-insight/issues" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">GitHub</a> or{' '}
-              <a href="https://www.reddit.com/r/Ubiquiti/" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">r/Ubiquiti</a>.
-            </p>
-          </div>
-
           {editing ? (
             <VpnNetworkTable
               entries={editEntries}
@@ -398,7 +389,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
               {/* Discovered but unconfigured VPN interfaces */}
               {unlabeledVpn.length > 0 && (
                 <div className={vpnEntries.length > 0 ? 'mt-4' : ''}>
-                  <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Discovered</h3>
+                  <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Unlabelled</h3>
                   <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                     {unlabeledVpn.map(i => {
                       const desc = getIfaceDescription(i.name)
@@ -411,7 +402,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                                 {desc || i.name}
                               </span>
                               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
-                                Discovered
+                                New
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
@@ -441,6 +432,15 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
               )}
             </>
           )}
+
+          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2 mt-3">
+            <p className="text-xs text-yellow-400">
+              L2TP, Site Magic, and OpenVPN Client detection is based on tentative interface prefixes not yet confirmed on real gateways.
+              If detection is incorrect, please report your interface names on{' '}
+              <a href="https://github.com/jmasarweh/unifi-log-insight/issues" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">GitHub</a> or{' '}
+              <a href="https://www.reddit.com/r/Ubiquiti/" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">r/Ubiquiti</a>.
+            </p>
+          </div>
         </section>
     </div>
   )
