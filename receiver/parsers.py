@@ -80,6 +80,8 @@ VPN_PREFIX_BADGES = {
     'wgsts': 'S MAGIC',
     'tlprt': 'TELEPORT',
     'vti':   'S2S IPSEC',
+    'tun':   'OVPN TUN',
+    'vtun':  'OVPN VTN',
     'l2tp':  'L2TP SRV',
 }
 # All known VPN interface prefixes (including ones without auto-detection)
@@ -90,6 +92,8 @@ VPN_BADGE_LABELS = {
     'WGD CLT':   'WireGuard Client',
     'OVPN SRV':  'OpenVPN Server',
     'OVPN CLT':  'OpenVPN Client',
+    'OVPN TUN':  'OpenVPN / Tunnel 1',
+    'OVPN VTN':  'OpenVPN / Tunnel 2',
     'L2TP SRV':  'L2TP Server',
     'TELEPORT':  'Teleport',
     'S MAGIC':   'Site Magic',
@@ -97,7 +101,7 @@ VPN_BADGE_LABELS = {
 }
 # Ordered list of badge choices for UI dropdowns
 VPN_BADGE_CHOICES = [
-    'WGD SRV', 'WGD CLT', 'OVPN SRV', 'OVPN CLT', 'L2TP SRV', 'TELEPORT', 'S MAGIC', 'S2S IPSEC',
+    'WGD SRV', 'WGD CLT', 'OVPN SRV', 'OVPN CLT', 'OVPN TUN', 'OVPN VTN', 'L2TP SRV', 'TELEPORT', 'S MAGIC', 'S2S IPSEC',
 ]
 # Interface prefix → human-readable description (shown under interface name)
 VPN_PREFIX_DESCRIPTIONS = {
@@ -106,8 +110,8 @@ VPN_PREFIX_DESCRIPTIONS = {
     'wgsts': 'Site Magic',
     'tlprt': 'Teleport',
     'vti':   'Site-to-Site IPsec',
-    'tun':   'OpenVPN / Tunnel',
-    'vtun':  'OpenVPN / Tunnel',
+    'tun':   'OpenVPN / Tunnel 1',
+    'vtun':  'OpenVPN / Tunnel 2',
     'l2tp':  'L2TP Server',
 }
 
