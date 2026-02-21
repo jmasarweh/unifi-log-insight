@@ -290,14 +290,6 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                   {saveMsg}
                 </span>
               )}
-              {!editing && unlabeledVpn.length > 0 && (
-                <button
-                  onClick={() => configureDiscovered(unlabeledVpn)}
-                  className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white transition-colors"
-                >
-                  Configure All ({unlabeledVpn.length})
-                </button>
-              )}
               {!editing ? (
                 <button
                   onClick={startEditing}
@@ -389,9 +381,17 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
               {/* Discovered but unconfigured VPN interfaces */}
               {unlabeledVpn.length > 0 && (
                 <div className={vpnEntries.length > 0 ? 'mt-4' : ''}>
-                  <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Unlabelled</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unlabelled</h3>
+                    <button
+                      onClick={() => configureDiscovered(unlabeledVpn)}
+                      className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white transition-colors"
+                    >
+                      Configure All ({unlabeledVpn.length})
+                    </button>
+                  </div>
                   <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-                    {unlabeledVpn.map(i => {
+                    {[...unlabeledVpn].sort((a, b) => a.name.localeCompare(b.name)).map(i => {
                       const desc = getIfaceDescription(i.name)
                       const suggested = suggestVpnType(i.name)
                       return (
@@ -401,14 +401,14 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                               <span className="text-sm font-medium text-gray-200 truncate">
                                 {desc || i.name}
                               </span>
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-gray-100 border border-white/20 shrink-0">
                                 New
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-xs font-mono text-gray-500">{i.name}</span>
                               {!suggested && (
-                                <span className="text-[10px] text-yellow-400 italic">type needs selection</span>
+                                <span className="text-[10px] text-yellow-400 italic">type needs verifying</span>
                               )}
                             </div>
                           </div>
@@ -436,9 +436,10 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
           <div className="bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2 mt-3">
             <p className="text-xs text-yellow-400">
               L2TP, Site Magic, and OpenVPN Client detection is based on tentative interface prefixes not yet confirmed on real gateways.
-              If detection is incorrect, please report your interface names on{' '}
+              If detection is incorrect, please report your interface names and prefix on{' '}
               <a href="https://github.com/jmasarweh/unifi-log-insight/issues" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">GitHub</a> or{' '}
-              <a href="https://www.reddit.com/r/Ubiquiti/" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">r/Ubiquiti</a>.
+              <a href="https://www.reddit.com/r/Ubiquiti/comments/1r1wih9/an_enhanced_flow_insights_for_unifi_routers_geoip/" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">r/Ubiquiti</a> or{' '}
+              <a href="https://www.reddit.com/r/UNIFI/comments/1r1wmyv/an_enhanced_flow_insights_for_unifi_routers_geoip/" target="_blank" rel="noopener noreferrer" className="underline hover:text-yellow-300">r/Unifi</a>.
             </p>
           </div>
         </section>
