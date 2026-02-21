@@ -29,6 +29,8 @@ _WAN_PHYSICAL_MAP = {
     ('static', 'WAN2'): 'eth5',
 }
 
+_EPOCH_MIN = datetime.min.replace(tzinfo=timezone.utc)
+
 
 class UniFiAPI:
     """UniFi Controller API client.
@@ -791,7 +793,8 @@ class UniFiAPI:
             # Build in-memory maps atomically
             ip_map = {}
             mac_map = {}
-            for c in clients:
+            clients_sorted = sorted(clients, key=lambda c: c.get('last_seen') or _EPOCH_MIN)
+            for c in clients_sorted:
                 name = c.get('device_name') or c.get('hostname') or c.get('oui')
                 if name:
                     if c.get('mac'):

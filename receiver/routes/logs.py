@@ -148,9 +148,18 @@ def get_logs(
                             d2.device_name, d2.model) AS dst_device_name
                     FROM page
                     LEFT JOIN unifi_clients c1 ON c1.mac = page.mac_address
-                    LEFT JOIN unifi_clients c2 ON c2.ip = page.dst_ip
+                    -- No recency filter: log queries resolve names across all time
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, hostname, oui
+                        FROM unifi_clients WHERE ip = page.dst_ip
+                        ORDER BY last_seen DESC NULLS LAST LIMIT 1
+                    ) c2 ON true
                     LEFT JOIN unifi_devices d1 ON d1.mac = page.mac_address
-                    LEFT JOIN unifi_devices d2 ON d2.ip = page.dst_ip
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, model
+                        FROM unifi_devices WHERE ip = page.dst_ip
+                        ORDER BY updated_at DESC NULLS LAST LIMIT 1
+                    ) d2 ON true
                     ORDER BY page.{sort_col} {sort_dir}""",
                 params + [per_page, offset]
             )
@@ -274,9 +283,17 @@ def get_log(log_id: int):
                 LEFT JOIN ip_threats t2 ON t2.ip = l.dst_ip
                     AND NOT (l.dst_ip = ANY(%s::inet[]))
                 LEFT JOIN unifi_clients c1 ON c1.mac = l.mac_address
-                LEFT JOIN unifi_clients c2 ON c2.ip = l.dst_ip
+                LEFT JOIN LATERAL (
+                    SELECT device_name, hostname, oui
+                    FROM unifi_clients WHERE ip = l.dst_ip
+                    ORDER BY last_seen DESC NULLS LAST LIMIT 1
+                ) c2 ON true
                 LEFT JOIN unifi_devices d1 ON d1.mac = l.mac_address
-                LEFT JOIN unifi_devices d2 ON d2.ip = l.dst_ip
+                LEFT JOIN LATERAL (
+                    SELECT device_name, model
+                    FROM unifi_devices WHERE ip = l.dst_ip
+                    ORDER BY updated_at DESC NULLS LAST LIMIT 1
+                ) d2 ON true
                 WHERE l.id = %s
             """, [wan_ips, wan_ips, log_id])
             row = cur.fetchone()
@@ -393,9 +410,17 @@ def export_csv_endpoint(
                             d2.device_name, d2.model) AS dst_device_name
                     FROM filtered f
                     LEFT JOIN unifi_clients c1 ON c1.mac = f.mac_address
-                    LEFT JOIN unifi_clients c2 ON c2.ip = f.dst_ip
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, hostname, oui
+                        FROM unifi_clients WHERE ip = f.dst_ip
+                        ORDER BY last_seen DESC NULLS LAST LIMIT 1
+                    ) c2 ON true
                     LEFT JOIN unifi_devices d1 ON d1.mac = f.mac_address
-                    LEFT JOIN unifi_devices d2 ON d2.ip = f.dst_ip
+                    LEFT JOIN LATERAL (
+                        SELECT device_name, model
+                        FROM unifi_devices WHERE ip = f.dst_ip
+                        ORDER BY updated_at DESC NULLS LAST LIMIT 1
+                    ) d2 ON true
                     ORDER BY f.timestamp DESC""",
                 params + [limit]
             )

@@ -661,6 +661,7 @@ class Database:
                                COALESCE(device_name, hostname, oui) as name
                         FROM unifi_clients
                         WHERE COALESCE(device_name, hostname, oui) IS NOT NULL
+                        ORDER BY last_seen ASC NULLS FIRST, mac
                     """)
                     for mac, ip, name in cur.fetchall():
                         if mac:
@@ -672,6 +673,7 @@ class Database:
                                COALESCE(device_name, model) as name
                         FROM unifi_devices
                         WHERE COALESCE(device_name, model) IS NOT NULL
+                        ORDER BY updated_at ASC NULLS FIRST, mac
                     """)
                     for mac, ip, name in cur.fetchall():
                         if mac:

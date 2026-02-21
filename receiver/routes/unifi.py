@@ -396,13 +396,19 @@ def backfill_device_names(body: dict):
             # dst_device_name: IP-based join with time window to limit DHCP misattribution
             cur.execute("""
                 UPDATE logs
-                SET dst_device_name = COALESCE(c.device_name, c.hostname, c.oui)
-                FROM unifi_clients c
-                WHERE logs.dst_ip = c.ip
+                SET dst_device_name = sub.name
+                FROM (
+                    SELECT DISTINCT ON (host(ip)) ip,
+                           COALESCE(device_name, hostname, oui) as name,
+                           last_seen
+                    FROM unifi_clients
+                    WHERE COALESCE(device_name, hostname, oui) IS NOT NULL
+                    ORDER BY host(ip), last_seen DESC NULLS LAST
+                ) sub
+                WHERE logs.dst_ip = sub.ip
                   AND logs.dst_device_name IS NULL
                   AND logs.timestamp >= %s::timestamptz
-                  AND logs.timestamp >= c.last_seen - INTERVAL '1 day'
-                  AND COALESCE(c.device_name, c.hostname, c.oui) IS NOT NULL
+                  AND logs.timestamp >= sub.last_seen - INTERVAL '1 day'
             """, [since])
             dst_patched = cur.rowcount
 
