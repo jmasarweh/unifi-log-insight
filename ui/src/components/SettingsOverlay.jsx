@@ -43,7 +43,7 @@ const SECTIONS = [
   },
 ]
 
-export default function SettingsOverlay({ onClose, startInReconfig }) {
+export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [] }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
   const [netConfig, setNetConfig] = useState(null)
@@ -204,6 +204,7 @@ export default function SettingsOverlay({ onClose, startInReconfig }) {
                     vpnNetworks={config?.vpn_networks || {}}
                     interfaceLabels={config?.interface_labels || {}}
                     onVpnSaved={() => fetchConfig().then(setConfig).catch(() => {})}
+                    unlabeledVpn={unlabeledVpn}
                   />
                 )}
                 {activeSection === 'firewall' && (
