@@ -62,6 +62,7 @@ export default function App() {
   const [showMigrationBanner, setShowMigrationBanner] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showVpnToast, setShowVpnToast] = useState(false)
+  const [unlabeledVpn, setUnlabeledVpn] = useState([])
 
   const reloadConfig = () => {
     return fetchConfig().then(cfg => {
@@ -126,6 +127,7 @@ export default function App() {
         if (vpnNets[i.name]) return false
         return isVpnInterface(i.name)
       })
+      setUnlabeledVpn(unlabeled)
       if (!unlabeled.length) { setShowVpnToast(false); return }
       const dismissed = localStorage.getItem('vpn_toast_dismissed')
       if (dismissed && Date.now() - parseInt(dismissed) < 6 * 3600 * 1000) return
@@ -183,6 +185,7 @@ export default function App() {
         setSettingsReconfig(false)
       }}
       startInReconfig={settingsReconfig}
+      unlabeledVpn={unlabeledVpn}
     />
   }
 

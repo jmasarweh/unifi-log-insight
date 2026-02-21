@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react'
 import { saveVpnNetworks } from '../api'
-import { suggestVpnType, BADGE_LABELS, BADGE_CHOICES } from '../vpnUtils'
+import { suggestVpnType, getIfaceDescription, BADGE_LABELS, BADGE_CHOICES } from '../vpnUtils'
 import VpnNetworkTable from './VpnNetworkTable'
 
-export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCards, networkCards, onRestartWizard, vpnNetworks, interfaceLabels, onVpnSaved }) {
+export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCards, networkCards, onRestartWizard, vpnNetworks, interfaceLabels, onVpnSaved, unlabeledVpn = [] }) {
   const [imgLoaded, setImgLoaded] = useState(false)
   const gatewayImgUrl = unifiEnabled ? '/api/unifi/gateway-image' : null
 
@@ -38,6 +38,25 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
         label: entry.label || suggestVpnType(entry.iface) || '',
         type: entry.type || suggestVpnType(entry.iface) || '',
       }
+    }
+    setEditVpn(init)
+    setEditing(true)
+    setSaveMsg(null)
+  }
+
+  const configureDiscovered = (ifaces) => {
+    const init = {}
+    for (const entry of vpnEntries) {
+      init[entry.iface] = {
+        badge: entry.badge || 'VPN',
+        cidr: entry.cidr || '',
+        label: entry.label || suggestVpnType(entry.iface) || '',
+        type: entry.type || suggestVpnType(entry.iface) || '',
+      }
+    }
+    for (const i of ifaces) {
+      const type = suggestVpnType(i.name)
+      init[i.name] = { badge: 'VPN', cidr: '', label: type || '', type }
     }
     setEditVpn(init)
     setEditing(true)
@@ -271,6 +290,14 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                   {saveMsg}
                 </span>
               )}
+              {!editing && unlabeledVpn.length > 0 && (
+                <button
+                  onClick={() => configureDiscovered(unlabeledVpn)}
+                  className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white transition-colors"
+                >
+                  Configure All ({unlabeledVpn.length})
+                </button>
+              )}
               {!editing ? (
                 <button
                   onClick={startEditing}
@@ -330,44 +357,89 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
               })}
               addForm={addFormProps}
             />
-          ) : vpnEntries.length > 0 ? (
-            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-              {vpnEntries.map(entry => {
-                const fullName = BADGE_LABELS[entry.type] || entry.iface
-                return (
-                  <div key={entry.iface} className="flex items-center gap-3 rounded-lg border border-teal-500/20 bg-gray-950 px-4 py-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-gray-200 truncate">
-                          {fullName}
-                        </span>
-                        {entry.badge && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">
-                            {entry.badge}
-                          </span>
-                        )}
-                        {!entry.badge && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 shrink-0">
-                            No badge
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        {entry.label && <span className="text-xs text-gray-500">{entry.label}</span>}
-                        <span className="text-xs font-mono text-gray-500">{entry.iface}</span>
-                        {entry.cidr && (
-                          <span className="text-xs font-mono text-gray-600">{entry.cidr}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
           ) : (
-            <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center text-sm text-gray-500">
-              No VPN networks configured
-            </div>
+            <>
+              {vpnEntries.length > 0 && (
+                <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {vpnEntries.map(entry => {
+                    const fullName = BADGE_LABELS[entry.type] || entry.iface
+                    return (
+                      <div key={entry.iface} className="flex items-center gap-3 rounded-lg border border-teal-500/20 bg-gray-950 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-gray-200 truncate">
+                              {fullName}
+                            </span>
+                            {entry.badge && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">
+                                {entry.badge}
+                              </span>
+                            )}
+                            {!entry.badge && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-400 border border-yellow-500/30 shrink-0">
+                                No badge
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            {entry.label && <span className="text-xs text-gray-500">{entry.label}</span>}
+                            <span className="text-xs font-mono text-gray-500">{entry.iface}</span>
+                            {entry.cidr && (
+                              <span className="text-xs font-mono text-gray-600">{entry.cidr}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Discovered but unconfigured VPN interfaces */}
+              {unlabeledVpn.length > 0 && (
+                <div className={vpnEntries.length > 0 ? 'mt-4' : ''}>
+                  <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">Discovered</h3>
+                  <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                    {unlabeledVpn.map(i => {
+                      const desc = getIfaceDescription(i.name)
+                      const suggested = suggestVpnType(i.name)
+                      return (
+                        <div key={i.name} className="flex items-center gap-3 rounded-lg border border-dashed border-teal-500/30 bg-gray-950 px-4 py-3">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-200 truncate">
+                                {desc || i.name}
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 shrink-0">
+                                Discovered
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-xs font-mono text-gray-500">{i.name}</span>
+                              {!suggested && (
+                                <span className="text-[10px] text-yellow-400 italic">type needs selection</span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => configureDiscovered([i])}
+                            className="shrink-0 px-2.5 py-1 rounded text-xs font-medium border border-teal-500/40 text-teal-400 hover:bg-teal-500/10 transition-colors"
+                          >
+                            Configure
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {vpnEntries.length === 0 && unlabeledVpn.length === 0 && (
+                <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 text-center text-sm text-gray-500">
+                  No VPN networks configured
+                </div>
+              )}
+            </>
           )}
         </section>
     </div>
