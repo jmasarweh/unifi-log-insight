@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import { fetchAllReleases } from '../api'
 import { formatNumber } from '../utils'
 
 function renderMarkdown(md) {
@@ -37,13 +38,29 @@ export default function Pagination({ page, pages, total, perPage, onChange, vers
   const end = Math.min(page * perPage, total)
   const outdated = latestRelease && isNewerVersion(latestRelease.tag, version)
   const [showNotes, setShowNotes] = useState(false)
+  const [allReleases, setAllReleases] = useState(null)
+  const [loadingReleases, setLoadingReleases] = useState(false)
+  const [selectedRelease, setSelectedRelease] = useState(null)
+  const displayedRelease = selectedRelease || latestRelease
+
+  const closeModal = () => { setShowNotes(false); setSelectedRelease(null) }
 
   // Close release notes modal on Escape
   React.useEffect(() => {
     if (!showNotes) return
-    const onKey = e => { if (e.key === 'Escape') setShowNotes(false) }
+    const onKey = e => { if (e.key === 'Escape') closeModal() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
+  }, [showNotes])
+
+  // Lazy-fetch all releases on first modal open
+  React.useEffect(() => {
+    if (!showNotes || allReleases) return
+    setLoadingReleases(true)
+    fetchAllReleases()
+      .then(releases => { if (releases) setAllReleases(releases) })
+      .catch(() => {})
+      .finally(() => setLoadingReleases(false))
   }, [showNotes])
 
   return (
@@ -115,16 +132,40 @@ export default function Pagination({ page, pages, total, perPage, onChange, vers
 
       {/* Release Notes Modal */}
       {showNotes && latestRelease && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowNotes(false)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={closeModal}>
           <div role="dialog" aria-modal="true" aria-labelledby="release-notes-title" className="bg-gray-950 border border-gray-700 rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <span id="release-notes-title" className="text-sm font-semibold text-gray-200">Release Notes — {latestRelease.tag}</span>
-              <button onClick={() => setShowNotes(false)} className="text-gray-400 hover:text-gray-200 text-lg leading-none">&times;</button>
+              <span id="release-notes-title" className="text-sm font-semibold text-gray-200">Release Notes — {displayedRelease.tag}</span>
+              <div className="flex items-center gap-3">
+                {loadingReleases ? (
+                  <span className="text-[10px] text-gray-500">Loading versions...</span>
+                ) : allReleases && allReleases.length > 1 && (
+                  <div className="flex items-center gap-1.5">
+                    <label htmlFor="previous-releases-select" className="text-xs text-gray-500">Previous Releases:</label>
+                    <select
+                      id="previous-releases-select"
+                      value={displayedRelease.tag}
+                      onChange={e => {
+                        const rel = allReleases.find(r => r.tag === e.target.value)
+                        if (rel) setSelectedRelease(rel.tag === latestRelease.tag ? null : rel)
+                      }}
+                      className="px-2 py-1 bg-gray-900 border border-gray-600 rounded text-[11px] text-gray-300 focus:border-teal-500 focus:outline-none"
+                    >
+                      {allReleases.map(r => (
+                        <option key={r.tag} value={r.tag}>
+                          {r.tag}{r.tag === latestRelease.tag ? ' (latest)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <button onClick={closeModal} className="text-gray-400 hover:text-gray-200 text-lg leading-none">&times;</button>
+              </div>
             </div>
-            <div className="px-4 py-3 overflow-y-auto text-xs text-gray-300 leading-normal" dangerouslySetInnerHTML={{ __html: renderMarkdown(latestRelease.body) }} />
+            <div className="px-4 py-3 overflow-y-auto text-xs text-gray-300 leading-normal" dangerouslySetInnerHTML={{ __html: renderMarkdown(displayedRelease.body) }} />
             <div className="px-4 py-3 border-t border-gray-700 flex justify-end">
               <a
-                href={latestRelease.url}
+                href={displayedRelease.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"

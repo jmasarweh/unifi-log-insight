@@ -139,7 +139,10 @@ export async function dismissVpnToast() {
 
 export async function fetchUniFiNetworkConfig() {
   const resp = await fetch(`${BASE}/setup/unifi-network-config`)
-  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
   return resp.json()
 }
 
@@ -147,7 +150,10 @@ export async function fetchUniFiNetworkConfig() {
 
 export async function fetchFirewallPolicies() {
   const resp = await fetch(`${BASE}/firewall/policies`)
-  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
   return resp.json()
 }
 
@@ -170,7 +176,10 @@ export async function bulkUpdateFirewallLogging(policies) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ policies })
   })
-  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
   return resp.json()
 }
 
@@ -263,4 +272,15 @@ export async function fetchLatestRelease() {
   if (!resp.ok) return null
   const data = await resp.json()
   return { tag: data.tag_name, url: data.html_url, body: data.body || '' }
+}
+
+export async function fetchAllReleases() {
+  const resp = await fetch(
+    'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases'
+  )
+  if (!resp.ok) return null
+  const data = await resp.json()
+  return data
+    .filter(r => !r.prerelease)
+    .map(r => ({ tag: r.tag_name, url: r.html_url, body: r.body || '' }))
 }
