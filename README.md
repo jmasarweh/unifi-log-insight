@@ -131,7 +131,7 @@ TZ=Europe/London
 Then run:
 
 ```bash
-docker compose up - d
+docker compose up -d
 ```
 
 ### Option B - Build from Source
@@ -140,7 +140,7 @@ docker compose up - d
 git clone https://github.com/jmasarweh/unifi-log-insight.git
 cd unifi-log-insight
 # Create .env as shown above
-docker compose up - d - -build
+docker compose up -d --build
 ```
 
 ## 3. Open the UI
@@ -210,13 +210,13 @@ graph LR
             SCHED["🔄 Scheduler\nBlacklist · Retention · Backfill"]
         end
 
-        SR - -> EN - -> PG
-        PG - -> API
-        SCHED - -> PG
+        SR --> EN --> PG
+        PG --> API
+        SCHED --> PG
     end
 
-    UDP["🔌 UDP :514\nsyslog in"] - -> SR
-    API - -> HTTP["🌐 HTTP :8090\nUI + API out"]
+    UDP["🔌 UDP :514\nsyslog in"] --> SR
+    API --> HTTP["🌐 HTTP :8090\nUI + API out"]
 ```
 
 ### 🔀 Log Processing Pipeline
@@ -476,7 +476,7 @@ Install directly from Unraid's Docker UI - no terminal needed.
 
 ### GeoIP not working
 
-1. Check if `.mmdb` files exist: `docker exec unifi-log-insight ls - la /app/maxmind/`
+1. Check if `.mmdb` files exist: `docker exec unifi-log-insight ls -la /app/maxmind/`
 2. Check enrichment status: `curl http://<host>:8090/api/health`
 3. If using auto-update, verify credentials: `docker exec unifi-log-insight /app/geoip-update.sh`
 
@@ -484,7 +484,7 @@ Install directly from Unraid's Docker UI - no terminal needed.
 
 1. Check logs: `docker compose logs`
 2. Verify `.env` exists and `POSTGRES_PASSWORD` is set
-3. If PostgreSQL data is corrupted, reset: `docker compose down - v && docker compose up - d - -build`
+3. If PostgreSQL data is corrupted, reset: `docker compose down -v && docker compose up -d --build`
 
 ---
 
