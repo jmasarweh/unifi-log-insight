@@ -112,8 +112,9 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
     <>
       <tr
         onClick={onToggle}
-        className={`cursor-pointer border-b border-gray-800/50 transition-colors hover:bg-gray-800/30 ${
-          log.rule_action === 'block' ? 'bg-red-950/10' : ''
+        className={`cursor-pointer transition-colors hover:bg-gray-800/30 ${
+          isExpanded ? 'expanded-row' : 'border-b border-gray-800/50'
+        } ${log.rule_action === 'block' ? 'bg-red-950/10' : ''
         } ${log.threat_score >= 50 ? 'bg-orange-950/10' : ''}`}
       >
         {/* Time */}
@@ -156,12 +157,12 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Country */}
         {show('country') && (
-          <td className="px-2 py-1.5 text-[13px] whitespace-nowrap" title={log.geo_country}>
+          <td className="px-2 py-1.5 text-[13px] whitespace-nowrap text-center" title={log.geo_country}>
             {log.geo_country ? (
-              <span>
+              <span className="inline-flex items-center justify-center gap-1">
                 {countryDisplay !== 'name_only' && <FlagIcon code={log.geo_country} />}
                 {countryDisplay !== 'flag_only' && (
-                  <span className="text-gray-400">{countryDisplay !== 'name_only' ? ` ${log.geo_country}` : log.geo_country}</span>
+                  <span className="text-gray-400">{log.geo_country}</span>
                 )}
               </span>
             ) : (
@@ -217,7 +218,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
       </tr>
 
       {isExpanded && (
-        <tr>
+        <tr className="expanded-detail">
           <td colSpan={colCount}>
             <LogDetail log={detailedLog || log} hiddenColumns={hiddenColumns} />
           </td>
@@ -241,7 +242,7 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
     { key: 'src', label: 'Source', className: 'w-40' },
     { key: 'dir', label: '', className: 'w-6' },
     { key: 'dst', label: 'Destination', className: 'w-40' },
-    { key: 'country', label: 'Country', className: 'w-16' },
+    { key: 'country', label: 'Country', className: 'w-16 text-center' },
     { key: 'asn', label: 'ASN', className: 'w-36' },
     { key: 'network', label: 'Network', className: 'w-28' },
     { key: 'proto', label: 'Proto', className: 'w-12' },
@@ -255,10 +256,10 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
   const colCount = visibleColumns.length
 
   return (
-    <div className="overflow-x-auto">
+    <div>
       <table className="w-full text-left">
-        <thead>
-          <tr className="border-b border-gray-800">
+        <thead className="sticky top-0 z-10">
+          <tr className="bg-gray-950">
             {visibleColumns.map(col => (
               <th
                 key={col.key}

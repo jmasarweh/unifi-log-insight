@@ -11,6 +11,7 @@ from psycopg2.extras import RealDictCursor
 
 from db import get_config, set_config, encrypt_api_key, decrypt_api_key
 from deps import get_conn, put_conn, enricher_db, unifi_api, signal_receiver
+from unifi_api import UniFiPermissionError
 
 logger = logging.getLogger('api.unifi')
 
@@ -215,6 +216,8 @@ def get_firewall_policies():
             detail="Firewall management requires a UniFi OS gateway (not available on self-hosted controllers)")
     try:
         return unifi_api.get_firewall_data()
+    except UniFiPermissionError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
     except Exception as e:
         logger.exception("Failed to fetch firewall policies")
         raise HTTPException(status_code=502, detail=str(e)) from e
@@ -244,14 +247,13 @@ def patch_firewall_policy(policy_id: str, body: dict):
     try:
         result = unifi_api.patch_firewall_policy(policy_id, logging_enabled)
         return {"success": True, "data": result}
+    except UniFiPermissionError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
     except Exception as e:
         status = 502
         msg = str(e)
         if hasattr(e, 'response') and e.response is not None:
-            if e.response.status_code == 403:
-                msg = "Insufficient permissions. Ensure your UniFi API key belongs to a Local Admin account with Network permissions."
-                status = 403
-            elif e.response.status_code == 422:
+            if e.response.status_code == 422:
                 msg = "The controller rejected this change. The rule may have been modified or removed in the UniFi Controller."
                 status = 422
             else:
@@ -274,6 +276,8 @@ def bulk_update_logging(body: dict):
 
     try:
         return unifi_api.bulk_patch_logging(policies)
+    except UniFiPermissionError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e)) from e
     except Exception as e:
         logger.exception("Bulk firewall update failed")
         raise HTTPException(status_code=502, detail=str(e)) from e

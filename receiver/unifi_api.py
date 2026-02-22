@@ -32,6 +32,13 @@ _WAN_PHYSICAL_MAP = {
 _EPOCH_MIN = datetime.min.replace(tzinfo=timezone.utc)
 
 
+class UniFiPermissionError(Exception):
+    """Raised when the UniFi Integration API returns 401 (auth failure) or 403 (insufficient permissions)."""
+    def __init__(self, message, status_code=403):
+        super().__init__(message)
+        self.status_code = status_code
+
+
 class UniFiAPI:
     """UniFi Controller API client.
 
@@ -283,6 +290,7 @@ class UniFiAPI:
         s = session or self._get_session()
         url = f"{h}/proxy/network{path}"
         resp = s.get(url, timeout=self.TIMEOUT)
+        self._check_integration_permissions(resp)
         resp.raise_for_status()
         return resp.json()
 
@@ -294,6 +302,7 @@ class UniFiAPI:
             self._discover_site_uuid()
         url = f"{self.host}/proxy/network/integration/v1/sites/{self._site_uuid}{path}"
         resp = self._get_session().get(url, timeout=self.TIMEOUT)
+        self._check_integration_permissions(resp)
         resp.raise_for_status()
         return resp.json()
 
@@ -305,8 +314,25 @@ class UniFiAPI:
             self._discover_site_uuid()
         url = f"{self.host}/proxy/network/integration/v1/sites/{self._site_uuid}{path}"
         resp = self._get_session().patch(url, json=body, timeout=self.TIMEOUT)
+        self._check_integration_permissions(resp)
         resp.raise_for_status()
         return resp.json()
+
+    @staticmethod
+    def _check_integration_permissions(resp):
+        """Raise UniFiPermissionError on 401/403 from the Integration API."""
+        if resp.status_code == 401:
+            raise UniFiPermissionError(
+                "Authentication failed. Check your API key.",
+                status_code=401
+            )
+        if resp.status_code == 403:
+            raise UniFiPermissionError(
+                "Insufficient permissions. Your API key must belong to a "
+                "Local Admin account with Network permissions. Read-only "
+                "or viewer API keys cannot access the Integration API.",
+                status_code=403
+            )
 
     # ── Site UUID Discovery ───────────────────────────────────────────────────
 
@@ -392,6 +418,29 @@ class UniFiAPI:
             # Verify integration API access (needed for firewall management)
             sites_url = f"{host}/proxy/network/integration/v1/sites"
             sites_resp = session.get(sites_url, timeout=self.TIMEOUT)
+
+            if sites_resp.status_code == 401:
+                return {
+                    'success': False,
+                    'error': 'Authentication failed. Check your API key.',
+                    'error_code': 'auth_error',
+                }
+
+            if sites_resp.status_code == 403:
+                # Classic API works but Integration API is denied — limited permissions
+                return {
+                    'success': True,
+                    'controller_name': controller_name,
+                    'version': version,
+                    'site_name': site,
+                    'warning': (
+                        'Insufficient permissions \u2014 a Local Admin API key with '
+                        'Network permissions is required for Firewall Syslog enablement. '
+                        'You can continue to use the app but won\'t benefit from '
+                        'Firewall Syslog Settings.'
+                    ),
+                }
+
             sites_resp.raise_for_status()
             sites_data = sites_resp.json()
 
