@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#c9d1d9"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="720" fill="#0b0f14"/>
+
+  <rect x="170" y="70" width="860" height="560" rx="12" fill="#0f1722" stroke="#c9d1d9" stroke-width="2"/>
+  <text x="190" y="95" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#e6edf3">Docker Container</text>
+
+  <rect x="220" y="140" width="280" height="220" rx="10" fill="#111827" stroke="#c9d1d9" stroke-width="2"/>
+  <text x="240" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#e6edf3">Receiver (main.py)</text>
+  <text x="240" y="196" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">UDP 514 listener + batch insert</text>
+  <text x="240" y="218" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">Parser + enrichment</text>
+  <text x="240" y="240" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">Threads: scheduler, backfill,</text>
+  <text x="240" y="262" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">UniFi poller</text>
+
+  <rect x="540" y="140" width="280" height="120" rx="10" fill="#111827" stroke="#c9d1d9" stroke-width="2"/>
+  <text x="560" y="170" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#e6edf3">PostgreSQL 16</text>
+  <text x="560" y="196" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">logs, ip_threats, system_config</text>
+
+  <rect x="540" y="300" width="280" height="120" rx="10" fill="#111827" stroke="#c9d1d9" stroke-width="2"/>
+  <text x="560" y="330" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#e6edf3">API (FastAPI)</text>
+  <text x="560" y="356" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">Serves UI + REST on 8000</text>
+  <text x="560" y="378" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">SPA from /app/static</text>
+
+  <rect x="540" y="460" width="280" height="120" rx="10" fill="#111827" stroke="#c9d1d9" stroke-width="2"/>
+  <text x="560" y="490" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#e6edf3">Cron</text>
+  <text x="560" y="516" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">geoip-update.sh (Wed/Sat 07:00 UTC)</text>
+  <text x="560" y="538" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">Signals receiver to reload GeoIP</text>
+
+  <rect x="20" y="190" width="130" height="60" rx="8" fill="#111827" stroke="#c9d1d9" stroke-width="2"/>
+  <text x="32" y="218" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#e6edf3">UDP 514</text>
+  <text x="32" y="238" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">syslog in</text>
+
+  <rect x="980" y="320" width="180" height="60" rx="8" fill="#111827" stroke="#c9d1d9" stroke-width="2"/>
+  <text x="994" y="348" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#e6edf3">HTTP 8090</text>
+  <text x="994" y="368" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#c9d1d9">UI + API out</text>
+
+  <line x1="150" y1="220" x2="220" y2="220" stroke="#c9d1d9" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="500" y1="220" x2="540" y2="220" stroke="#c9d1d9" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="680" y1="260" x2="680" y2="300" stroke="#c9d1d9" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="820" y1="360" x2="980" y2="360" stroke="#c9d1d9" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="540" y1="520" x2="360" y2="520" stroke="#c9d1d9" stroke-width="2"/>
+  <line x1="360" y1="520" x2="360" y2="360" stroke="#c9d1d9" stroke-width="2" marker-end="url(#arrow)"/>
+</svg>

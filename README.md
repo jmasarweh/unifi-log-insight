@@ -76,7 +76,7 @@ Each firewall rule must have syslog individually enabled. There are two ways to 
 
 > **Note:** Without per-rule syslog enabled, firewall logs will not appear even if global Activity Logging is configured.
 
-<img width="2056" height="1164" alt="Firewall syslog toggle in UniFi" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
+<img width="1920" height="1080" alt="Firewall syslog toggle in UniFi" src="https://github.com/user-attachments/assets/cc08f009-0c70-4d7a-8bf0-5de5e404909a" />
 
 ## 2. Install
 
@@ -187,35 +187,14 @@ You can reconfigure at any time via the **Settings gear** in the top-right corne
 
 Everything runs inside a single Docker container, managed by supervisord:
 
-```mermaid
-flowchart LR
-  subgraph "Docker Container"
-    subgraph "Ingestion"
-      SR["Syslog Receiver\nUDP 514"]
-      EN["Enrichment\nGeoIP, ASN, AbuseIPDB, rDNS"]
-    end
+![Architecture diagram](docs/architecture.svg)
 
-    subgraph "Storage"
-      PG["PostgreSQL\nlogs, ip_threats"]
-    end
+### Current architecture:
 
-    subgraph "Serving"
-      API["FastAPI + React UI\n:8000"]
-    end
-
-    subgraph "Background"
-      CRON["Cron\nMaxMind Updates"]
-      SCHED["Scheduler\nBlacklist, Retention, Backfill"]
-    end
-
-    SR --> EN --> PG
-    PG --> API
-    SCHED --> PG
-  end
-
-  UDP["UDP 514\nsyslog in"] --> SR
-  API --> HTTP["HTTP 8090\nUI + API out"]
-```
+- PostgreSQL 16 process for `logs`, `ip_threats`, and config state.
+- Receiver process (`main.py`) listens on UDP `514`, parses logs, enriches (GeoIP, ASN, AbuseIPDB, rDNS, UniFi device names), and batch-inserts into Postgres. It also runs background threads for stats + WAN/gateway detection, retention cleanup, AbuseIPDB blacklist pulls, threat backfill, and UniFi client/device polling.
+- API process (`api.py`) serves REST endpoints and the React SPA from `/app/static` on port `8000` (mapped to `8090` by docker-compose).
+- Cron process runs `geoip-update.sh` (Wed/Sat 07:00 UTC when MaxMind credentials are set), which refreshes GeoIP databases and signals the receiver to reload them.
 
 ### 🔀 Log Processing Pipeline
 
