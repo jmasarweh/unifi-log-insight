@@ -80,8 +80,8 @@ export const DIRECTION_ICONS = {
   vpn: '⛨',
 }
 
-// Interface name validation: must start with a letter followed by a number (e.g., ppp0, eth4, gre1)
-export const IFACE_REGEX = /^[a-z][a-z0-9]*\d+$/
+// Interface name validation: letters then digits, with optional + for sfp+0 etc (e.g., ppp0, eth4, sfp+0, enp3s0)
+export const IFACE_REGEX = /^[a-z][a-z0-9+]*\d+$/
 
 // Module-level variables (populated on app load via loadInterfaceLabels)
 let INTERFACE_LABELS = {}

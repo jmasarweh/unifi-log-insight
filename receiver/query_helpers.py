@@ -41,6 +41,7 @@ def build_log_query(
     service: Optional[str],
     interface: Optional[str],
     vpn_only: bool = False,
+    asn: Optional[str] = None,
 ) -> tuple[str, list]:
     """Build WHERE clause and params from filters."""
     conditions = []
@@ -126,6 +127,11 @@ def build_log_query(
         conditions.append(f"(interface_in IN ({placeholders}) OR interface_out IN ({placeholders}))")
         params.extend(ifaces)
         params.extend(ifaces)  # Twice: once for interface_in, once for interface_out
+
+    if asn:
+        escaped_asn = _escape_like(asn)
+        conditions.append("asn_name ILIKE %s ESCAPE '\\'")
+        params.append(f"%{escaped_asn}%")
 
     if vpn_only:
         from parsers import VPN_INTERFACE_PREFIXES

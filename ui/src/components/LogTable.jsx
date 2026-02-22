@@ -25,7 +25,7 @@ function ThreatBadge({ score, categories }) {
   )
 }
 
-function IPCell({ ip, port, deviceName, vlan, networkLabel }) {
+function IPCell({ ip, port, deviceName, vlan, networkLabel, subline }) {
   if (!ip) return <span className="text-gray-700">—</span>
 
   const badge = vlan != null ? (
@@ -38,17 +38,20 @@ function IPCell({ ip, port, deviceName, vlan, networkLabel }) {
     </span>
   ) : null
 
-  if (deviceName || badge) {
+  if (deviceName || badge || subline) {
     return (
       <div className="min-w-0 leading-tight">
-        <div className="flex items-center gap-1">
-          {deviceName && <span className="text-gray-200 text-[12px] truncate" title={deviceName}>{deviceName}</span>}
-          {badge}
-        </div>
+        {(deviceName || badge) && (
+          <div className="flex items-center gap-1">
+            {deviceName && <span className="text-gray-200 text-[12px] truncate" title={deviceName}>{deviceName}</span>}
+            {badge}
+          </div>
+        )}
         <span className="inline-flex items-baseline gap-0.5 min-w-0">
-          <span className="text-gray-500 text-[11px] truncate">{ip}</span>
-          {port && <span className="text-gray-600 text-[11px]">:{port}</span>}
+          <span className={`${deviceName || badge ? 'text-gray-500 text-[11px]' : 'text-gray-300 text-[13px]'} truncate`}>{ip}</span>
+          {port && <span className={`${deviceName || badge ? 'text-gray-600 text-[11px]' : 'text-gray-500'}`}>:{port}</span>}
         </span>
+        {subline && <div className="text-[11px] text-gray-500 truncate" title={subline}>{subline}</div>}
       </div>
     )
   }
@@ -83,7 +86,7 @@ function formatRuleDesc(desc) {
   return desc.replace(/\](?!\s)/, '] ')
 }
 
-function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCount }) {
+function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCount, uiSettings }) {
   const actionStyle = ACTION_STYLES[log.rule_action || log.dhcp_event || log.wifi_event] || ''
   const typeStyle = LOG_TYPE_STYLES[log.log_type] || LOG_TYPE_STYLES.system
   const dirIcon = DIRECTION_ICONS[log.direction] || ''
@@ -98,6 +101,12 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
     : infoText
 
   const show = (key) => !hiddenColumns.has(key)
+  const countryDisplay = uiSettings?.ui_country_display || 'flag_name'
+  const ipSubline = uiSettings?.ui_ip_subline === 'asn_or_abuse'
+  const sublineText = ipSubline ? (log.asn_name || log.abuse_hostnames || null) : null
+  // ASN belongs to the enriched (remote) IP: inbound → source, otherwise → destination
+  const srcSubline = sublineText && log.direction === 'inbound' && !isPrivateIP(log.src_ip) ? sublineText : null
+  const dstSubline = sublineText && log.direction !== 'inbound' && log.dst_ip && !isPrivateIP(log.dst_ip) ? sublineText : null
 
   return (
     <>
@@ -132,7 +141,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Source */}
         <td className="px-2 py-1.5 text-[13px] whitespace-nowrap sm:max-w-[180px] sm:truncate">
-          <IPCell ip={log.src_ip} port={log.src_port} deviceName={log.src_device_name} vlan={log.src_device_vlan} networkLabel={log.src_device_network} />
+          <IPCell ip={log.src_ip} port={log.src_port} deviceName={log.src_device_name} vlan={log.src_device_vlan} networkLabel={log.src_device_network} subline={srcSubline} />
         </td>
 
         {/* Direction */}
@@ -142,14 +151,19 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
 
         {/* Destination */}
         <td className="px-2 py-1.5 text-[13px] whitespace-nowrap sm:max-w-[180px] sm:truncate">
-          <IPCell ip={log.dst_ip} port={log.dst_port} deviceName={log.dst_device_name} vlan={log.dst_device_vlan} networkLabel={log.dst_device_network} />
+          <IPCell ip={log.dst_ip} port={log.dst_port} deviceName={log.dst_device_name} vlan={log.dst_device_vlan} networkLabel={log.dst_device_network} subline={dstSubline} />
         </td>
 
         {/* Country */}
         {show('country') && (
           <td className="px-2 py-1.5 text-[13px] whitespace-nowrap" title={log.geo_country}>
             {log.geo_country ? (
-              <span><FlagIcon code={log.geo_country} /> <span className="text-gray-400">{log.geo_country}</span></span>
+              <span>
+                {countryDisplay !== 'name_only' && <FlagIcon code={log.geo_country} />}
+                {countryDisplay !== 'flag_only' && (
+                  <span className="text-gray-400">{countryDisplay !== 'name_only' ? ` ${log.geo_country}` : log.geo_country}</span>
+                )}
+              </span>
             ) : (
               <span className="text-gray-700">—</span>
             )}
@@ -169,9 +183,11 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         </td>
 
         {/* Protocol */}
-        <td className="px-2 py-1.5 text-[13px] text-gray-400 uppercase">
-          {log.protocol || '—'}
-        </td>
+        {show('proto') && (
+          <td className="px-2 py-1.5 text-[13px] text-gray-400 uppercase">
+            {log.protocol || '—'}
+          </td>
+        )}
 
         {/* Service */}
         <td className="px-2 py-1.5 text-[12px] text-gray-400 uppercase">
@@ -211,7 +227,12 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
   )
 }
 
-export default function LogTable({ logs, loading, expandedId, detailedLog, onToggleExpand, hiddenColumns = new Set() }) {
+export default function LogTable({ logs, loading, expandedId, detailedLog, onToggleExpand, hiddenColumns = new Set(), uiSettings }) {
+
+  // Auto-hide ASN column when IP subline is enabled
+  const effectiveHidden = uiSettings?.ui_ip_subline === 'asn_or_abuse'
+    ? new Set([...hiddenColumns, 'asn'])
+    : hiddenColumns
 
   const allColumns = [
     { key: 'timestamp', label: 'Time', className: 'w-20' },
@@ -230,7 +251,7 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
     { key: 'categories', label: 'Categories', className: 'w-40' },
   ]
 
-  const visibleColumns = allColumns.filter(col => !hiddenColumns.has(col.key))
+  const visibleColumns = allColumns.filter(col => !effectiveHidden.has(col.key))
   const colCount = visibleColumns.length
 
   return (
@@ -269,8 +290,9 @@ export default function LogTable({ logs, loading, expandedId, detailedLog, onTog
                 isExpanded={expandedId === log.id}
                 detailedLog={expandedId === log.id ? detailedLog : null}
                 onToggle={() => onToggleExpand(log.id)}
-                hiddenColumns={hiddenColumns}
+                hiddenColumns={effectiveHidden}
                 colCount={colCount}
+                uiSettings={uiSettings}
               />
             ))
           )}

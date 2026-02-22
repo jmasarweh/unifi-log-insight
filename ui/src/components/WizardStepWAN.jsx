@@ -72,7 +72,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
     const trimmed = manualInput.trim()
     if (!trimmed) return
     if (!IFACE_REGEX.test(trimmed)) {
-      setManualError('Interface name must start with letters followed by a number (e.g., ppp0, eth4, usb0).')
+      setManualError('Interface name must start with letters followed by a number (e.g., ppp0, eth4, sfp+0).')
       return
     }
     setManualError('')
@@ -161,7 +161,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
                     type="checkbox"
                     readOnly
                     checked={selected.includes(c.interface)}
-                    className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 pointer-events-none"
+                    className="ui-checkbox pointer-events-none"
                   />
                   <span className="text-sm font-mono font-semibold text-gray-200">
                     {c.interface}
@@ -226,7 +226,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
                     type="checkbox"
                     readOnly
                     checked={selected.includes(iface.name)}
-                    className="w-4 h-4 rounded border-gray-700 bg-gray-800 text-blue-500 pointer-events-none"
+                    className="ui-checkbox pointer-events-none"
                   />
                   <span className="text-sm font-mono font-semibold text-gray-200">
                     {iface.name}
@@ -348,7 +348,7 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
           {onBack ? (
             <button
               onClick={onBack}
-              className="px-6 py-2.5 rounded-lg font-medium text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-all"
+              className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
             >
               Back
             </button>
@@ -356,9 +356,9 @@ export default function WizardStepWAN({ selected, onSelect, interfaceLabels, onU
           <button
             onClick={handleNextWithDefaults}
             disabled={selected.length === 0}
-            className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
               selected.length > 0
-                ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                ? 'bg-teal-600 hover:bg-teal-500 text-white'
                 : 'bg-gray-800 text-gray-400 cursor-not-allowed'
             }`}
           >

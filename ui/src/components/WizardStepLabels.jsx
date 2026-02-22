@@ -401,17 +401,17 @@ export default function WizardStepLabels({ wanInterfaces, labels, onUpdate, vpnC
         <div className="flex justify-between">
           <button
             onClick={onBack}
-            className="px-6 py-2.5 rounded-lg font-medium text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-all"
+            className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
           >
             Back
           </button>
           <button
             onClick={onNext}
             disabled={hasValidationErrors || disabled}
-            className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
+            className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
               hasValidationErrors || disabled
                 ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
+                : 'bg-teal-600 hover:bg-teal-500 text-white'
             }`}
           >
             {nextLabel || 'Next'}

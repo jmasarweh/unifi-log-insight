@@ -34,6 +34,9 @@ def get_current_config():
         "vpn_networks": get_config(enricher_db, "vpn_networks", {}),
         "wan_ip_by_iface": get_config(enricher_db, "wan_ip_by_iface", {}),
         "vpn_toast_dismissed": get_config(enricher_db, "vpn_toast_dismissed", False),
+        "ui_country_display": get_config(enricher_db, "ui_country_display", "flag_name"),
+        "ui_ip_subline": get_config(enricher_db, "ui_ip_subline", "none"),
+        "ui_theme": get_config(enricher_db, "ui_theme", "dark"),
     }
 
 
@@ -553,3 +556,36 @@ def _estimate_log_counts() -> dict:
         return {str(s): None for s in steps}
     finally:
         put_conn(conn)
+
+
+# ── UI Settings ──────────────────────────────────────────────────────────────
+
+_UI_SETTINGS_DEFAULTS = {
+    'ui_country_display': 'flag_name',
+    'ui_ip_subline': 'none',
+    'ui_theme': 'dark',
+}
+
+_UI_SETTINGS_VALID = {
+    'ui_country_display': {'flag_name', 'flag_only', 'name_only'},
+    'ui_ip_subline': {'asn_or_abuse', 'none'},
+    'ui_theme': {'dark', 'light'},
+}
+
+
+@router.get("/api/settings/ui")
+def get_ui_settings():
+    """Return current UI display settings."""
+    return {k: get_config(enricher_db, k, v) for k, v in _UI_SETTINGS_DEFAULTS.items()}
+
+
+@router.put("/api/settings/ui")
+def update_ui_settings(body: dict):
+    """Save UI display settings to system_config."""
+    for key, valid_values in _UI_SETTINGS_VALID.items():
+        if key in body:
+            val = body[key]
+            if val not in valid_values:
+                raise HTTPException(400, f"Invalid value for {key}: {val}")
+            set_config(enricher_db, key, val)
+    return {"success": True}

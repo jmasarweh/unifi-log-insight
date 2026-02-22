@@ -104,6 +104,7 @@ def get_logs(
     service: Optional[str] = Query(None, description="Comma-separated service names"),
     interface: Optional[str] = Query(None, description="Comma-separated interface names"),
     vpn_only: bool = Query(False, description="Show only VPN traffic"),
+    asn: Optional[str] = Query(None, description="ASN name search"),
     sort: str = Query("timestamp", description="Sort field"),
     order: str = Query("desc", description="asc or desc"),
     page: int = Query(1, ge=1),
@@ -113,7 +114,7 @@ def get_logs(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
         rule_name, country, threat_min, search, service,
-        interface, vpn_only,
+        interface, vpn_only, asn=asn,
     )
 
     # Whitelist sort columns
@@ -367,12 +368,13 @@ def export_csv_endpoint(
     service: Optional[str] = Query(None),
     interface: Optional[str] = Query(None),
     vpn_only: bool = Query(False),
+    asn: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=100000),
 ):
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
-        rule_name, country, threat_min, search, service, interface, vpn_only,
+        rule_name, country, threat_min, search, service, interface, vpn_only, asn=asn,
     )
 
     export_columns = [

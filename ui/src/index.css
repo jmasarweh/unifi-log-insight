@@ -22,6 +22,48 @@ body {
   background: rgb(75, 85, 99);
 }
 
+/* Checkbox style (Option A) */
+.ui-checkbox {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1px solid #42474d;
+  background: transparent;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.ui-checkbox::after {
+  content: '';
+  width: 6px;
+  height: 3px;
+  border: 2px solid transparent;
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg);
+}
+
+.ui-checkbox:checked {
+  background: #14b8a6;
+  border-color: #14b8a6;
+}
+
+.ui-checkbox:checked::after {
+  border-color: #fff;
+}
+
+.ui-checkbox:focus-visible {
+  box-shadow: 0 0 0 2px rgba(20,184,166,.35);
+}
+
+.ui-checkbox:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 /* Animated border chase for selected cells */
 @keyframes border-chase {
   to { --border-angle: 360deg; }
@@ -118,3 +160,127 @@ body {
 .scroll-fade:hover::-webkit-scrollbar-thumb:hover {
   background: rgb(75, 85, 99);
 }
+
+/* ─── Light Theme ────────────────────────────────────────────────────── */
+[data-theme="light"] { color-scheme: light; }
+
+/* Backgrounds */
+[data-theme="light"] .bg-gray-950 { background-color: #fff; }
+[data-theme="light"] .bg-gray-900 { background-color: #f9fafb; }
+[data-theme="light"] .bg-gray-900\/50 { background-color: rgba(249,250,251,.5); }
+[data-theme="light"] .bg-gray-800 { background-color: #f3f4f6; }
+[data-theme="light"] .bg-gray-800\/30 { background-color: rgba(243,244,246,.3); }
+[data-theme="light"] .bg-gray-800\/50 { background-color: rgba(243,244,246,.5); }
+[data-theme="light"] .bg-gray-800\/60 { background-color: rgba(243,244,246,.6); }
+
+/* Text */
+[data-theme="light"] .text-white { color: #111827; }
+[data-theme="light"] .text-gray-100 { color: #1f2937; }
+[data-theme="light"] .text-gray-200 { color: #374151; }
+[data-theme="light"] .text-gray-300 { color: #4b5563; }
+[data-theme="light"] .text-gray-400 { color: #9ca3af; }
+[data-theme="light"] .text-gray-500 { color: #6b7280; }
+[data-theme="light"] .text-gray-700 { color: #d1d5db; }
+
+/* Borders */
+[data-theme="light"] .border-gray-600 { border-color: #d1d5db; }
+[data-theme="light"] .border-gray-700 { border-color: #d1d5db; }
+[data-theme="light"] .border-gray-800 { border-color: #e5e7eb; }
+[data-theme="light"] .border-gray-800\/50 { border-color: rgba(229,231,235,.5); }
+
+/* Checkbox light theme */
+[data-theme="light"] .ui-checkbox { border-color: #d1d5db; }
+[data-theme="light"] .ui-checkbox:checked {
+  background: #0d9488;
+  border-color: #0d9488;
+}
+
+/* Disable logging button (Firewall) */
+[data-theme="light"] .disable-logging-btn {
+  color: #4b5563;
+  border-color: #d1d5db;
+}
+[data-theme="light"] .disable-logging-btn:hover {
+  color: #111827;
+  background-color: #e5e7eb;
+  border-color: #cbd5f5;
+}
+
+/* Hover backgrounds */
+[data-theme="light"] .hover\:bg-gray-800:hover { background-color: #e5e7eb; }
+[data-theme="light"] .hover\:bg-gray-800\/30:hover { background-color: rgba(229,231,235,.3); }
+[data-theme="light"] .hover\:bg-gray-700:hover { background-color: #d1d5db; }
+
+/* Hover text */
+[data-theme="light"] .hover\:text-white:hover { color: #111827; }
+[data-theme="light"] .hover\:text-gray-200:hover { color: #374151; }
+
+/* Row tints */
+[data-theme="light"] .bg-red-950\/10 { background-color: rgba(254,226,226,.6); }
+[data-theme="light"] .bg-orange-950\/10 { background-color: rgba(255,237,213,.25); }
+
+/* Scrollbar */
+[data-theme="light"] ::-webkit-scrollbar-track { background: #f9fafb; }
+[data-theme="light"] ::-webkit-scrollbar-thumb { background: #d1d5db; }
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+[data-theme="light"] .scroll-fade:hover,
+[data-theme="light"] .scroll-fade:focus-within { scrollbar-color: #d1d5db transparent; }
+[data-theme="light"] .scroll-fade:hover::-webkit-scrollbar-thumb { background: #d1d5db; }
+[data-theme="light"] .scroll-fade:hover::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* Active toggle / tab backgrounds */
+[data-theme="light"] .bg-gray-700 { background-color: #e5e7eb; }
+
+/* Preserve white text on colored buttons */
+[data-theme="light"] .bg-teal-600.text-white,
+[data-theme="light"] .bg-teal-500.text-white,
+[data-theme="light"] .bg-blue-600.text-white,
+[data-theme="light"] .bg-blue-500.text-white,
+[data-theme="light"] .bg-red-600.text-white,
+[data-theme="light"] .bg-\[\#4797ff\].text-white,
+[data-theme="light"] .hover\:bg-teal-500:hover.text-white { color: #fff; }
+
+/* Amber / yellow — high contrast on white */
+[data-theme="light"] .text-amber-400 { color: #92400e; }
+[data-theme="light"] .text-amber-300 { color: #92400e; }
+[data-theme="light"] .text-yellow-400 { color: #713f12; }
+[data-theme="light"] .text-yellow-400\/80 { color: #713f12; }
+[data-theme="light"] .text-yellow-400\/90 { color: #713f12; }
+[data-theme="light"] .text-yellow-500 { color: #5b2c0a; }
+
+/* Purple — boost contrast for categories */
+[data-theme="light"] .text-purple-400\/70 { color: #7c3aed; }
+[data-theme="light"] .text-violet-400 { color: #6d28d9; }
+
+[data-theme="light"] .text-gray-600 { color: #4b5563; }
+
+/* Log table header row background */
+[data-theme="light"] thead tr { background-color: #f3f4f6; }
+
+/* LogDetail expansion panel */
+[data-theme="light"] .bg-gray-950\/80 { background-color: rgba(249,250,251,.95); }
+
+/* ── Firewall Rules — hardcoded hex overrides ────────────────────────── */
+/* !important needed: Tailwind's bg-black utility has equal specificity to
+   this [data-theme] selector; without it the dark background leaks through
+   in light mode on the firewall rules container. */
+[data-theme="light"] .bg-black { background-color: #f3f4f6 !important; }
+[data-theme="light"] .text-\[\#cbced2\] { color: #374151; }
+[data-theme="light"] .text-\[\#676f79\] { color: #6b7280; }
+[data-theme="light"] .text-\[\#f9fafa\] { color: #111827; }
+[data-theme="light"] .border-white\/\[0\.07\] { border-color: #e5e7eb; }
+[data-theme="light"] .hover\:border-white\/\[0\.15\]:hover { border-color: #d1d5db; }
+[data-theme="light"] .bg-white\/\[0\.04\] { background-color: rgba(243,244,246,.5); }
+[data-theme="light"] .bg-white\/\[0\.07\] { background-color: rgba(229,231,235,.5); }
+[data-theme="light"] .hover\:bg-white\/\[0\.02\]:hover { background-color: rgba(243,244,246,.3); }
+[data-theme="light"] .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(229,231,235,.4); }
+[data-theme="light"] .hover\:bg-gray-900:hover { background-color: #f3f4f6; }
+[data-theme="light"] .border-\[\#42474d\] { border-color: #d1d5db; }
+[data-theme="light"] .bg-\[\#42474d\] { background-color: #d1d5db; }
+[data-theme="light"] .bg-\[\#282b2f\] { background-color: #e5e7eb; }
+[data-theme="light"] .bg-\[\#4797ff\] { background-color: #4797ff; }
+[data-theme="light"] .bg-\[\#0b4ead\] { background-color: #93c5fd; }
+[data-theme="light"] .zone-label-cell { background-color: #ffffff; }
+[data-theme="light"] .zone-pair-selected-emerald { color: #065f46; }
+[data-theme="light"] .zone-pair-selected-red { color: #9b1c1c; }
+[data-theme="light"] .zone-pair-selected-cyan { color: #0e7490; }
