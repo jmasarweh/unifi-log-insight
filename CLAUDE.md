@@ -4,7 +4,7 @@ UniFi Log Insight is a self-hosted network monitoring tool for UniFi gateways. I
 
 **Repo:** `jmasarweh/unifi-log-insight` — single Docker container: PostgreSQL 16 + Python syslog receiver + FastAPI API + React UI.
 **Runtime note:** The container has a flat `/app/` structure — no `receiver/` subdirectory. All Python files sit in `/app/`.
-**Version:** v2.4.0 (`VERSION` file → Dockerfile → `deps.py:_read_version()` → `/api/health`). CI writes git tag into `VERSION`. Frontend compares to latest GitHub release for update banner.
+**Version:** v2.4.1 (`VERSION` file → Dockerfile → `deps.py:_read_version()` → `/api/health`). CI writes git tag into `VERSION`. Frontend compares to latest GitHub release for update banner.
 
 **Deep-dive references** (read on demand when working on specific subsystems):
 - `CLAUDE-architecture.md` — API routes, log pipeline, UniFi integration, threat cache, enrichment, backfill, blacklist

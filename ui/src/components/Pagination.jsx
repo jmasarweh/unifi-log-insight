@@ -147,13 +147,13 @@ export default function Pagination({ page, pages, total, perPage, onChange, vers
                       value={displayedRelease.tag}
                       onChange={e => {
                         const rel = allReleases.find(r => r.tag === e.target.value)
-                        if (rel) setSelectedRelease(rel.tag === latestRelease.tag ? null : rel)
+                        if (rel) setSelectedRelease(rel.tag === allReleases[0].tag ? null : rel)
                       }}
                       className="px-2 py-1 bg-gray-900 border border-gray-600 rounded text-[11px] text-gray-300 focus:border-teal-500 focus:outline-none"
                     >
                       {allReleases.map(r => (
                         <option key={r.tag} value={r.tag}>
-                          {r.tag}{r.tag === latestRelease.tag ? ' (latest)' : ''}
+                          {r.tag}{r.tag === allReleases[0].tag ? ' (latest)' : ''}
                         </option>
                       ))}
                     </select>
