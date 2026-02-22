@@ -67,6 +67,8 @@ export default function LogStream({ version, latestRelease, maxFilterDays }) {
   const columnsMenuRef = useRef(null)
   const intervalRef = useRef(null)
   const pendingRef = useRef(null)
+  const scrollRef = useRef(null)
+  const [showScrollTop, setShowScrollTop] = useState(false)
 
   // Load UI display settings
   useEffect(() => {
@@ -164,6 +166,15 @@ export default function LogStream({ version, latestRelease, maxFilterDays }) {
       setPendingCount(0)
     }
   }
+
+  // Show scroll-to-top button when scrolled down
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const handleScroll = () => setShowScrollTop(el.scrollTop > 300)
+    el.addEventListener('scroll', handleScroll, { passive: true })
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
 
   const load = useCallback(async (f, { background } = {}) => {
     try {
@@ -298,8 +309,21 @@ export default function LogStream({ version, latestRelease, maxFilterDays }) {
       </div>
 
       {/* Log table */}
-      <div className="flex-1 overflow-auto">
-        <LogTable logs={data.data} loading={loading} expandedId={expandedId} detailedLog={detailedLog} onToggleExpand={handleToggleExpand} hiddenColumns={hiddenColumns} uiSettings={uiSettings} />
+      <div className="flex-1 relative overflow-hidden">
+        <div className="h-full overflow-auto" ref={scrollRef}>
+          <LogTable logs={data.data} loading={loading} expandedId={expandedId} detailedLog={detailedLog} onToggleExpand={handleToggleExpand} hiddenColumns={hiddenColumns} uiSettings={uiSettings} />
+        </div>
+        {showScrollTop && (
+          <button
+            onClick={() => scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="absolute bottom-4 right-4 z-20 w-8 h-8 rounded-full bg-gray-800 border border-gray-700 text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition-colors shadow-lg flex items-center justify-center"
+            title="Scroll to top"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* Pagination */}

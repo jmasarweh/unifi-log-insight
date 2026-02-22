@@ -363,7 +363,7 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
   const showEnrichButton = showAbuse && canEnrich && !enrichedData
 
   return (
-    <div className="bg-gray-950/80 border-t border-gray-800 px-4 py-3">
+    <div className="bg-gray-950/80 px-4 py-3">
       {sections.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           {sections}
