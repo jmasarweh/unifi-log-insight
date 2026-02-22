@@ -537,17 +537,17 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                   <div className="flex justify-between pt-2">
                     <button
                       onClick={handleBack}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-all"
+                      className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={() => setStep(3)}
                       disabled={hasInvalidWan}
-                      className={`px-6 py-2.5 rounded-lg font-medium text-sm transition-all ${
+                      className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                         hasInvalidWan
                           ? 'bg-gray-800 text-gray-400 cursor-not-allowed'
-                          : 'bg-blue-500 hover:bg-blue-600 text-white'
+                          : 'bg-teal-600 hover:bg-teal-500 text-white'
                       }`}
                     >
                       Next
@@ -763,14 +763,14 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                   <div className="flex justify-between pt-2">
                     <button
                       onClick={handleBack}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-all"
+                      className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={supportsFirewall ? () => setStep(4) : handleFinish}
                       disabled={!supportsFirewall && saving}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 transition-all"
+                      className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white disabled:opacity-50 transition-colors"
                     >
                       {supportsFirewall ? 'Next' : (saving ? 'Saving...' : 'Finish')}
                     </button>
@@ -809,7 +809,7 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
               {step === 4 && wizardPath === 'unifi_api' && supportsFirewall && (
                 <div className="space-y-6">
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-200 mb-1">Firewall Rules Syslog</h2>
+                    <h2 className="text-xl font-semibold text-gray-200 mb-2">Firewall Rules Syslog</h2>
                     <p className="text-sm text-gray-400">
                       Enable syslog on firewall rules so they appear in your log dashboard.
                       Rules without syslog enabled will not generate log entries.
@@ -820,14 +820,14 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                     <button
                       onClick={handleBack}
                       disabled={saving}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-all"
+                      className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={handleFinish}
                       disabled={saving}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 transition-all"
+                      className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white disabled:opacity-50 transition-colors"
                     >
                       {saving ? 'Saving...' : 'Finish'}
                     </button>
@@ -847,14 +847,14 @@ export default function SetupWizard({ onComplete, reconfigMode, onCancel, embedd
                     <button
                       onClick={handleBack}
                       disabled={saving}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-gray-800 hover:bg-gray-700 text-gray-300 transition-all"
+                      className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={handleFinish}
                       disabled={saving}
-                      className="px-6 py-2.5 rounded-lg font-medium text-sm bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-50 transition-all"
+                      className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white disabled:opacity-50 transition-colors"
                     >
                       {saving ? 'Saving...' : 'Finish'}
                     </button>

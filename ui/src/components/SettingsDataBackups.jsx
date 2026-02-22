@@ -256,7 +256,7 @@ export default function SettingsDataBackups() {
         <div className="rounded-lg border border-gray-700 bg-gray-950 p-5 space-y-4">
           {/* Export */}
           <div>
-            <h3 className="text-sm font-medium text-gray-300 mb-2">Export Configuration</h3>
+            <h3 className="text-sm font-semibold text-gray-300 mb-2">Export Configuration</h3>
             <div className="space-y-2">
               <button
                 onClick={() => handleExport(false)}
@@ -303,7 +303,7 @@ export default function SettingsDataBackups() {
 
           {/* Import */}
           <div>
-            <h3 className="text-sm font-medium text-gray-300 mb-2">Import Configuration</h3>
+            <h3 className="text-sm font-semibold text-gray-300 mb-2">Import Configuration</h3>
             <input
               ref={fileInputRef}
               type="file"

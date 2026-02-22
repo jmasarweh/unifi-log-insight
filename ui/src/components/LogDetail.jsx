@@ -1,6 +1,28 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { FlagIcon, getInterfaceName, decodeThreatCategories, isPrivateIP } from '../utils'
 import { fetchAbuseIPDBStatus, enrichIP } from '../api'
+
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }, [text])
+  return (
+    <button onClick={handleCopy} title="Copy" className="ml-1.5 text-gray-500 hover:text-gray-300 transition-colors inline-flex items-center">
+      {copied ? (
+        <span className="text-[11px] text-emerald-400">Copied</span>
+      ) : (
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <rect x="9" y="9" width="13" height="13" rx="2" strokeWidth="2" />
+          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth="2" />
+        </svg>
+      )}
+    </button>
+  )
+}
 
 function parseRuleName(ruleName) {
   if (!ruleName) return null
@@ -77,6 +99,38 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
   }
 
   const sections = []
+
+  // Source IP / Destination IP (always shown for copyability)
+  if (displayLog.src_ip) {
+    sections.push(
+      <div key="src_ip">
+        <span className="text-gray-400 text-[12px] uppercase tracking-wider">Source IP</span>
+        <div className="text-gray-300 text-sm mt-0.5 flex items-center">
+          {displayLog.src_ip}
+          {displayLog.src_port && <span className="text-gray-500">:{displayLog.src_port}</span>}
+          <CopyButton text={displayLog.src_ip} />
+        </div>
+        {displayLog.src_device_name && (
+          <div className="text-gray-500 text-[12px] mt-0.5">{displayLog.src_device_name}</div>
+        )}
+      </div>
+    )
+  }
+  if (displayLog.dst_ip) {
+    sections.push(
+      <div key="dst_ip">
+        <span className="text-gray-400 text-[12px] uppercase tracking-wider">Destination IP</span>
+        <div className="text-gray-300 text-sm mt-0.5 flex items-center">
+          {displayLog.dst_ip}
+          {displayLog.dst_port && <span className="text-gray-500">:{displayLog.dst_port}</span>}
+          <CopyButton text={displayLog.dst_ip} />
+        </div>
+        {displayLog.dst_device_name && (
+          <div className="text-gray-500 text-[12px] mt-0.5">{displayLog.dst_device_name}</div>
+        )}
+      </div>
+    )
+  }
 
   // rDNS (prominent)
   if (displayLog.rdns) {
@@ -259,7 +313,10 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
     abuseDetails.push(
       <div key="abuse_hosts">
         <span className="text-gray-400 text-[12px] uppercase tracking-wider">AbuseIPDB Host Names</span>
-        <div className="text-gray-300 text-sm mt-0.5">{displayLog.abuse_hostnames}</div>
+        <div className="text-gray-300 text-sm mt-0.5 flex items-center">
+          {displayLog.abuse_hostnames}
+          <CopyButton text={displayLog.abuse_hostnames} />
+        </div>
       </div>
     )
   }

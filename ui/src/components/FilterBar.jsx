@@ -33,6 +33,8 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   const [selectedInterfaces, setSelectedInterfaces] = useState(
     filters.interface ? filters.interface.split(',') : []
   )
+  const [countrySearch, setCountrySearch] = useState(filters.country || '')
+  const [asnSearch, setAsnSearch] = useState(filters.asn || '')
 
   // Ref to avoid stale closures in debounce effects
   const filtersRef = useRef(filters)
@@ -67,6 +69,16 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     const t = setTimeout(() => onChange({ ...filtersRef.current, search: textSearch || null }), 400)
     return () => clearTimeout(t)
   }, [textSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange({ ...filtersRef.current, country: countrySearch || null }), 400)
+    return () => clearTimeout(t)
+  }, [countrySearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange({ ...filtersRef.current, asn: asnSearch || null }), 400)
+    return () => clearTimeout(t)
+  }, [asnSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-correct selected range if it exceeds maxFilterDays
   useEffect(() => {
@@ -111,6 +123,8 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     textSearch,
     selectedServices.length > 0 ? true : null,
     selectedInterfaces.length > 0 ? true : null,
+    countrySearch,
+    asnSearch,
   ].filter(Boolean).length
 
   const toggleAction = (action) => {
@@ -408,6 +422,30 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             </div>
           )}
         </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Country code..."
+            value={countrySearch}
+            onChange={e => setCountrySearch(e.target.value)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28"
+          />
+          {countrySearch && (
+            <button onClick={() => setCountrySearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="ASN..."
+            value={asnSearch}
+            onChange={e => setAsnSearch(e.target.value)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36"
+          />
+          {asnSearch && (
+            <button onClick={() => setAsnSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
         <div className="relative flex-1 sm:max-w-xs">
           <input
             type="text"
@@ -429,6 +467,8 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSelectedServices([])
             setInterfaceSearch('')
             setSelectedInterfaces([])
+            setCountrySearch('')
+            setAsnSearch('')
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"

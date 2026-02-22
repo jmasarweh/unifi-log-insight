@@ -1,6 +1,6 @@
 services:
   unifi-log-insight:
-    image: ghcr.io/jmasarweh/unifi-log-insight:2.3.0
+    image: ghcr.io/jmasarweh/unifi-log-insight:2.3.1
     container_name: unifi-log-insight
     restart: unless-stopped
     ports:

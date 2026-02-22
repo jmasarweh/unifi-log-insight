@@ -236,6 +236,24 @@ export async function runRetentionCleanup() {
   return resp.json()
 }
 
+// ── UI Settings ─────────────────────────────────────────────────────────
+
+export async function fetchUiSettings() {
+  const resp = await fetch(`${BASE}/settings/ui`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function updateUiSettings(settings) {
+  const resp = await fetch(`${BASE}/settings/ui`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings)
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 // ── Version Check ────────────────────────────────────────────────────────────
 
 export async function fetchLatestRelease() {

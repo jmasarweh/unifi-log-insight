@@ -111,17 +111,10 @@ export default function UniFiConnectionForm({
 
   return (
     <div>
-      <h2 className="text-lg font-semibold text-gray-200 mb-1">Connect to UniFi Controller</h2>
-      <p className="text-sm text-gray-400 mb-4">Optional — enables auto-detection and firewall management</p>
-
-      <div className="text-xs text-gray-400 mb-5 space-y-1">
-        <p>Connecting your UniFi controller enables:</p>
-        <ul className="list-disc ml-4 space-y-0.5">
-          <li>Auto-detection of WAN and network configuration</li>
-          {!isSelfHosted && <li>Firewall rule syslog management</li>}
-          <li>Device name resolution</li>
-        </ul>
-      </div>
+      <h2 className="text-xl font-semibold text-gray-200 mb-2">Connect to UniFi Controller</h2>
+      <p className="text-sm text-gray-400 mb-4">
+        Optional — enables auto-detection of WAN &amp; network config, device name resolution{!isSelfHosted && ', and firewall management'}
+      </p>
 
       {/* Controller type selector */}
       <div className="mb-4">
@@ -132,7 +125,7 @@ export default function UniFiConnectionForm({
             onClick={() => handleTypeChange('unifi_os')}
             className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
               !isSelfHosted
-                ? 'bg-blue-600 text-white'
+                ? 'bg-gray-700 text-white'
                 : 'text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -143,7 +136,7 @@ export default function UniFiConnectionForm({
             onClick={() => handleTypeChange('self_hosted')}
             className={`px-3 py-2 rounded-md text-xs font-medium transition-colors ${
               isSelfHosted
-                ? 'bg-blue-600 text-white'
+                ? 'bg-gray-700 text-white'
                 : 'text-gray-400 hover:text-gray-200'
             }`}
           >
@@ -167,7 +160,7 @@ export default function UniFiConnectionForm({
             onChange={e => { setHost(e.target.value); setResult(null); setError(null) }}
             placeholder={isSelfHosted ? '192.168.1.1:8443' : '192.168.1.1'}
             disabled={!!envHost}
-            className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+            className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-teal-500 focus:outline-none disabled:opacity-50"
           />
           {envHost && (
             <p className="text-[10px] text-gray-500 mt-1">Set by UNIFI_HOST environment variable</p>
@@ -202,7 +195,7 @@ export default function UniFiConnectionForm({
                     onChange={e => { setUsername(e.target.value); setResult(null); setError(null) }}
                     placeholder="admin"
                     autoComplete="username"
-                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-teal-500 focus:outline-none"
                   />
                 </div>
                 <div>
@@ -213,7 +206,7 @@ export default function UniFiConnectionForm({
                     onChange={e => { setPassword(e.target.value); setResult(null); setError(null) }}
                     placeholder="Enter your password"
                     autoComplete="current-password"
-                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-teal-500 focus:outline-none"
                   />
                 </div>
                 {savedUsername && !username.trim() && (
@@ -252,7 +245,7 @@ export default function UniFiConnectionForm({
                   value={apiKey}
                   onChange={e => { setApiKey(e.target.value); setResult(null); setError(null) }}
                   placeholder="Enter your UniFi API key"
-                  className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+                  className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 placeholder-gray-500 focus:border-teal-500 focus:outline-none"
                 />
                 {savedApiKey && !apiKey.trim() && (
                   <button
@@ -298,7 +291,7 @@ export default function UniFiConnectionForm({
                 type="text"
                 value={site}
                 onChange={e => setSite(e.target.value)}
-                className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none"
+                className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-teal-500 focus:outline-none"
               />
             </div>
             <label className="flex items-center gap-2 text-xs text-gray-300">
@@ -306,7 +299,7 @@ export default function UniFiConnectionForm({
                 type="checkbox"
                 checked={!verifySsl}
                 onChange={e => setVerifySsl(!e.target.checked)}
-                className="rounded border-gray-600 bg-gray-900"
+                className="ui-checkbox"
               />
               Skip SSL verification (for self-signed certificates)
             </label>
@@ -335,32 +328,28 @@ export default function UniFiConnectionForm({
           </div>
         )}
 
+      </div>
+
+      {/* Action row */}
+      <div className="flex items-center justify-between mt-3">
+        {onSkip ? (
+          <button
+            onClick={onSkip}
+            className="px-3 py-1.5 rounded text-xs font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
+          >
+            Skip &mdash; Use Log Detection Instead
+          </button>
+        ) : <span />}
         {!(result && result.success) && (
           <button
             onClick={handleTest}
             disabled={testing || !host.trim() || !hasCredentials}
-            className="w-full px-4 py-2 rounded-lg text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {testing ? 'Testing...' : 'Test & Connect'}
           </button>
         )}
       </div>
-
-      {onSkip && (
-        <div className="mt-6 text-center">
-          <div className="flex items-center gap-3 justify-center mb-3">
-            <div className="h-px flex-1 bg-gray-700" />
-            <span className="text-xs text-gray-500">or</span>
-            <div className="h-px flex-1 bg-gray-700" />
-          </div>
-          <button
-            onClick={onSkip}
-            className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors"
-          >
-            Skip &mdash; Use Log Detection Instead
-          </button>
-        </div>
-      )}
     </div>
   )
 }

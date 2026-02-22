@@ -175,15 +175,15 @@ function cellStyle(action, selected) {
   switch (action) {
     case 'Allow All':
       return selected
-        ? 'border-chase border-chase-emerald text-emerald-300'
+        ? 'border-chase border-chase-emerald text-emerald-300 zone-pair-selected-emerald'
         : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
     case 'Block All':
       return selected
-        ? 'border-chase border-chase-red text-red-300'
+        ? 'border-chase border-chase-red text-red-300 zone-pair-selected-red'
         : 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
     case 'Allow Return':
       return selected
-        ? 'border-chase border-chase-cyan text-cyan-300'
+        ? 'border-chase border-chase-cyan text-cyan-300 zone-pair-selected-cyan'
         : 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/25'
     default:
       return 'bg-white/[0.04] text-[#676f79] border border-white/[0.07]'
@@ -280,7 +280,7 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
               {zones.map((z, i) => (
                 <th
                   key={z.id}
-                  className={`px-2.5 py-1.5 font-medium text-[#cbced2] text-center border border-white/[0.07] bg-black whitespace-nowrap ${
+                  className={`zone-label-cell px-2.5 py-1.5 font-medium text-[#cbced2] text-center border border-white/[0.07] bg-black whitespace-nowrap ${
                     i === zones.length - 1 ? 'rounded-tr-lg' : ''
                   }`}
                 >
@@ -295,13 +295,13 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
                 {ri === 0 && (
                   <td
                     rowSpan={zones.length}
-                    className="text-[10px] text-[#676f79] font-normal uppercase tracking-widest w-4 select-none"
+                    className="text-[10px] text-[#676f79] font-normal uppercase tracking-widest w-4 select-none bg-black border-r border-white/[0.07] border-l-0 border-t-0 border-b-0"
                     style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
                   >
                     <div className="flex items-center justify-center h-full">Source</div>
                   </td>
                 )}
-                <td className={`px-2.5 py-1.5 font-medium text-[#cbced2] border border-white/[0.07] bg-black whitespace-nowrap text-[11px] ${
+                <td className={`zone-label-cell px-2.5 py-1.5 font-medium text-[#cbced2] border border-white/[0.07] bg-black whitespace-nowrap text-[11px] ${
                   ri === zones.length - 1 ? 'rounded-bl-lg' : ''
                 }`}>
                   {normalizeZoneName(src.name)}
@@ -374,7 +374,7 @@ function FilterBar({ filters, onFilterChange, onBulk, bulkAction, zoneScopeLabel
               type="checkbox"
               checked={filters[opt.key]}
               onChange={() => onFilterChange({ ...filters, [opt.key]: !filters[opt.key] })}
-              className="w-3 h-3 rounded-sm border-[#42474d] bg-transparent text-[#4797ff] focus:ring-0 focus:ring-offset-0 cursor-pointer accent-[#4797ff]"
+              className="ui-checkbox"
             />
             {opt.label}
           </label>
@@ -405,7 +405,7 @@ function FilterBar({ filters, onFilterChange, onBulk, bulkAction, zoneScopeLabel
         <button
           onClick={() => onBulk(false)}
           disabled={!!bulkAction}
-          className="px-2.5 py-1 rounded text-[11px] font-medium text-[#cbced2] hover:text-[#f9fafa] border border-white/[0.07] hover:border-white/[0.15] disabled:opacity-40 transition-colors"
+          className="disable-logging-btn px-2.5 py-1 rounded text-[11px] font-medium text-[#cbced2] hover:text-[#f9fafa] border border-white/[0.07] hover:border-white/[0.15] disabled:opacity-40 transition-colors"
         >
           {bulkAction === 'disable' ? 'Disabling...' : 'Disable All Logging'}
         </button>

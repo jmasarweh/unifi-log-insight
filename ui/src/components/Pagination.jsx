@@ -5,8 +5,8 @@ function renderMarkdown(md) {
   if (!md) return ''
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
   return esc(md)
-    .replace(/^### (.+)$/gm, '<h3 class="text-xs font-semibold text-gray-200 mt-3 mb-1">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 class="text-sm font-semibold text-gray-100 mt-4 mb-1.5">$1</h2>')
+    .replace(/^### (.+)$/gm, '<h3 class="text-xs font-semibold text-gray-200 mt-2 mb-0.5">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 class="text-sm font-semibold text-gray-100 mt-3 mb-1">$1</h2>')
     .replace(/\*\*(.+?)\*\*/g, '<strong class="text-gray-200">$1</strong>')
     .replace(/`([^`]+)`/g, '<code class="px-1 py-0.5 bg-gray-800 rounded text-[10px] text-gray-300">$1</code>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
@@ -16,7 +16,9 @@ function renderMarkdown(md) {
     .replace(/^- (.+)$/gm, '<li class="ml-3 pl-1">$1</li>')
     .replace(/((?:<li[^>]*>.*<\/li>\n?)+)/g, '<ul class="list-disc space-y-0.5 my-1">$1</ul>')
     .replace(/<\/li>\n<li/g, '</li><li')
-    .replace(/\n{2,}/g, '<div class="h-2"></div>')
+    .replace(/\n{2,}/g, '<div class="h-1"></div>')
+    .replace(/\n(?=<(?:h[23]|ul|\/ul|div))/g, '')
+    .replace(/(<\/(?:h[23]|ul|div[^>]*)>)\n/g, '$1')
     .replace(/\n/g, '<br/>')
 }
 
@@ -119,7 +121,7 @@ export default function Pagination({ page, pages, total, perPage, onChange, vers
               <span id="release-notes-title" className="text-sm font-semibold text-gray-200">Release Notes — {latestRelease.tag}</span>
               <button onClick={() => setShowNotes(false)} className="text-gray-400 hover:text-gray-200 text-lg leading-none">&times;</button>
             </div>
-            <div className="px-4 py-3 overflow-y-auto text-xs text-gray-300 leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMarkdown(latestRelease.body) }} />
+            <div className="px-4 py-3 overflow-y-auto text-xs text-gray-300 leading-normal" dangerouslySetInnerHTML={{ __html: renderMarkdown(latestRelease.body) }} />
             <div className="px-4 py-3 border-t border-gray-700 flex justify-end">
               <a
                 href={latestRelease.url}

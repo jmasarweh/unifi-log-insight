@@ -3,6 +3,7 @@ import { fetchConfig, fetchUniFiSettings, fetchUniFiNetworkConfig } from '../api
 import SettingsWanNetworks from './SettingsWanNetworks'
 import SettingsFirewall from './SettingsFirewall'
 import SettingsDataBackups from './SettingsDataBackups'
+import SettingsUserInterface from './SettingsUserInterface'
 import SetupWizard from './SetupWizard'
 
 function getVlanId(iface) {
@@ -38,6 +39,15 @@ const BASE_SECTIONS = [
         <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z" />
         <path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z" />
         <path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'user-interface',
+    label: 'User Interface',
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM17 4a1 1 0 10-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4z" />
       </svg>
     ),
   },
@@ -218,6 +228,9 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                 )}
                 {activeSection === 'data-backups' && (
                   <SettingsDataBackups />
+                )}
+                {activeSection === 'user-interface' && (
+                  <SettingsUserInterface />
                 )}
               </>
             )}
