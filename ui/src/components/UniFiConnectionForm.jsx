@@ -328,6 +328,12 @@ export default function UniFiConnectionForm({
           </div>
         )}
 
+        {result?.warning && (
+          <div className="mt-2 px-3 py-2 rounded bg-amber-500/10 border border-amber-500/30 text-xs text-amber-400">
+            {result.warning}
+          </div>
+        )}
+
       </div>
 
       {/* Action row */}
