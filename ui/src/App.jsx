@@ -77,7 +77,12 @@ export default function App() {
     updateUiSettings({ ui_theme: next }).catch(() => {})
   }
 
-  const reloadConfig = () => {
+  const reloadConfig = (prefetched) => {
+    if (prefetched) {
+      setConfig(prefetched)
+      loadInterfaceLabels(prefetched)
+      return Promise.resolve(prefetched)
+    }
     return fetchConfig().then(cfg => {
       setConfig(cfg)
       loadInterfaceLabels(cfg)
@@ -210,7 +215,7 @@ export default function App() {
       }}
       startInReconfig={settingsReconfig}
       unlabeledVpn={unlabeledVpn}
-      onVpnSaved={() => reloadConfig().catch(() => {})}
+      onVpnSaved={(cfg) => reloadConfig(cfg).catch(() => {})}
     />
   }
 
