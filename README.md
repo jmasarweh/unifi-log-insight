@@ -42,6 +42,8 @@ Single Docker container. No external dependencies. Zero data collection.
 
 ---
 
+> **Need help fast?** Jump to [Troubleshooting](#-troubleshooting).
+
 ## 📋 Prerequisites
 
 - **Docker** and **Docker Compose**
@@ -442,6 +444,16 @@ Install directly from Unraid's Docker UI - no terminal needed.
 ---
 
 ## 🔧 Troubleshooting
+
+### UniFi API Auth Errors (UI or .env)
+
+- **Controller URL must be the local controller URL** (e.g. `https://192.168.1.1`), not a cloud URL like `unifi.ui.com`.
+  In the UI this is **Controller URL**; in `.env` it is `UNIFI_HOST`.
+- **Site must be the site ID** (often `default`), not the display name with spaces.
+  In the UI this is **Site**; in `.env` it is `UNIFI_SITE`.
+- Use a **Local Admin** API key with **Network** permissions.
+- `POSTGRES_PASSWORD` is required to encrypt/decrypt UniFi credentials saved from the **Settings UI**
+  (and also applies to `.env`). If it was missing or changed after saving credentials, re-enter them in Settings.
 
 ### No logs appearing
 
