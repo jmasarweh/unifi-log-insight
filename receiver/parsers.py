@@ -87,7 +87,10 @@ VPN_PREFIX_BADGES = {
     'vtun':  'OVPN VTN',
     'l2tp':  'L2TP SRV',
 }
-# All known VPN interface prefixes (including ones without auto-detection)
+# All known VPN interface prefixes (including ones without auto-detection).
+# Order matters: longer prefixes before shorter overlapping ones (tunovpnc before tun)
+# because startswith() matching uses first-match semantics. Keep VPN_PREFIX_BADGES
+# and VPN_PREFIX_DESCRIPTIONS in the same order.
 VPN_INTERFACE_PREFIXES = ('wgsrv', 'wgclt', 'wgsts', 'tlprt', 'vti', 'tunovpnc', 'tun', 'vtun', 'l2tp')
 # Badge abbreviation → human-readable full name (for UI dropdowns)
 VPN_BADGE_LABELS = {
