@@ -215,7 +215,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                     onRestartWizard={handleRestartWizard}
                     vpnNetworks={config?.vpn_networks || {}}
                     interfaceLabels={config?.interface_labels || {}}
-                    onVpnSaved={() => { fetchConfig().then(setConfig).catch(() => {}); onVpnSavedApp?.() }}
+                    onVpnSaved={() => { fetchConfig().then(cfg => { setConfig(cfg); onVpnSavedApp?.(cfg) }).catch(() => {}) }}
                     unlabeledVpn={unlabeledVpn}
                   />
                 )}
