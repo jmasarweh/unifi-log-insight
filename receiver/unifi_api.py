@@ -693,11 +693,11 @@ class UniFiAPI:
                     iface = f'{prefix}{wg_id}'
                 elif vpn_type in ('openvpn-server', 'openvpn-client'):
                     # OpenVPN records lack wireguard_id; use tunnel_id,
-                    # x_openvpn_tunnel_id, or fall back to index 1
+                    # x_openvpn_tunnel_id, or fall back to index 0
                     ovpn_id = net.get('tunnel_id')
                     if ovpn_id is None:
                         ovpn_id = net.get('x_openvpn_tunnel_id')
-                    iface = f'{prefix}{ovpn_id}' if ovpn_id is not None else f'{prefix}1'
+                    iface = f'{prefix}{ovpn_id}' if ovpn_id is not None else f'{prefix}0'
 
             # Extract network CIDR from ip_subnet (e.g. "10.10.70.1/29")
             cidr = net.get('ip_subnet', '')
