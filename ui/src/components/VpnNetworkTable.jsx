@@ -148,7 +148,7 @@ function AddRow({ availableTypes, existingInterfaces, onAdd, showSampleIp }) {
 
   const addBadge = addType ? 'VPN' : ''
   const addLabel = addType || ''
-  const canAdd = addType && addLabel
+  const canAdd = !!addType
 
   const handleAdd = () => {
     if (!canAdd) return
