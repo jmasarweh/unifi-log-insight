@@ -181,9 +181,69 @@ class AbuseIPDBEnricher:
 
         if self.enabled:
             logger.info("AbuseIPDB enrichment enabled (safety buffer: %d)", self.SAFETY_BUFFER)
+            self._load_persisted_stats()
             self._write_stats()
         else:
             logger.warning("AbuseIPDB API key not set — threat enrichment disabled")
+
+    def _load_persisted_stats(self):
+        """Restore rate limit state from database on startup.
+
+        If reset_at has passed, treat quota as renewed.
+        If paused_until has expired, clear it.
+        Missing fields stay None to preserve bootstrap semantics.
+        """
+        if not self.db:
+            return
+        try:
+            stats = self.db.get_config('abuseipdb_rate_limit')
+            if not stats:
+                return
+
+            # Restore pause even if limit is None (429 before first success)
+            paused = stats.get('paused_until')
+            if paused and float(paused) > time.time():
+                self._paused_until = float(paused)
+            else:
+                self._paused_until = 0.0
+
+            # Only restore rate limit fields if we have real data
+            if stats.get('limit') is None:
+                if self._paused_until > 0:
+                    logger.info(
+                        "AbuseIPDB: restored pause (until %s), no rate limit data yet",
+                        time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(self._paused_until))
+                    )
+                return
+
+            self._rate_limit_limit = stats.get('limit')
+            self._rate_limit_remaining = stats.get('remaining')
+            self._rate_limit_reset = stats.get('reset_at')
+
+            # If reset_at has passed, quota is renewed
+            if self._rate_limit_reset is not None:
+                try:
+                    if time.time() > float(self._rate_limit_reset):
+                        logger.info(
+                            "AbuseIPDB: persisted reset_at %s has passed, "
+                            "restoring quota to %s",
+                            self._rate_limit_reset, self._rate_limit_limit
+                        )
+                        self._rate_limit_remaining = self._rate_limit_limit
+                        self._rate_limit_reset = None
+                        self._paused_until = 0.0
+                except (ValueError, TypeError):
+                    pass
+
+            logger.info(
+                "AbuseIPDB: restored persisted stats "
+                "(limit=%s, remaining=%s, reset_at=%s)",
+                self._rate_limit_limit,
+                self._rate_limit_remaining,
+                self._rate_limit_reset,
+            )
+        except Exception as e:
+            logger.warning("Failed to load persisted AbuseIPDB stats: %s", e)
 
     def exclude_ip(self, ip_str: str):
         """Add an IP to the exclusion list (e.g. our own WAN IP)."""
@@ -250,19 +310,31 @@ class AbuseIPDBEnricher:
                 self._rate_limit_reset = reset_ts
 
     def _write_stats(self):
-        """Write rate limit stats to shared file for API/UI to read."""
+        """Write rate limit stats to shared file for API/UI to read,
+        and persist to database for survival across restarts."""
+        stats = {
+            'limit': self._rate_limit_limit,
+            'remaining': self._rate_limit_remaining,
+            'reset_at': self._rate_limit_reset,
+            'paused_until': self._paused_until if self._paused_until > time.time() else None,
+            'updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+        }
+        # IPC: tmp file for API process
         try:
-            stats = {
-                'limit': self._rate_limit_limit,
-                'remaining': self._rate_limit_remaining,
-                'reset_at': self._rate_limit_reset,
-                'paused_until': self._paused_until if self._paused_until > time.time() else None,
-                'updated_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-            }
             with open(self.STATS_FILE, 'w') as f:
                 json.dump(stats, f)
         except Exception:
             pass  # Non-critical, don't break enrichment
+        # Persistence: DB for restart survival
+        # Persist when we have real rate limit data OR an active pause (429
+        # before first successful call still needs to survive restarts)
+        should_persist = (self._rate_limit_limit is not None
+                          or self._paused_until > time.time())
+        if self.db and should_persist:
+            try:
+                self.db.set_config('abuseipdb_rate_limit', stats)
+            except Exception:
+                pass
 
     def lookup(self, ip_str: str) -> dict:
         """Check an IP against AbuseIPDB. Returns threat_score and categories.

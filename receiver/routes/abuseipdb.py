@@ -18,20 +18,39 @@ router = APIRouter()
 
 @router.get("/api/abuseipdb/status")
 def abuseipdb_status():
+    stats = None
     try:
         with open('/tmp/abuseipdb_stats.json') as f:
             stats = json.load(f)
-            reset_at = stats.get('reset_at')
-            remaining = stats.get('remaining', 0) or 0
-            if reset_at is not None and remaining <= 0:
-                try:
-                    if time.time() > float(reset_at):
-                        stats['quota_reset_pending'] = True
-                except (ValueError, TypeError):
-                    pass
-            return stats
-    except FileNotFoundError:
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    # Fallback: tmp file missing, corrupt, or lacks useful data
+    if not stats or stats.get('limit') is None:
+        try:
+            db_stats = get_config(enricher_db, 'abuseipdb_rate_limit')
+            if db_stats:
+                paused = db_stats.get('paused_until')
+                pause_active = False
+                if paused:
+                    try:
+                        pause_active = time.time() < float(paused)
+                    except (ValueError, TypeError):
+                        pass
+                if db_stats.get('limit') is not None or pause_active:
+                    stats = db_stats
+        except Exception:
+            pass
+    if not stats:
         return {"remaining": None, "limit": None}
+    reset_at = stats.get('reset_at')
+    remaining = stats.get('remaining', 0) or 0
+    if reset_at is not None and remaining <= 0:
+        try:
+            if time.time() > float(reset_at):
+                stats['quota_reset_pending'] = True
+        except (ValueError, TypeError):
+            pass
+    return stats
 
 
 @router.post("/api/enrich/{ip}")
@@ -59,24 +78,50 @@ def enrich_ip(ip: str):
         raise HTTPException(status_code=400, detail="AbuseIPDB not configured")
 
     # Budget check: use shared stats file as source of truth
+    budget_stats = None
     try:
         with open('/tmp/abuseipdb_stats.json') as f:
-            stats = json.load(f)
-            remaining = stats.get('remaining', 0) or 0
-            if remaining <= 0:
-                # Check if quota has renewed since stats were written
-                reset_at = stats.get('reset_at')
-                quota_renewed = False
-                if reset_at is not None:
+            budget_stats = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    # Fallback: tmp file missing, corrupt, or lacks useful data
+    if not budget_stats or budget_stats.get('limit') is None:
+        try:
+            db_stats = get_config(enricher_db, 'abuseipdb_rate_limit')
+            if db_stats:
+                paused = db_stats.get('paused_until')
+                pause_active = False
+                if paused:
                     try:
-                        quota_renewed = time.time() > float(reset_at)
+                        pause_active = time.time() < float(paused)
                     except (ValueError, TypeError):
                         pass
-                if not quota_renewed:
-                    raise HTTPException(status_code=429, detail="No API budget remaining — resets daily")
-                logger.info("Manual enrich: quota reset detected (reset_at %s passed), allowing call", reset_at)
-    except FileNotFoundError:
-        pass  # No stats yet — allow call to bootstrap rate limit state
+                if db_stats.get('limit') is not None or pause_active:
+                    budget_stats = db_stats
+        except Exception:
+            pass
+    if budget_stats:
+        # Block if actively paused (429 back-off)
+        paused_until = budget_stats.get('paused_until')
+        if paused_until:
+            try:
+                if time.time() < float(paused_until):
+                    raise HTTPException(status_code=429, detail="AbuseIPDB paused (rate limited) — try later")
+            except (ValueError, TypeError):
+                pass
+        remaining = budget_stats.get('remaining', 0) or 0
+        if remaining <= 0:
+            # Check if quota has renewed since stats were written
+            reset_at = budget_stats.get('reset_at')
+            quota_renewed = False
+            if reset_at is not None:
+                try:
+                    quota_renewed = time.time() > float(reset_at)
+                except (ValueError, TypeError):
+                    pass
+            if not quota_renewed:
+                raise HTTPException(status_code=429, detail="No API budget remaining — resets daily")
+            logger.info("Manual enrich: quota reset detected (reset_at %s passed), allowing call", reset_at)
 
     # Clear from memory cache
     abuseipdb.cache.delete(ip)
