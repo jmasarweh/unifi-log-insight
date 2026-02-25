@@ -4,6 +4,7 @@ import SettingsWanNetworks from './SettingsWanNetworks'
 import SettingsFirewall from './SettingsFirewall'
 import SettingsDataBackups from './SettingsDataBackups'
 import SettingsUserInterface from './SettingsUserInterface'
+import SettingsMCP from './SettingsMCP'
 import SetupWizard from './SetupWizard'
 
 function getVlanId(iface) {
@@ -49,6 +50,13 @@ const BASE_SECTIONS = [
       <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
         <path d="M5 4a1 1 0 00-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4zM11 4a1 1 0 10-2 0v1.268a2 2 0 000 3.464V16a1 1 0 102 0V8.732a2 2 0 000-3.464V4zM17 4a1 1 0 10-2 0v7.268a2 2 0 000 3.464V16a1 1 0 102 0v-1.268a2 2 0 000-3.464V4z" />
       </svg>
+    ),
+  },
+  {
+    id: 'mcp',
+    label: <span className="flex items-center gap-1.5">MCP <span className="text-[10px] px-1 py-0 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Beta</span></span>,
+    icon: (
+      <img src="/mcp-logo.png" alt="MCP" className="mcp-logo" />
     ),
   },
 ]
@@ -231,6 +239,9 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                 )}
                 {activeSection === 'user-interface' && (
                   <SettingsUserInterface />
+                )}
+                {activeSection === 'mcp' && (
+                  <SettingsMCP />
                 )}
               </>
             )}

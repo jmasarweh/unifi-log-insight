@@ -23,6 +23,8 @@ from routes.setup import router as setup_router
 from routes.unifi import router as unifi_router
 from routes.abuseipdb import router as abuseipdb_router
 from routes.health import router as health_router
+from routes.threats import router as threats_router
+from routes.mcp import router as mcp_router
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +81,8 @@ app.include_router(setup_router)
 app.include_router(unifi_router)
 app.include_router(abuseipdb_router)
 app.include_router(health_router)
+app.include_router(threats_router)
+app.include_router(mcp_router)
 
 
 # ── Static file serving ──────────────────────────────────────────────────────

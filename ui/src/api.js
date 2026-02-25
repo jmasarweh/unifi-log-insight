@@ -239,6 +239,66 @@ export async function updateRetentionConfig(config) {
   return resp.json()
 }
 
+// ── MCP Settings ────────────────────────────────────────────────────────────
+
+export async function fetchMcpSettings() {
+  const resp = await fetch(`${BASE}/settings/mcp`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function updateMcpSettings(settings) {
+  const resp = await fetch(`${BASE}/settings/mcp`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings)
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchMcpScopes() {
+  const resp = await fetch(`${BASE}/settings/mcp/scopes`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchMcpTokens() {
+  const resp = await fetch(`${BASE}/settings/mcp/tokens`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchMcpAudit(limit = 200, offset = 0) {
+  const resp = await fetch(`${BASE}/settings/mcp/audit?limit=${limit}&offset=${offset}`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function createMcpToken(payload) {
+  const resp = await fetch(`${BASE}/settings/mcp/tokens`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function revokeMcpToken(tokenId) {
+  const resp = await fetch(`${BASE}/settings/mcp/tokens/${encodeURIComponent(tokenId)}`, {
+    method: 'DELETE'
+  })
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
 export async function runRetentionCleanup() {
   const resp = await fetch(`${BASE}/config/retention/cleanup`, { method: 'POST' })
   if (!resp.ok) throw new Error(`API error: ${resp.status}`)

@@ -194,6 +194,25 @@ def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: Blacklist
         except Exception as e:
             logger.error("Retention cleanup failed: %s", e)
 
+        # MCP audit retention (separate so log cleanup failures don't skip this, and vice versa)
+        mcp_audit_days = 10
+        try:
+            mcp_audit_days = get_config(db, 'mcp_audit_retention_days', 10)
+            try:
+                mcp_audit_days = max(1, int(mcp_audit_days))
+            except (ValueError, TypeError):
+                mcp_audit_days = 10
+            with db.get_conn() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM mcp_audit WHERE created_at < NOW() - (%s || ' days')::interval",
+                        [mcp_audit_days]
+                    )
+                    if cur.rowcount > 0:
+                        logger.info("MCP audit cleanup: deleted %d entries older than %d days", cur.rowcount, mcp_audit_days)
+        except Exception as e:
+            logger.error("MCP audit cleanup failed (retention=%s days): %s", mcp_audit_days, e)
+
     def pull_blacklist():
         if blacklist_fetcher:
             try:

@@ -142,6 +142,32 @@ class Database:
                 value JSONB NOT NULL,
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )""",
+            # MCP tokens and audit trail
+            """CREATE TABLE IF NOT EXISTS mcp_tokens (
+                id UUID PRIMARY KEY,
+                name TEXT NOT NULL,
+                token_prefix TEXT NOT NULL,
+                token_hash TEXT NOT NULL,
+                token_salt TEXT NOT NULL,
+                scopes TEXT[] NOT NULL,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_used_at TIMESTAMPTZ,
+                disabled BOOLEAN NOT NULL DEFAULT FALSE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_mcp_tokens_prefix ON mcp_tokens (token_prefix)",
+            "CREATE INDEX IF NOT EXISTS idx_mcp_tokens_active ON mcp_tokens (disabled) WHERE disabled = false",
+            """CREATE TABLE IF NOT EXISTS mcp_audit (
+                id BIGSERIAL PRIMARY KEY,
+                token_id UUID,
+                tool_name TEXT NOT NULL,
+                scope TEXT,
+                success BOOLEAN NOT NULL,
+                error TEXT,
+                params JSONB,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_mcp_audit_created_at ON mcp_audit (created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_mcp_audit_token_id ON mcp_audit (token_id)",
             # One-time flag: re-enrich logs that were enriched on WAN IP instead of remote IP
             """INSERT INTO system_config (key, value, updated_at)
                VALUES ('enrichment_wan_fix_pending', 'true', NOW())

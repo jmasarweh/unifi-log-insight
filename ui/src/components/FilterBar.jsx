@@ -318,7 +318,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             >✕</button>
           )}
           {showServiceDropdown && (
-            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
+            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
               {services
                 .filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase()))
                 .slice(0, 50)
@@ -371,7 +371,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             >✕</button>
           )}
           {showInterfaceDropdown && (
-            <div className="absolute top-full left-0 mt-1 w-64 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-10">
+            <div className="absolute top-full left-0 mt-1 w-64 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
               {(() => {
                 const q = interfaceSearch.toLowerCase()
                 const filtered = interfaces.filter(iface =>
