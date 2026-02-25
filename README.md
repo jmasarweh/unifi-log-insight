@@ -21,6 +21,7 @@ Single Docker container. No external dependencies. Zero data collection.
 ## ✨ Features
 
 - 📺 **Live Log Stream** - Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume
+- 🤖 **AI Agent Integration (Beta)** - Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation
 - 📊 **Dashboard** - Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries
 - 🔎 **Filters** - Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search
 - 🌍 **IP Enrichment** - GeoIP (country, city, coordinates), ASN, reverse DNS via MaxMind GeoLite2 with scheduled auto-update and hot-reload
@@ -39,7 +40,6 @@ Single Docker container. No external dependencies. Zero data collection.
 - 🔤 **DNS Ready** - Full DNS query parsing ([requires configuration](#-dns-logging))
 - 📱 **Mobile Responsive** - Collapsible filters, full-width table on small screens
 - 🧙 **Setup Wizard** - Two paths: **UniFi API** (auto-detects WAN, VLANs, topology) or **Log Detection** (discovers interfaces from live traffic)
-- 🤖 **AI Agent Integration (Beta)** - Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation
 
 ---
 
