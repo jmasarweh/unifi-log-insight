@@ -37,6 +37,10 @@ def get_current_config():
         "ui_country_display": get_config(enricher_db, "ui_country_display", "flag_name"),
         "ui_ip_subline": get_config(enricher_db, "ui_ip_subline", "none"),
         "ui_theme": get_config(enricher_db, "ui_theme", "dark"),
+        "mcp_enabled": get_config(enricher_db, "mcp_enabled", False),
+        "mcp_audit_enabled": get_config(enricher_db, "mcp_audit_enabled", False),
+        "mcp_audit_retention_days": get_config(enricher_db, "mcp_audit_retention_days", 10),
+        "mcp_allowed_origins": get_config(enricher_db, "mcp_allowed_origins", []),
     }
 
 
@@ -313,6 +317,7 @@ _EXPORTABLE_KEYS = [
     'unifi_verify_ssl', 'unifi_poll_interval', 'unifi_features',
     'unifi_controller_name', 'unifi_controller_type',
     'retention_days', 'dns_retention_days',
+    'mcp_enabled', 'mcp_audit_enabled', 'mcp_audit_retention_days', 'mcp_allowed_origins',
 ]
 # NOTE: unifi_username, unifi_password, and unifi_site_id are NEVER exported
 # (security + site_id is controller-specific and would break on import).
@@ -367,7 +372,21 @@ def import_config(body: dict):
     for key in _EXPORTABLE_KEYS:
         if key not in config:
             continue
-        set_config(enricher_db, key, config[key])
+        val = config[key]
+        # Validate MCP-specific keys before storing
+        if key == 'mcp_audit_retention_days':
+            try:
+                val = max(1, min(365, int(val)))
+            except (ValueError, TypeError):
+                failed_keys.append(key)
+                continue
+        elif key == 'mcp_allowed_origins':
+            if isinstance(val, str):
+                val = [v.strip() for v in val.split(',') if v.strip()]
+            elif not isinstance(val, list):
+                failed_keys.append(key)
+                continue
+        set_config(enricher_db, key, val)
         imported_keys.append(key)
 
     # Handle API key separately — re-encrypt for storage

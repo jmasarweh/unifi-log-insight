@@ -1,28 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { FlagIcon, getInterfaceName, decodeThreatCategories, isPrivateIP } from '../utils'
 import { fetchAbuseIPDBStatus, enrichIP } from '../api'
+import CopyButton from './CopyButton'
 
-function CopyButton({ text }) {
-  const [copied, setCopied] = useState(false)
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    }).catch(() => {})
-  }, [text])
-  return (
-    <button onClick={handleCopy} title="Copy" className="ml-1.5 text-gray-500 hover:text-gray-300 transition-colors inline-flex items-center">
-      {copied ? (
-        <span className="text-[11px] text-emerald-400">Copied</span>
-      ) : (
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <rect x="9" y="9" width="13" height="13" rx="2" strokeWidth="2" />
-          <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth="2" />
-        </svg>
-      )}
-    </button>
-  )
-}
+const TEAL = 'text-teal-500 hover:text-teal-400'
 
 function parseRuleName(ruleName) {
   if (!ruleName) return null
@@ -108,7 +89,7 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
         <div className="text-gray-300 text-sm mt-0.5 flex items-center">
           {displayLog.src_ip}
           {displayLog.src_port && <span className="text-gray-500">:{displayLog.src_port}</span>}
-          <CopyButton text={displayLog.src_ip} />
+          <CopyButton text={displayLog.src_ip} color={TEAL} />
         </div>
         {displayLog.src_device_name && (
           <div className="text-gray-500 text-[12px] mt-0.5">{displayLog.src_device_name}</div>
@@ -123,7 +104,7 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
         <div className="text-gray-300 text-sm mt-0.5 flex items-center">
           {displayLog.dst_ip}
           {displayLog.dst_port && <span className="text-gray-500">:{displayLog.dst_port}</span>}
-          <CopyButton text={displayLog.dst_ip} />
+          <CopyButton text={displayLog.dst_ip} color={TEAL} />
         </div>
         {displayLog.dst_device_name && (
           <div className="text-gray-500 text-[12px] mt-0.5">{displayLog.dst_device_name}</div>
@@ -315,7 +296,7 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
         <span className="text-gray-400 text-[12px] uppercase tracking-wider">AbuseIPDB Host Names</span>
         <div className="text-gray-300 text-sm mt-0.5 flex items-center">
           {displayLog.abuse_hostnames}
-          <CopyButton text={displayLog.abuse_hostnames} />
+          <CopyButton text={displayLog.abuse_hostnames} color={TEAL} />
         </div>
       </div>
     )
@@ -402,6 +383,13 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
           {displayLog.raw_log}
         </pre>
       </div>
+      {/* Log ID */}
+      {displayLog.id != null && (
+        <div className="flex items-center justify-end gap-1 mt-2">
+          <span className="text-gray-500 text-[11px] font-mono font-bold">LOG ID: {displayLog.id}</span>
+          <CopyButton text={String(displayLog.id)} color={TEAL} />
+        </div>
+      )}
     </div>
   )
 }

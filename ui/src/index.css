@@ -6,6 +6,17 @@ body {
   font-family: 'JetBrains Mono', monospace;
 }
 
+.mcp-logo {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  padding: 1px;
+  background: #ffffff;
+  border: 1px solid rgba(255,255,255,0.15);
+  object-fit: contain;
+  box-sizing: border-box;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -200,6 +211,7 @@ body {
 [data-theme="light"] .border-gray-700 { border-color: #d1d5db; }
 [data-theme="light"] .border-gray-800 { border-color: #e5e7eb; }
 [data-theme="light"] .border-gray-800\/50 { border-color: rgba(229,231,235,.5); }
+[data-theme="light"] .mcp-logo { border-color: #e5e7eb; }
 
 /* Checkbox light theme */
 [data-theme="light"] .ui-checkbox { border-color: #d1d5db; }
@@ -218,6 +230,26 @@ body {
   background-color: #e5e7eb;
   border-color: #cbd5f5;
 }
+
+/* MCP token rows + settings cards */
+[data-theme="light"] .bg-gray-900\/60 { background-color: rgba(249,250,251,.6); }
+
+/* Green status badges */
+[data-theme="light"] .text-green-300 { color: #166534; }
+[data-theme="light"] .bg-green-500\/10 { background-color: rgba(34,197,94,.12); }
+
+/* Red status badges */
+[data-theme="light"] .text-red-300 { color: #991b1b; }
+[data-theme="light"] .bg-red-500\/10 { background-color: rgba(239,68,68,.1); }
+
+/* Teal links & copy icons */
+[data-theme="light"] .text-teal-400 { color: #0d9488; }
+[data-theme="light"] .text-teal-500 { color: #0f766e; }
+[data-theme="light"] .hover\:text-teal-300:hover { color: #0d9488; }
+[data-theme="light"] .hover\:text-teal-400:hover { color: #0d9488; }
+
+/* Emerald feedback */
+[data-theme="light"] .text-emerald-400 { color: #059669; }
 
 /* Hover backgrounds */
 [data-theme="light"] .hover\:bg-gray-800:hover { background-color: #e5e7eb; }
@@ -252,6 +284,15 @@ body {
 [data-theme="light"] .bg-red-600.text-white,
 [data-theme="light"] .bg-\[\#4797ff\].text-white,
 [data-theme="light"] .hover\:bg-teal-500:hover.text-white { color: #fff; }
+
+/* Green/red border accents (toggle badges) */
+[data-theme="light"] .border-green-500\/40 { border-color: rgba(34,197,94,.4); }
+[data-theme="light"] .border-red-500\/40 { border-color: rgba(239,68,68,.35); }
+[data-theme="light"] .border-red-500\/30 { border-color: rgba(239,68,68,.3); }
+
+/* Amber badge (MCP Beta) */
+[data-theme="light"] .bg-amber-500\/15 { background-color: rgba(245,158,11,.12); }
+[data-theme="light"] .border-amber-500\/30 { border-color: rgba(245,158,11,.35); }
 
 /* Amber / yellow — high contrast on white */
 [data-theme="light"] .text-amber-400 { color: #92400e; }
