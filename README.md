@@ -39,6 +39,7 @@ Single Docker container. No external dependencies. Zero data collection.
 - 🔤 **DNS Ready** - Full DNS query parsing ([requires configuration](#-dns-logging))
 - 📱 **Mobile Responsive** - Collapsible filters, full-width table on small screens
 - 🧙 **Setup Wizard** - Two paths: **UniFi API** (auto-detects WAN, VLANs, topology) or **Log Detection** (discovers interfaces from live traffic)
+- 🤖 **AI Agent Integration (Beta)** - Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation
 
 ---
 
@@ -326,12 +327,13 @@ The stream auto-pauses when a row is expanded and shows a count of new logs rece
 
 ### Settings
 
-Access settings via the **gear icon** in the top-right corner. Four sections:
+Access settings via the **gear icon** in the top-right corner. Five sections:
 
 - **WAN & Networks** - WAN interface selection, network labels, VPN badge configuration. Discovered VPN networks appear as cards that can be assigned badges, labels, and CIDRs
 - **Firewall** - Zone matrix with bulk syslog toggle (UniFi OS only)
 - **Data & Backups** - Retention sliders, manual cleanup, config export/import
 - **User Interface** - Theme (dark/light), country display format (flag + name, flag only, name only), IP address subline (show ASN beneath IPs in log table)
+- **MCP** *(Beta)* - Enable/disable the MCP server, manage tokens and scopes, view AI activity audit log, and get client setup instructions (see [AI Agent Integration](#-ai-agent-integration-mcp))
 
 ### Dashboard
 
@@ -343,6 +345,109 @@ Aggregated views with configurable time range (1h to 365d, based on retention se
 - Top threat IPs - enriched with ASN, city, rDNS, decoded attack categories, last seen
 - Top allowed destinations and active internal devices (with device name + VLAN badges)
 - Top blocked/allowed services, top DNS queries
+
+---
+
+## 🤖 AI Agent Integration (MCP)
+
+UniFi Log Insight includes a built-in [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that lets AI assistants query your network data directly. Ask your AI to search firewall logs, look up threat intelligence, review your firewall policy and suggest improvements, explore your network topology, and check system health — all through natural conversation.
+
+> **Beta:** This feature is new. The MCP server exposes read-only tools plus one write tool (toggle firewall syslog). No destructive operations are possible.
+
+### Supported Clients
+
+Any desktop MCP client that supports **Streamable HTTP** transport will work. Tested with:
+
+- **Claude Desktop** (Anthropic)
+- **Claude Code** (Anthropic CLI)
+- **Gemini CLI** (Google)
+
+> **Note:** Web-based clients (claude.ai, chatgpt.com) cannot reach self-hosted instances on your local network. Use a desktop or CLI client.
+
+### Setup
+
+1. **Enable MCP** — Go to **Settings → MCP** and toggle the MCP server on
+2. **Create a token** — Click **Create Token**, give it a name, and select which permission scopes to grant
+3. **Copy the token** — You'll only see it once. The Settings page provides ready-to-copy config snippets for each client
+4. **Configure your client** — Follow the client-specific instructions below
+
+### Claude Desktop
+
+Add to your `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`):
+
+```json
+{
+  "mcpServers": {
+    "unifi-log-insight": {
+      "command": "npx",
+      "args": [
+        "mcp-remote",
+        "http://<ULI_HOST>:8090/api/mcp",
+        "--header",
+        "Authorization: Bearer <YOUR_TOKEN>"
+      ]
+    }
+  }
+}
+```
+
+Requires `npx` (Node.js). Restart Claude Desktop after editing.
+
+### Claude Code
+
+```bash
+claude mcp add unifi-log-insight -- npx mcp-remote http://<ULI_HOST>:8090/api/mcp --header "Authorization: Bearer <YOUR_TOKEN>"
+```
+
+### Gemini CLI
+
+```bash
+gemini mcp add --transport http --header "Authorization: Bearer <YOUR_TOKEN>" unifi-log-insight http://<ULI_HOST>:8090/api/mcp
+```
+
+### Available Tools
+
+| Tool | Scope | Description |
+|------|-------|-------------|
+| `search_logs` | `logs.read` | Search and filter firewall, DNS, DHCP, Wi-Fi, and system logs |
+| `get_log` | `logs.read` | Get full details for a specific log by ID |
+| `get_log_stats` | `logs.read` | Dashboard statistics (traffic breakdown, top IPs, threats) |
+| `get_top_threat_ips` | `logs.read` | Top threat IPs with AbuseIPDB intelligence |
+| `list_threat_ips` | `logs.read` | Browse the threat intelligence cache |
+| `list_services` | `logs.read` | List detected network services |
+| `export_logs_csv_url` | `logs.read` | Generate a CSV export URL for filtered logs |
+| `list_firewall_policies` | `firewall.read` | View all firewall rules and zone policies |
+| `set_firewall_syslog` | `firewall.syslog` | Toggle syslog logging on a firewall rule |
+| `list_unifi_clients` | `unifi.read` | List connected UniFi clients with device names |
+| `list_unifi_devices` | `unifi.read` | List UniFi infrastructure devices |
+| `get_unifi_status` | `unifi.read` | UniFi controller connection and polling status |
+| `get_health` | `system.read` | System health check with log counts and timestamps |
+| `list_interfaces` | `system.read` | List all network interfaces seen in traffic |
+
+### Permission Scopes
+
+Tokens can be restricted to specific scopes:
+
+| Scope | Access |
+|-------|--------|
+| `logs.read` | Search and analyze logs |
+| `firewall.read` | View firewall rules and policies |
+| `firewall.syslog` | Turn logging on/off for firewall rules |
+| `unifi.read` | View UniFi clients, devices, and status |
+| `system.read` | View system health and network interfaces |
+| `mcp.admin` | Manage MCP access and settings |
+
+### Audit Trail
+
+All tool calls are logged with the token ID, tool name, parameters, and success/error status. View the audit log in **Settings → MCP → MCP Audit Log**. Audit retention is configurable (default: 10 days).
+
+### Security Notes
+
+- All MCP connections require a bearer token — no anonymous access
+- Tokens are hashed with HMAC-SHA256 and a per-token salt; the plaintext is never stored
+- The MCP endpoint is only accessible when explicitly enabled in Settings
+- `set_firewall_syslog` is the only write operation — it toggles syslog on individual firewall rules. All other tools are read-only
+- The SSE (GET) endpoint requires the same authentication as POST
 
 ---
 
@@ -386,6 +491,16 @@ Aggregated views with configurable time range (1h to 365d, based on retention se
 | `GET /api/unifi/gateway-image` | Gateway model and image info |
 | `POST /api/settings/unifi/dismiss-upgrade` | Dismiss upgrade notification banner |
 | `POST /api/settings/unifi/dismiss-vpn-toast` | Dismiss VPN introduction toast |
+| `GET /api/threats` | Threat intelligence cache with optional IP/date filters |
+| `POST /api/mcp` | MCP JSON-RPC endpoint (bearer token required) |
+| `GET /api/mcp` | MCP SSE streaming endpoint (bearer token required) |
+| `GET /api/settings/mcp` | MCP server settings |
+| `PUT /api/settings/mcp` | Update MCP settings |
+| `GET /api/settings/mcp/tokens` | List MCP access tokens |
+| `POST /api/settings/mcp/tokens` | Create a new MCP token |
+| `DELETE /api/settings/mcp/tokens/{id}` | Revoke an MCP token |
+| `GET /api/settings/mcp/scopes` | List available permission scopes |
+| `GET /api/settings/mcp/audit` | MCP audit trail with pagination |
 
 ---
 
