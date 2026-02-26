@@ -18,28 +18,47 @@ Single Docker container. No external dependencies. Zero data collection.
 
 ---
 
+## 📚 Table of Contents
+
+- [✨ Features](#-features)
+- [📋 Prerequisites](#-prerequisites)
+- [🚀 Quick Start](#-quick-start)
+- [🏗️ Architecture](#️-architecture)
+- [⚙️ Configuration Reference](#️-configuration-reference)
+- [🗺️ MaxMind Auto-Update](#️-maxmind-auto-update)
+- [🛡️ AbuseIPDB Integration](#️-abuseipdb-integration)
+- [🖥️ UI Guide](#️-ui-guide)
+- [🤖 AI Agent Integration (MCP)](#-ai-agent-integration-mcp)
+- [📡 API Endpoints](#-api-endpoints)
+- [🔤 DNS Logging](#-dns-logging)
+- [🖧 Unraid Setup](#-unraid-setup)
+- [🧹 Database Maintenance](#-database-maintenance)
+- [🔧 Troubleshooting](#-troubleshooting)
+- [⚖️ Disclaimer](#-disclaimer)
+- [📄 License](#-license-1)
+
 ## ✨ Features
 
-- 📺 **Live Log Stream** - Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume
-- 🤖 **AI Agent Integration (Beta)** - Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation
-- 📊 **Dashboard** - Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries
-- 🔎 **Filters** - Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search
-- 🌍 **IP Enrichment** - GeoIP (country, city, coordinates), ASN, reverse DNS via MaxMind GeoLite2 with scheduled auto-update and hot-reload
-- 🛡️ **AbuseIPDB Integration** - Threat scoring (23 categories, Tor detection, usage type), daily blacklist pre-seeding, automatic backfill
-- 📡 **Syslog Receiver** - UDP 514 listener parsing firewall, DHCP, Wi-Fi, DNS, and system events
-- 🔀 **Multi-WAN & Direction** - Per-interface WAN IP mapping for failover/load-balanced setups. Auto-classifies traffic as inbound, outbound, inter-VLAN, local, or VPN
-- 🔐 **VPN Detection** - Auto-detects VPN interfaces (WireGuard, OpenVPN, Teleport, Site Magic) with badge assignment, labels, and CIDRs
-- 🔌 **UniFi Integration** - Network discovery, device name resolution, and firewall syslog management via **UniFi OS** (API key) or **self-hosted controllers** (username/password)
-- 🛡️ **Firewall Syslog Manager** - Zone matrix with bulk toggle - enable syslog on firewall rules without leaving the app (UniFi OS)
-- 📛 **Device Names** - Friendly names from UniFi clients/devices with historical backfill
-- 🎨 **Theming & Preferences** - Dark/light theme, country display format, IP subline (show ASN beneath IPs)
-- 🏷️ **Interface Labels** - Color-coded labels for traffic flow, applied retroactively to all logs
-- 📥 **CSV Export** - Download filtered results up to 100K rows
-- 🗑️ **Retention** - Configurable per log type (60-day default, 10-day DNS). Adjustable via Settings or env vars
-- 💾 **Backup & Restore** - Export/import all settings as JSON
-- 🔤 **DNS Ready** - Full DNS query parsing ([requires configuration](#-dns-logging))
-- 📱 **Mobile Responsive** - Collapsible filters, full-width table on small screens
-- 🧙 **Setup Wizard** - Two paths: **UniFi API** (auto-detects WAN, VLANs, topology) or **Log Detection** (discovers interfaces from live traffic)
+- **Live Log Stream** - Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume
+- **AI Agent Integration (Beta)** - Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation
+- **Dashboard** - Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries
+- **Filters** - Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search
+- **IP Enrichment** - GeoIP (country, city, coordinates), ASN, reverse DNS via MaxMind GeoLite2 with scheduled auto-update and hot-reload
+- **AbuseIPDB Integration** - Threat scoring (23 categories, Tor detection, usage type), daily blacklist pre-seeding, automatic backfill
+- **Syslog Receiver** - UDP 514 listener parsing firewall, DHCP, Wi-Fi, DNS, and system events
+- **Multi-WAN & Direction** - Per-interface WAN IP mapping for failover/load-balanced setups. Auto-classifies traffic as inbound, outbound, inter-VLAN, local, or VPN
+- **VPN Detection** - Auto-detects VPN interfaces (WireGuard, OpenVPN, Teleport, Site Magic) with badge assignment, labels, and CIDRs
+- **UniFi Integration** - Network discovery, device name resolution, and firewall syslog management via **UniFi OS** (API key) or **self-hosted controllers** (username/password)
+- **Firewall Syslog Manager** - Zone matrix with bulk toggle - enable syslog on firewall rules without leaving the app (UniFi OS)
+- **Device Names** - Friendly names from UniFi clients/devices with historical backfill
+- **Theming & Preferences** - Dark/light theme, country display format, IP subline (show ASN beneath IPs)
+- **Interface Labels** - Color-coded labels for traffic flow, applied retroactively to all logs
+- **CSV Export** - Download filtered results up to 100K rows
+- **Retention** - Configurable per log type (60-day default, 10-day DNS). Adjustable via Settings or env vars
+- **Backup & Restore** - Export/import all settings as JSON
+- **DNS Ready** - Full DNS query parsing ([requires configuration](#-dns-logging))
+- **Mobile Responsive** - Collapsible filters, full-width table on small screens
+- **Setup Wizard** - Two paths: **UniFi API** (auto-detects WAN, VLANs, topology) or **Log Detection** (discovers interfaces from live traffic)
 
 ---
 
@@ -51,6 +70,13 @@ Single Docker container. No external dependencies. Zero data collection.
 - **UniFi Router** (or any UniFi gateway that supports remote syslog)
 - **MaxMind GeoLite2 account** ([free signup](https://www.maxmind.com/en/geolite2/signup)) - for GeoIP/ASN lookups
 - **AbuseIPDB API key** ([free tier](https://www.abuseipdb.com/register?plan=free), optional) - for threat scoring
+
+**Minimum host resources (estimated):**
+
+- **CPU:** 2 cores/threads minimum (PostgreSQL + receiver + API run concurrently)
+- **Disk:** 10 GB free for the database volume (`pgdata`) at minimum
+
+These are baseline estimates for a small home network. Higher log volume or longer retention will require more disk. If you run with tight disk limits, see **Database Maintenance** below.
 
 ---
 ## 🚀 Quick Start
@@ -85,9 +111,15 @@ Each firewall rule must have syslog individually enabled. There are two ways to 
 
 ### Option A - Pull Pre-built Image (recommended)
 
-Create a directory anywhere and add two files:
+**Recommended setup:** Use a single `docker-compose.yml` and put your environment variables directly inside it.  
+If you add real credentials here, do not commit the file to a public repo.
 
-**`docker-compose.yml`**
+**Files you need**
+
+- **Required:** `docker-compose.yml`
+- **Optional:** `.env` (only if you want a separate env file)
+
+**`docker-compose.yml` (recommended — single file)**
 
 ```yaml
 services:
@@ -101,15 +133,27 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./maxmind:/app/maxmind
-    env_file:
-      - .env
+    environment:
+      POSTGRES_PASSWORD: "your_strong_password_here"
+      ABUSEIPDB_API_KEY: "your_key_here"
+      MAXMIND_ACCOUNT_ID: "your_account_id"
+      MAXMIND_LICENSE_KEY: "your_license_key"
+      LOG_LEVEL: "INFO"
+      TZ: "Europe/London"
+      UNIFI_API_KEY: "your_unifi_api_key_here"
+      UNIFI_HOST: "https://192.168.1.1"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "unifi", "-d", "unifi_logs"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:
     name: unifi-log-insight-pgdata
 ```
 
-**`.env`** - create with your API keys:
+**Optional: `.env`** (only if you want a separate env file instead of `environment:`)
 
 ```env
 # PostgreSQL (required)
@@ -129,6 +173,13 @@ TZ=Europe/London
 # UniFi API (optional - can also be configured via Settings UI)
 # UNIFI_HOST=https://192.168.1.1
 # UNIFI_API_KEY=your_unifi_api_key_here
+```
+
+If you use `.env`, remove the `environment:` block above and add:
+
+```yaml
+    env_file:
+      - .env
 ```
 
 Then run:
@@ -249,54 +300,6 @@ Retention is configurable via the **Settings > Data & Backups** slider, or via `
 
 ---
 
-## 🧹 Database Maintenance
-
-If you run with strict disk limits or aggressive retention, you may notice disk usage stays high even after old logs are deleted. This section explains why and how to safely reclaim space.
-
-**Why disk usage doesn’t shrink after cleanup:** PostgreSQL `DELETE` removes rows, but it does **not** shrink table files on disk. Space is reclaimed for **reuse**, not returned to the OS. This means log counts drop while disk usage stays near the previous high‑water mark.
-
-**When to do maintenance:** If the container hits disk limits, or you’ve recently reduced retention and want to reclaim disk space.
-
-### Step 1: Run retention cleanup (optional)
-
-This deletes rows older than your retention settings.
-
-```bash
-docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "SELECT cleanup_old_logs(60, 10);"
-```
-
-Use your desired retention values (general logs, DNS logs). If you want to use the values saved in `system_config` (falling back to 60/10 if unset):
-
-```bash
-docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "SELECT cleanup_old_logs(COALESCE((SELECT (value #>> '{}')::int FROM system_config WHERE key='retention_days'), 60), COALESCE((SELECT (value #>> '{}')::int FROM system_config WHERE key='dns_retention_days'), 10));"
-```
-
-### Step 2: Reclaim space for reuse (safe)
-
-This improves performance and lets PostgreSQL reuse freed space, but **does not** shrink disk usage.
-
-```bash
-docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "VACUUM (ANALYZE) logs;"
-```
-
-### Step 3: Shrink disk usage (downtime)
-
-This **does** reduce on‑disk size but takes an exclusive lock on `logs` and can pause ingestion/queries while it runs.
-If possible, stop the container (or at least pause log ingestion) before running this.
-
-```bash
-docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "VACUUM (FULL, ANALYZE) logs;"
-```
-
-### Related disk usage (non‑DB)
-
-If disk usage is still high, check:
-
-- Docker container logs (can grow quickly without rotation).
-- PostgreSQL WAL files in `pg_wal` during heavy ingest.
-
----
-
 ## 🗺️ MaxMind Auto-Update
 
 When credentials are configured, GeoLite2 databases update automatically on **Wednesday and Saturday at 7:00 AM** (local time per `TZ` - [supported timezones](https://gist.github.com/Soheab/3bec6dd6c1e90962ef46b8545823820d)). This aligns with MaxMind's Tuesday/Friday publish schedule, giving a buffer for propagation.
@@ -409,6 +412,8 @@ Any desktop MCP client that supports **Streamable HTTP** transport will work. Te
 - **Claude Desktop** (Anthropic)
 - **Claude Code** (Anthropic CLI)
 - **Gemini CLI** (Google)
+- **LLM Studio**
+- **Open Web-UI**
 
 > **Note:** Web-based clients (claude.ai, chatgpt.com) cannot reach self-hosted instances on your local network. Use a desktop or CLI client.
 
@@ -603,6 +608,54 @@ Install directly from Unraid's Docker UI - no terminal needed.
 9. Configure your UniFi router's syslog to point at `<unraid-ip>:514`
 
 > **Updating:** Click the container's update icon in the Docker tab when a new version is available. Your database and configuration are preserved in the mapped volumes.
+
+---
+
+## 🧹 Database Maintenance
+
+If you run with strict disk limits or aggressive retention, you may notice disk usage stays high even after old logs are deleted. This section explains why and how to safely reclaim space.
+
+**Why disk usage doesn’t shrink after cleanup:** PostgreSQL `DELETE` removes rows, but it does **not** shrink table files on disk. Space is reclaimed for **reuse**, not returned to the OS. This means log counts drop while disk usage stays near the previous high‑water mark.
+
+**When to do maintenance:** If the container hits disk limits, or you’ve recently reduced retention and want to reclaim disk space.
+
+### Step 1: Run retention cleanup (optional)
+
+This deletes rows older than your retention settings.
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "SELECT cleanup_old_logs(60, 10);"
+```
+
+Use your desired retention values (general logs, DNS logs). If you want to use the values saved in `system_config` (falling back to 60/10 if unset):
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "SELECT cleanup_old_logs(COALESCE((SELECT (value #>> '{}')::int FROM system_config WHERE key='retention_days'), 60), COALESCE((SELECT (value #>> '{}')::int FROM system_config WHERE key='dns_retention_days'), 10));"
+```
+
+### Step 2: Reclaim space for reuse (safe)
+
+This improves performance and lets PostgreSQL reuse freed space, but **does not** shrink disk usage.
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "VACUUM (ANALYZE) logs;"
+```
+
+### Step 3: Shrink disk usage (downtime)
+
+This **does** reduce on‑disk size but takes an exclusive lock on `logs` and can pause ingestion/queries while it runs.
+If possible, stop the container (or at least pause log ingestion) before running this.
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "VACUUM (FULL, ANALYZE) logs;"
+```
+
+### Related disk usage (non‑DB)
+
+If disk usage is still high, check:
+
+- Docker container logs (can grow quickly without rotation).
+- PostgreSQL WAL files in `pg_wal` during heavy ingest.
 
 ---
 
