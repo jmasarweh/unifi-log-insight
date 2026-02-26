@@ -6,6 +6,7 @@ import SettingsDataBackups from './SettingsDataBackups'
 import SettingsUserInterface from './SettingsUserInterface'
 import SettingsMCP from './SettingsMCP'
 import SetupWizard from './SetupWizard'
+import ReleaseNotesModal, { isNewerVersion } from './ReleaseNotesModal'
 
 function getVlanId(iface) {
   if (iface === 'br0') return 1
@@ -61,13 +62,15 @@ const BASE_SECTIONS = [
   },
 ]
 
-export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [], onVpnSaved: onVpnSavedApp }) {
+export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [], onVpnSaved: onVpnSavedApp, version, latestRelease }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
   const [netConfig, setNetConfig] = useState(null)
   const [activeSection, setActiveSection] = useState('wan-networks')
   const [reconfigMode, setReconfigMode] = useState(!!startInReconfig)
   const [wizardPath, setWizardPath] = useState(null)
+  const [showNotes, setShowNotes] = useState(false)
+  const outdated = latestRelease && isNewerVersion(latestRelease.tag, version)
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => {})
@@ -177,7 +180,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
       {/* Sidebar + Content */}
       <main className="flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <nav className="w-52 shrink-0 border-r border-gray-800 bg-gray-950 py-4 overflow-y-auto">
+        <nav className="w-52 shrink-0 border-r border-gray-800 bg-gray-950 py-4 overflow-y-auto flex flex-col">
           {sections.map(section => (
             <button
               key={section.id}
@@ -195,6 +198,34 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
               {section.label}
             </button>
           ))}
+          {version && (
+            <div className="mt-auto border-t border-gray-800 px-5 py-3">
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] ${outdated ? 'text-amber-400' : 'text-gray-400'}`}>v{version}</span>
+                {outdated ? (
+                  <a
+                    href={latestRelease.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
+                    title={`Update available: ${latestRelease.tag}`}
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                      <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                    </svg>
+                    Update
+                  </a>
+                ) : latestRelease?.body && (
+                  <button
+                    onClick={() => setShowNotes(true)}
+                    className="text-[10px] text-gray-500 hover:text-gray-200 transition-colors"
+                  >
+                    - Release Notes
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </nav>
 
         {/* Content */}
@@ -248,6 +279,9 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
           </div>
         </div>
       </main>
+      {showNotes && latestRelease && (
+        <ReleaseNotesModal latestRelease={latestRelease} onClose={() => setShowNotes(false)} />
+      )}
     </div>
   )
 }
