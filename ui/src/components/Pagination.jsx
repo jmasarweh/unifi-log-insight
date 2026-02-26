@@ -18,18 +18,16 @@ export default function Pagination({ page, pages, total, perPage, onChange, vers
           <div className="flex items-center gap-1.5">
             <span className={`text-[10px] ${outdated ? 'text-amber-400' : 'text-white'}`}>v{version}</span>
             {outdated ? (
-              <a
-                href={latestRelease.url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                onClick={() => setShowNotes(true)}
                 className="flex items-center gap-1 text-[10px] text-amber-400 hover:text-amber-300 transition-colors"
-                title={`Update available, check it out: ${latestRelease.tag}`}
+                title={`Update available: ${latestRelease.tag}`}
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
                   <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                 </svg>
                 Update available
-              </a>
+              </button>
             ) : latestRelease?.body && (
               <button
                 onClick={() => setShowNotes(true)}
@@ -76,7 +74,7 @@ export default function Pagination({ page, pages, total, perPage, onChange, vers
       </div>
 
       {showNotes && latestRelease && (
-        <ReleaseNotesModal latestRelease={latestRelease} onClose={() => setShowNotes(false)} />
+        <ReleaseNotesModal latestRelease={latestRelease} onClose={() => setShowNotes(false)} currentVersion={version} />
       )}
     </>
   )
