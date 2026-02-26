@@ -1,14 +1,15 @@
-"""Threat intel query endpoints (ip_threats cache)."""
+"""Threat intel query endpoints (ip_threats cache + geo aggregation)."""
 
 import ipaddress
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from psycopg2.extras import RealDictCursor
 
 from deps import get_conn, put_conn
+from query_helpers import parse_time_range
 
 logger = logging.getLogger('api.threats')
 
@@ -93,6 +94,93 @@ def list_threats(
     except Exception as e:
         conn.rollback()
         logger.exception("Error querying ip_threats")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+_GEO_SELECT = (
+    "SELECT geo_lat as lat, geo_lon as lon, geo_country as country, "
+    "geo_city as city, COUNT(*) as count, "
+    "MAX(threat_score) as max_score, "
+    "AVG(threat_score)::int as avg_score, "
+    "COUNT(DISTINCT COALESCE(host(src_ip), host(dst_ip))) as unique_ips, "
+    "(array_agg(id ORDER BY timestamp DESC))[1:50] as log_ids "
+    "FROM logs "
+)
+_GEO_TAIL = (
+    "AND geo_lat IS NOT NULL AND geo_lon IS NOT NULL "
+    "GROUP BY geo_lat, geo_lon, geo_country, geo_city "
+    "ORDER BY count DESC LIMIT 500"
+)
+
+_GEO_WHERE = {
+    'threats': "WHERE timestamp >= %s AND threat_score > 70 ",
+    'blocked_outbound': (
+        "WHERE timestamp >= %s AND direction = 'outbound' "
+        "AND rule_action = 'block' "
+    ),
+}
+
+
+@router.get("/api/threats/geo")
+def get_threats_geo(
+    time_range: str = Query("24h", description="1h,6h,24h,7d,30d,60d"),
+    mode: str = Query("threats", description="threats or blocked_outbound"),
+):
+    """Geo-aggregated threat data as GeoJSON for map visualization."""
+    if mode not in _GEO_WHERE:
+        raise HTTPException(status_code=400, detail="mode must be 'threats' or 'blocked_outbound'")
+
+    cutoff = parse_time_range(time_range)
+    if not cutoff:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                _GEO_SELECT + _GEO_WHERE[mode] + _GEO_TAIL,
+                [cutoff]
+            )
+
+            rows = cur.fetchall()
+
+        features = []
+        total_events = 0
+        for row in rows:
+            total_events += row['count']
+            features.append({
+                'type': 'Feature',
+                'geometry': {
+                    'type': 'Point',
+                    'coordinates': [float(row['lon']), float(row['lat'])],
+                },
+                'properties': {
+                    'country': row['country'],
+                    'city': row['city'],
+                    'count': row['count'],
+                    'max_score': row['max_score'] or 0,
+                    'avg_score': row.get('avg_score', 0) or 0,
+                    'unique_ips': row.get('unique_ips', 0) or 0,
+                    'log_ids': row.get('log_ids') or [],
+                },
+            })
+
+        conn.commit()
+        return {
+            'type': 'FeatureCollection',
+            'features': features,
+            'summary': {
+                'total_points': len(features),
+                'total_events': total_events,
+                'time_range': time_range,
+                'mode': mode,
+            },
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching threat geo data")
         raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)

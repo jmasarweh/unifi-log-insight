@@ -1,11 +1,15 @@
 const BASE = '/api'
 
-export async function fetchLogs(params = {}) {
+function buildQS(params) {
   const qs = new URLSearchParams()
   for (const [k, v] of Object.entries(params)) {
     if (v !== null && v !== undefined && v !== '') qs.set(k, v)
   }
-  const resp = await fetch(`${BASE}/logs?${qs}`)
+  return qs
+}
+
+export async function fetchLogs(params = {}) {
+  const resp = await fetch(`${BASE}/logs?${buildQS(params)}`)
   if (!resp.ok) throw new Error(`API error: ${resp.status}`)
   return resp.json()
 }
@@ -50,11 +54,25 @@ export async function fetchServices() {
 }
 
 export function getExportUrl(params = {}) {
-  const qs = new URLSearchParams()
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== null && v !== undefined && v !== '') qs.set(k, v)
-  }
-  return `${BASE}/export?${qs}`
+  return `${BASE}/export?${buildQS(params)}`
+}
+
+// ── Threat Map API ──────────────────────────────────────────────────────────
+
+export async function fetchLogsBatch(ids) {
+  const resp = await fetch(`${BASE}/logs/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids })
+  })
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
+export async function fetchThreatGeo(params = {}) {
+  const resp = await fetch(`${BASE}/threats/geo?${buildQS(params)}`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
 }
 
 // ── Setup Wizard API ──────────────────────────────────────────────────────────
