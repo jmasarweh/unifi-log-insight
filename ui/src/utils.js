@@ -159,14 +159,12 @@ export function timeRangeToDays(value) {
   return match[2] === 'h' ? num / 24 : num
 }
 
-// Filter time ranges to those within maxFilterDays, plus one "all data" option
+// Filter time ranges to those within maxFilterDays (progressive unlock)
 export function filterVisibleRanges(ranges, maxFilterDays, getValue = v => v) {
   if (!maxFilterDays) return ranges
-  return ranges.filter((tr, i) => {
+  return ranges.filter((tr) => {
     const days = timeRangeToDays(getValue(tr))
-    if (days < 1 || days <= maxFilterDays) return true
-    const prevDays = i > 0 ? timeRangeToDays(getValue(ranges[i - 1])) : 0
-    return prevDays >= 1 && prevDays < maxFilterDays
+    return days < 1 || days <= maxFilterDays
   })
 }
 
