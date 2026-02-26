@@ -371,7 +371,10 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
               {unlabeledVpn.length > 0 && (
                 <div className={vpnEntries.length > 0 ? 'mt-4' : ''}>
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unlabelled</h3>
+                    <div>
+                      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unlabelled</h3>
+                      <p className="text-xs text-gray-500 mt-1">Auto-detected from your firewall logs. Labels have been pre-filled where possible — click Configure to review and save.</p>
+                    </div>
                     <button
                       onClick={() => configureDiscovered(unlabeledVpn)}
                       className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white transition-colors"
