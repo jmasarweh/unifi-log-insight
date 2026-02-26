@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from psycopg2.extras import RealDictCursor
 
 from db import get_config, get_wan_ips_from_config
@@ -166,42 +167,8 @@ def get_logs(
             )
             rows = cur.fetchall()
 
-        # Serialize
-        logs = []
-        for row in rows:
-            log = dict(row)
-            # Convert types for JSON
-            for key in ['timestamp', 'created_at', 'abuse_last_reported']:
-                if log.get(key):
-                    log[key] = log[key].isoformat()
-            for key in ['src_ip', 'dst_ip', 'mac_address']:
-                if log.get(key):
-                    log[key] = str(log[key])
-            if log.get('geo_lat'):
-                log['geo_lat'] = float(log['geo_lat'])
-            if log.get('geo_lon'):
-                log['geo_lon'] = float(log['geo_lon'])
-            logs.append(log)
-
-        # Annotate gateway IPs with "Gateway" + VLAN info, and WAN IPs with device name
-        gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
-        wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
-        for log in logs:
-            for prefix in ('src', 'dst'):
-                name_key = f'{prefix}_device_name'
-                ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
-                if ip_str in gateway_vlans:
-                    if not log.get(name_key):
-                        log[name_key] = 'Gateway'
-                    log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
-                elif not log.get(name_key) and ip_str in wan_ip_names:
-                    log[name_key] = wan_ip_names[ip_str]
-
-        # Annotate VPN badges
-        vpn_networks = get_config(enricher_db, 'vpn_networks') or {}
-        if vpn_networks:
-            exclude_ips = set(wan_ip_names.keys()) | set(gateway_vlans.keys())
-            _annotate_vpn_badges(logs, _build_vpn_cidr_map(vpn_networks), exclude_ips)
+        logs = [_serialize_log(row) for row in rows]
+        _annotate_logs(logs)
 
         conn.commit()
         return {
@@ -219,104 +186,105 @@ def get_logs(
         put_conn(conn)
 
 
-@router.get("/api/logs/{log_id}")
-def get_log(log_id: int):
-    wan_ips = get_wan_ips_from_config(enricher_db)
-    conn = get_conn()
-    try:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Join ip_threats on both src and dst to fill abuse fields
-            # for logs not yet patched by the backfill daemon.
-            # Exclude WAN IPs from joins so we only pick up remote party's data.
-            cur.execute("""
-                SELECT l.*,
-                    COALESCE(l.abuse_usage_type,
-                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_usage_type
-                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_usage_type
-                             WHEN t1.ip IS NOT NULL THEN t1.abuse_usage_type
-                             ELSE t2.abuse_usage_type END) as abuse_usage_type,
-                    COALESCE(l.abuse_hostnames,
-                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_hostnames
-                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_hostnames
-                             WHEN t1.ip IS NOT NULL THEN t1.abuse_hostnames
-                             ELSE t2.abuse_hostnames END) as abuse_hostnames,
-                    COALESCE(l.abuse_total_reports,
-                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_total_reports
-                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_total_reports
-                             WHEN t1.ip IS NOT NULL THEN t1.abuse_total_reports
-                             ELSE t2.abuse_total_reports END) as abuse_total_reports,
-                    COALESCE(l.abuse_last_reported,
-                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_last_reported
-                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_last_reported
-                             WHEN t1.ip IS NOT NULL THEN t1.abuse_last_reported
-                             ELSE t2.abuse_last_reported END) as abuse_last_reported,
-                    COALESCE(l.abuse_is_whitelisted,
-                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_is_whitelisted
-                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_is_whitelisted
-                             WHEN t1.ip IS NOT NULL THEN t1.abuse_is_whitelisted
-                             ELSE t2.abuse_is_whitelisted END) as abuse_is_whitelisted,
-                    COALESCE(l.abuse_is_tor,
-                        CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_is_tor
-                             WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_is_tor
-                             WHEN t1.ip IS NOT NULL THEN t1.abuse_is_tor
-                             ELSE t2.abuse_is_tor END) as abuse_is_tor,
-                    COALESCE(
-                        CASE WHEN array_length(l.threat_categories, 1) > 0 THEN l.threat_categories END,
-                        CASE WHEN l.direction IN ('inbound', 'in') THEN
-                                 CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END
-                             WHEN l.direction IN ('outbound', 'out') THEN
-                                 CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
-                             WHEN t1.ip IS NOT NULL THEN
-                                 CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END
-                             ELSE
-                                 CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
-                        END
-                    ) as threat_categories,
-                    COALESCE(l.src_device_name,
-                        c1.device_name, c1.hostname, c1.oui,
-                        d1.device_name, d1.model) as src_device_name,
-                    COALESCE(l.dst_device_name,
-                        c2.device_name, c2.hostname, c2.oui,
-                        d2.device_name, d2.model) as dst_device_name
-                FROM logs l
-                LEFT JOIN ip_threats t1 ON t1.ip = l.src_ip
-                    AND NOT (l.src_ip = ANY(%s::inet[]))
-                LEFT JOIN ip_threats t2 ON t2.ip = l.dst_ip
-                    AND NOT (l.dst_ip = ANY(%s::inet[]))
-                LEFT JOIN unifi_clients c1 ON c1.mac = l.mac_address
-                LEFT JOIN LATERAL (
-                    SELECT device_name, hostname, oui
-                    FROM unifi_clients WHERE ip = l.dst_ip
-                    ORDER BY last_seen DESC NULLS LAST LIMIT 1
-                ) c2 ON true
-                LEFT JOIN unifi_devices d1 ON d1.mac = l.mac_address
-                LEFT JOIN LATERAL (
-                    SELECT device_name, model
-                    FROM unifi_devices WHERE ip = l.dst_ip
-                    ORDER BY updated_at DESC NULLS LAST LIMIT 1
-                ) d2 ON true
-                WHERE l.id = %s
-            """, [wan_ips, wan_ips, log_id])
-            row = cur.fetchone()
+# ── Shared helpers for detailed log queries ──────────────────────────────────
 
-        if not row:
-            raise HTTPException(status_code=404, detail="Log not found")
+# Join ip_threats on both src and dst to fill abuse fields for logs not yet
+# patched by the backfill daemon.  WAN IPs excluded via params.
+_LOG_DETAIL_SQL = """
+    SELECT l.*,
+        COALESCE(l.abuse_usage_type,
+            CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_usage_type
+                 WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_usage_type
+                 WHEN t1.ip IS NOT NULL THEN t1.abuse_usage_type
+                 ELSE t2.abuse_usage_type END) as abuse_usage_type,
+        COALESCE(l.abuse_hostnames,
+            CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_hostnames
+                 WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_hostnames
+                 WHEN t1.ip IS NOT NULL THEN t1.abuse_hostnames
+                 ELSE t2.abuse_hostnames END) as abuse_hostnames,
+        COALESCE(l.abuse_total_reports,
+            CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_total_reports
+                 WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_total_reports
+                 WHEN t1.ip IS NOT NULL THEN t1.abuse_total_reports
+                 ELSE t2.abuse_total_reports END) as abuse_total_reports,
+        COALESCE(l.abuse_last_reported,
+            CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_last_reported
+                 WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_last_reported
+                 WHEN t1.ip IS NOT NULL THEN t1.abuse_last_reported
+                 ELSE t2.abuse_last_reported END) as abuse_last_reported,
+        COALESCE(l.abuse_is_whitelisted,
+            CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_is_whitelisted
+                 WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_is_whitelisted
+                 WHEN t1.ip IS NOT NULL THEN t1.abuse_is_whitelisted
+                 ELSE t2.abuse_is_whitelisted END) as abuse_is_whitelisted,
+        COALESCE(l.abuse_is_tor,
+            CASE WHEN l.direction IN ('inbound', 'in') THEN t1.abuse_is_tor
+                 WHEN l.direction IN ('outbound', 'out') THEN t2.abuse_is_tor
+                 WHEN t1.ip IS NOT NULL THEN t1.abuse_is_tor
+                 ELSE t2.abuse_is_tor END) as abuse_is_tor,
+        COALESCE(
+            CASE WHEN array_length(l.threat_categories, 1) > 0 THEN l.threat_categories END,
+            CASE WHEN l.direction IN ('inbound', 'in') THEN
+                     CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END
+                 WHEN l.direction IN ('outbound', 'out') THEN
+                     CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
+                 WHEN t1.ip IS NOT NULL THEN
+                     CASE WHEN array_length(t1.threat_categories, 1) > 0 THEN t1.threat_categories END
+                 ELSE
+                     CASE WHEN array_length(t2.threat_categories, 1) > 0 THEN t2.threat_categories END
+            END
+        ) as threat_categories,
+        COALESCE(l.src_device_name,
+            c1.device_name, c1.hostname, c1.oui,
+            d1.device_name, d1.model) as src_device_name,
+        COALESCE(l.dst_device_name,
+            c2.device_name, c2.hostname, c2.oui,
+            d2.device_name, d2.model) as dst_device_name
+    FROM logs l
+    LEFT JOIN ip_threats t1 ON t1.ip = l.src_ip
+        AND NOT (l.src_ip = ANY(%s::inet[]))
+    LEFT JOIN ip_threats t2 ON t2.ip = l.dst_ip
+        AND NOT (l.dst_ip = ANY(%s::inet[]))
+    LEFT JOIN unifi_clients c1 ON c1.mac = l.mac_address
+    LEFT JOIN LATERAL (
+        SELECT device_name, hostname, oui
+        FROM unifi_clients WHERE ip = l.dst_ip
+        ORDER BY last_seen DESC NULLS LAST LIMIT 1
+    ) c2 ON true
+    LEFT JOIN unifi_devices d1 ON d1.mac = l.mac_address
+    LEFT JOIN LATERAL (
+        SELECT device_name, model
+        FROM unifi_devices WHERE ip = l.dst_ip
+        ORDER BY updated_at DESC NULLS LAST LIMIT 1
+    ) d2 ON true
+"""
 
-        log = dict(row)
-        for key in ['timestamp', 'created_at', 'abuse_last_reported']:
-            if log.get(key):
-                log[key] = log[key].isoformat()
-        for key in ['src_ip', 'dst_ip', 'mac_address']:
-            if log.get(key):
-                log[key] = str(log[key])
-        if log.get('geo_lat'):
-            log['geo_lat'] = float(log['geo_lat'])
-        if log.get('geo_lon'):
-            log['geo_lon'] = float(log['geo_lon'])
 
-        # Annotate gateway/WAN IPs with device names
-        gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
-        wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
+def _serialize_log(row):
+    """Convert a raw log DB row to API-friendly dict."""
+    log = dict(row)
+    for key in ('timestamp', 'created_at', 'abuse_last_reported'):
+        if log.get(key):
+            log[key] = log[key].isoformat()
+    for key in ('src_ip', 'dst_ip', 'mac_address'):
+        if log.get(key):
+            log[key] = str(log[key])
+    if log.get('geo_lat'):
+        log['geo_lat'] = float(log['geo_lat'])
+    if log.get('geo_lon'):
+        log['geo_lon'] = float(log['geo_lon'])
+    return log
+
+
+def _annotate_logs(logs):
+    """Annotate logs with gateway/VPN device names and service descriptions."""
+    gateway_vlans = get_config(enricher_db, 'gateway_ip_vlans') or {}
+    wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
+    vpn_networks = get_config(enricher_db, 'vpn_networks') or {}
+    vpn_cidrs = _build_vpn_cidr_map(vpn_networks) if vpn_networks else []
+    exclude_ips = (set(wan_ip_names.keys()) | set(gateway_vlans.keys())) if vpn_cidrs else set()
+
+    for log in logs:
         for prefix in ('src', 'dst'):
             name_key = f'{prefix}_device_name'
             ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
@@ -327,17 +295,31 @@ def get_log(log_id: int):
             elif not log.get(name_key) and ip_str in wan_ip_names:
                 log[name_key] = wan_ip_names[ip_str]
 
-        # Annotate VPN badges
-        vpn_networks = get_config(enricher_db, 'vpn_networks') or {}
-        if vpn_networks:
-            exclude_ips = set(wan_ip_names.keys()) | set(gateway_vlans.keys())
-            _annotate_vpn_badges([log], _build_vpn_cidr_map(vpn_networks), exclude_ips)
-
-        # Enrich with IANA service description for expanded detail view
         desc = get_service_description(log.get('dst_port'), log.get('protocol'))
         if desc:
             log['service_description'] = desc
 
+    if vpn_cidrs:
+        _annotate_vpn_badges(logs, vpn_cidrs, exclude_ips)
+
+
+# ── Endpoints ────────────────────────────────────────────────────────────────
+
+@router.get("/api/logs/{log_id}")
+def get_log(log_id: int):
+    wan_ips = get_wan_ips_from_config(enricher_db)
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                _LOG_DETAIL_SQL + " WHERE l.id = %s",
+                [wan_ips, wan_ips, log_id]
+            )
+            row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Log not found")
+        log = _serialize_log(row)
+        _annotate_logs([log])
         conn.commit()
         return log
     except HTTPException:
@@ -345,6 +327,35 @@ def get_log(log_id: int):
     except Exception as e:
         conn.rollback()
         logger.exception("Error fetching log detail")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+class LogBatchRequest(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=50)
+
+
+@router.post("/api/logs/batch")
+def get_logs_batch(payload: LogBatchRequest):
+    """Fetch multiple logs by ID (max 50). Used by threat map sidebar."""
+    ids = payload.ids
+    wan_ips = get_wan_ips_from_config(enricher_db)
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                _LOG_DETAIL_SQL + " WHERE l.id = ANY(%s) ORDER BY l.timestamp DESC",
+                [wan_ips, wan_ips, ids]
+            )
+            rows = cur.fetchall()
+        logs = [_serialize_log(row) for row in rows]
+        _annotate_logs(logs)
+        conn.commit()
+        return logs
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching log batch")
         raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)

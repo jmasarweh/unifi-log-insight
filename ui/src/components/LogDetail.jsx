@@ -134,9 +134,32 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
           <FlagIcon code={displayLog.geo_country} />
           {geoText}
         </div>
-        {displayLog.geo_lat && (
-          <div className="text-gray-500 text-[12px] mt-0.5">
-            {displayLog.geo_lat.toFixed(4)}, {displayLog.geo_lon.toFixed(4)}
+        {displayLog.geo_lat != null && displayLog.geo_lon != null && (
+          <div className="text-gray-500 text-[12px] mt-0.5 flex items-center gap-2">
+            <span>{displayLog.geo_lat.toFixed(4)}, {displayLog.geo_lon.toFixed(4)}</span>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('viewOnMap', {
+                detail: {
+                  lat: displayLog.geo_lat,
+                  lon: displayLog.geo_lon,
+                  src_ip: displayLog.src_ip,
+                  dst_ip: displayLog.dst_ip,
+                  src_port: displayLog.src_port,
+                  dst_port: displayLog.dst_port,
+                  src_device: displayLog.src_device_name,
+                  dst_device: displayLog.dst_device_name,
+                  direction: displayLog.direction,
+                  timestamp: displayLog.timestamp,
+                  threat_score: displayLog.threat_score,
+                  country: displayLog.geo_country,
+                  city: displayLog.geo_city,
+                  service: displayLog.service_name,
+                }
+              }))}
+              className="text-teal-500 hover:text-teal-400 text-[11px] underline"
+            >
+              View on map
+            </button>
           </div>
         )}
       </div>

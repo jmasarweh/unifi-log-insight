@@ -1,10 +1,12 @@
-import React, { Suspense, useState, useEffect, useLayoutEffect, useMemo } from 'react'
+import React, { Suspense, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
 import LogStream from './components/LogStream'
 import SetupWizard from './components/SetupWizard'
 import SettingsOverlay from './components/SettingsOverlay'
 import { DashboardSkeleton } from './components/Dashboard'
+import { ThreatMapSkeleton } from './components/ThreatMap'
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'))
+const ThreatMap = React.lazy(() => import('./components/ThreatMap'))
 import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dismissVpnToast, fetchInterfaces, updateUiSettings } from './api'
 import { loadInterfaceLabels } from './utils'
 import { isVpnInterface } from './vpnUtils'
@@ -12,6 +14,7 @@ import { isVpnInterface } from './vpnUtils'
 const TABS = [
   { id: 'logs', label: 'Log Stream' },
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'threat-map', label: 'Threat Map' },
 ]
 
 function formatShortDate(isoStr) {
@@ -62,6 +65,8 @@ export default function App() {
   const [showMigrationBanner, setShowMigrationBanner] = useState(false)
   const [showUpgradeModal, setShowUpgradeModal] = useState(false)
   const [showVpnToast, setShowVpnToast] = useState(false)
+  const [mapFlyTo, setMapFlyTo] = useState(null)
+  const clearMapFlyTo = useCallback(() => setMapFlyTo(null), [])
   const [unlabeledVpn, setUnlabeledVpn] = useState([])
   const [showWanToast, setShowWanToast] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('ui_theme') || 'dark')
@@ -177,6 +182,16 @@ export default function App() {
         sessionStorage.setItem('latest_release', JSON.stringify({ data: release, ts: Date.now() }))
       }
     })
+  }, [])
+
+  // Listen for "View on map" events from LogDetail
+  useEffect(() => {
+    const handler = (e) => {
+      setMapFlyTo(e.detail)
+      setActiveTab('threat-map')
+    }
+    window.addEventListener('viewOnMap', handler)
+    return () => window.removeEventListener('viewOnMap', handler)
   }, [])
 
   const maxFilterDays = useMemo(() => {
@@ -445,6 +460,9 @@ export default function App() {
         {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} />}
         <Suspense fallback={<DashboardSkeleton />}>
           {activeTab === 'dashboard' && <Dashboard maxFilterDays={maxFilterDays} />}
+        </Suspense>
+        <Suspense fallback={<ThreatMapSkeleton />}>
+          {activeTab === 'threat-map' && <ThreatMap maxFilterDays={maxFilterDays} flyTo={mapFlyTo} onFlyToDone={clearMapFlyTo} />}
         </Suspense>
       </main>
     </div>
