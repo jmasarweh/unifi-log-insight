@@ -189,13 +189,13 @@ def get_logs(
         for log in logs:
             for prefix in ('src', 'dst'):
                 name_key = f'{prefix}_device_name'
-                if not log.get(name_key):
-                    ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
-                    if ip_str in gateway_vlans:
+                ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
+                if ip_str in gateway_vlans:
+                    if not log.get(name_key):
                         log[name_key] = 'Gateway'
-                        log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
-                    elif ip_str in wan_ip_names:
-                        log[name_key] = wan_ip_names[ip_str]
+                    log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
+                elif not log.get(name_key) and ip_str in wan_ip_names:
+                    log[name_key] = wan_ip_names[ip_str]
 
         # Annotate VPN badges
         vpn_networks = get_config(enricher_db, 'vpn_networks') or {}
@@ -319,13 +319,13 @@ def get_log(log_id: int):
         wan_ip_names = get_config(enricher_db, 'wan_ip_names') or {}
         for prefix in ('src', 'dst'):
             name_key = f'{prefix}_device_name'
-            if not log.get(name_key):
-                ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
-                if ip_str in gateway_vlans:
+            ip_str = str(log.get(f'{prefix}_ip', '')).split('/')[0]
+            if ip_str in gateway_vlans:
+                if not log.get(name_key):
                     log[name_key] = 'Gateway'
-                    log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
-                elif ip_str in wan_ip_names:
-                    log[name_key] = wan_ip_names[ip_str]
+                log[f'{prefix}_device_vlan'] = gateway_vlans[ip_str].get('vlan')
+            elif not log.get(name_key) and ip_str in wan_ip_names:
+                log[name_key] = wan_ip_names[ip_str]
 
         # Annotate VPN badges
         vpn_networks = get_config(enricher_db, 'vpn_networks') or {}

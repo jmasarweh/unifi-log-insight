@@ -12,6 +12,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
   // VPN editing state
   const [editVpn, setEditVpn] = useState({})  // {iface: {badge, cidr, label}}
   const [editing, setEditing] = useState(false)
+  const [editMode, setEditMode] = useState('edit') // 'edit' = all, 'configure' = unlabelled only
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState(null)
 
@@ -33,6 +34,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
 
   const configureDiscovered = (ifaces) => {
     const init = {}
+    // Always include existing entries so save doesn't wipe them
     for (const entry of vpnEntries) {
       init[entry.iface] = {
         badge: entry.badge || 'VPN',
@@ -46,6 +48,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
       init[i.name] = { badge: 'VPN', cidr: '', label: type || '', type }
     }
     setEditVpn(init)
+    setEditMode(ifaces.length > 0 ? 'configure' : 'edit')
     setEditing(true)
     setSaveMsg(null)
   }
@@ -89,8 +92,12 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
   }
 
   // Build sorted entries for the shared table component
+  // In 'configure' mode, only show the newly discovered interfaces
+  const existingIfaceSet = useMemo(() => new Set(vpnEntries.map(e => e.iface)), [vpnEntries])
   const editEntries = useMemo(() => {
-    return Object.entries(editVpn).sort(([a], [b]) => {
+    const entries = Object.entries(editVpn)
+      .filter(([iface]) => editMode === 'edit' || !existingIfaceSet.has(iface))
+    return entries.sort(([a], [b]) => {
       const aIdx = vpnEntries.findIndex(e => e.iface === a)
       const bIdx = vpnEntries.findIndex(e => e.iface === b)
       if (aIdx >= 0 && bIdx >= 0) return aIdx - bIdx
@@ -104,7 +111,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
       label: cfg.label || '',
       cidr: cfg.cidr || '',
     }))
-  }, [editVpn, vpnEntries])
+  }, [editVpn, vpnEntries, editMode, existingIfaceSet])
 
   // Compute add form props
   const addFormProps = useMemo(() => {
@@ -309,7 +316,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
           {editing ? (
             <VpnNetworkTable
               entries={editEntries}
-              showRemove
+              showRemove={editMode === 'edit'}
               onBadgeChange={(iface, val) => setEditVpn(prev => ({
                 ...prev, [iface]: { ...prev[iface], badge: val }
               }))}
@@ -327,7 +334,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                 delete next[iface]
                 return next
               })}
-              addForm={addFormProps}
+              addForm={editMode === 'edit' ? addFormProps : null}
             />
           ) : (
             <>
@@ -371,7 +378,10 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
               {unlabeledVpn.length > 0 && (
                 <div className={vpnEntries.length > 0 ? 'mt-4' : ''}>
                   <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unlabelled</h3>
+                    <div>
+                      <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">Unlabelled</h3>
+                      <p className="text-xs text-gray-500 mt-1">Auto-detected from your firewall logs. Labels have been pre-filled where possible — click Configure to review and save.</p>
+                    </div>
                     <button
                       onClick={() => configureDiscovered(unlabeledVpn)}
                       className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white transition-colors"

@@ -75,6 +75,46 @@ body {
   cursor: not-allowed;
 }
 
+/* Radio button style – matches ui-checkbox colors */
+.ui-radio {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid #42474d;
+  background: transparent;
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+  transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.ui-radio::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+  transition: background-color .15s ease;
+}
+
+.ui-radio:checked {
+  border-color: #14b8a6;
+}
+
+.ui-radio:checked::after {
+  background: #14b8a6;
+}
+
+.ui-radio:focus-visible {
+  box-shadow: 0 0 0 2px rgba(20,184,166,.35);
+}
+
+.ui-radio:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 /* Animated border chase for selected cells */
 @keyframes border-chase {
   to { --border-angle: 360deg; }
@@ -190,6 +230,7 @@ body {
 
 /* Backgrounds */
 [data-theme="light"] .bg-gray-950 { background-color: #fff; }
+[data-theme="light"] .bg-gray-950\/50 { background-color: rgba(255,255,255,.5); }
 [data-theme="light"] .bg-gray-900 { background-color: #f9fafb; }
 [data-theme="light"] .bg-gray-900\/50 { background-color: rgba(249,250,251,.5); }
 [data-theme="light"] .bg-gray-800 { background-color: #f3f4f6; }
@@ -219,6 +260,9 @@ body {
   background: #0d9488;
   border-color: #0d9488;
 }
+[data-theme="light"] .ui-radio { border-color: #d1d5db; }
+[data-theme="light"] .ui-radio:checked { border-color: #0d9488; }
+[data-theme="light"] .ui-radio:checked::after { background: #0d9488; }
 
 /* Disable logging button (Firewall) */
 [data-theme="light"] .disable-logging-btn {

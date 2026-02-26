@@ -386,7 +386,7 @@ export default function SettingsMCP() {
                       type="checkbox"
                       checked={tokenScopes.has(scope.id)}
                       onChange={() => toggleScope(scope.id)}
-                      className="mt-0.5 accent-cyan-500"
+                      className="mt-0.5 ui-checkbox"
                     />
                     <span>
                       <span className="text-gray-200 font-medium">{scope.description}</span>
@@ -529,10 +529,10 @@ export default function SettingsMCP() {
               </div>
 
               <div className="flex items-start gap-2 bg-blue-500/10 border border-blue-500/30 rounded px-3 py-2">
-                <svg className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
                 </svg>
-                <p className="text-[11px] text-blue-400">
+                <p className="text-xs text-blue-400">
                   Requires <span className="font-mono">npx</span> (Node.js). Restart Claude Desktop after editing.
                 </p>
               </div>
@@ -604,7 +604,7 @@ export default function SettingsMCP() {
               className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                 auditLoading
                   ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                  : 'bg-teal-600 hover:bg-teal-500 text-white'
+                  : 'border border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-white'
               }`}
             >
               {auditLoading ? 'Loading...' : (auditLoaded ? 'Refresh' : 'View Audit Log')}
