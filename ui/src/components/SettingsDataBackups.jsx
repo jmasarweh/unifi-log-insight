@@ -5,6 +5,8 @@ import {
 } from '../api'
 
 const RETENTION_PRESETS = [30, 60, 90, 120, 180, 365]
+const DISK_CRITICAL_BYTES = 512 * 1024 * 1024       // 512 MB
+const DISK_WARNING_BYTES  = 2 * 1024 * 1024 * 1024  // 2 GB
 
 function formatBytes(bytes) {
   if (bytes == null) return '—'
@@ -228,8 +230,8 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
           {storage && storage.db_size_bytes != null && (() => {
             const dbSize = storage.db_size_bytes
             const volAvail = storage.volume_available_bytes
-            const critical = volAvail != null && volAvail < 1024 * 1024 * 512   // < 512 MB free
-            const warning = volAvail != null && volAvail < 1024 * 1024 * 1024 * 2  // < 2 GB free
+            const critical = volAvail != null && volAvail < DISK_CRITICAL_BYTES
+            const warning = volAvail != null && volAvail < DISK_WARNING_BYTES
             return (
               <div className="px-5 pb-4 space-y-2">
                 <div className="flex items-center justify-between">

@@ -102,8 +102,8 @@ def health():
             storage['volume_total_bytes'] = usage.total
             storage['volume_used_bytes'] = usage.used
             storage['volume_available_bytes'] = usage.free
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to read disk usage for /var/lib/postgresql/data: %s", e)
 
         return {
             'status': 'ok',
