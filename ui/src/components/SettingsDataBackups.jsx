@@ -237,7 +237,7 @@ export default function SettingsDataBackups() {
                 disabled={!retentionDirty || retentionSaving}
                 className={`px-4 py-1.5 rounded text-xs font-medium transition-colors ${
                   retentionDirty
-                    ? 'bg-blue-600 text-white hover:bg-blue-500'
+                    ? 'bg-teal-600 text-white hover:bg-teal-500'
                     : 'bg-gray-800 text-gray-500 cursor-not-allowed'
                 }`}
               >
@@ -350,7 +350,7 @@ export default function SettingsDataBackups() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleImportConfirm}
-                    className="px-4 py-1.5 rounded text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 transition-colors"
+                    className="px-4 py-1.5 rounded text-xs font-medium bg-teal-600 text-white hover:bg-teal-500 transition-colors"
                   >
                     Confirm Import
                   </button>

@@ -386,7 +386,7 @@ export default function SettingsMCP() {
                       type="checkbox"
                       checked={tokenScopes.has(scope.id)}
                       onChange={() => toggleScope(scope.id)}
-                      className="mt-0.5 accent-cyan-500"
+                      className="mt-0.5 ui-checkbox"
                     />
                     <span>
                       <span className="text-gray-200 font-medium">{scope.description}</span>

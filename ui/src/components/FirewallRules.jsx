@@ -204,8 +204,8 @@ function SyslogToggle({ checked, disabled, onChange, title }) {
       <div
         className={`w-8 h-4 rounded-full transition-colors duration-200 ${
           disabled
-            ? (checked ? 'bg-[#0b4ead]' : 'bg-[#282b2f]')
-            : (checked ? 'bg-[#4797ff]' : 'bg-[#42474d]')
+            ? (checked ? 'bg-teal-800' : 'bg-[#282b2f]')
+            : (checked ? 'bg-teal-500' : 'bg-[#42474d]')
         } ${disabled ? 'cursor-not-allowed' : 'cursor-pointer'}`}
       >
         <div
@@ -270,7 +270,7 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
                   onClick={() => onSelectCell(null)}
                   className={`block w-full px-2.5 py-1.5 text-left font-medium whitespace-nowrap transition-colors rounded-tl-lg ${
                     allSelected
-                      ? 'border-chase text-[#4797ff]'
+                      ? 'border-chase text-teal-400'
                       : 'bg-black text-[#cbced2] border border-white/[0.07] hover:bg-gray-900'
                   }`}
                 >
@@ -398,7 +398,7 @@ function FilterBar({ filters, onFilterChange, onBulk, bulkAction, zoneScopeLabel
         <button
           onClick={() => onBulk(true)}
           disabled={!!bulkAction}
-          className="px-2.5 py-1 rounded text-[11px] font-medium text-[#4797ff] bg-[#4797ff]/10 hover:bg-[#4797ff]/20 border border-[#4797ff]/20 disabled:opacity-40 transition-colors"
+          className="px-2.5 py-1 rounded text-[11px] font-medium text-teal-400 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/20 disabled:opacity-40 transition-colors"
         >
           {bulkAction === 'enable' ? 'Enabling...' : 'Enable All Logging'}
         </button>
@@ -596,7 +596,7 @@ function BulkConfirmModal({ action, count, srcZone, dstZone, onConfirm, onCancel
             onClick={onConfirm}
             className={`px-3.5 py-1.5 rounded text-[12px] font-medium text-white transition-colors ${
               action === 'enable'
-                ? 'bg-[#4797ff] hover:bg-[#338bff]'
+                ? 'bg-teal-600 hover:bg-teal-500'
                 : 'bg-red-600 hover:bg-red-500'
             }`}
           >
@@ -818,7 +818,7 @@ export default function FirewallRules() {
     return (
       <div className="text-center py-8">
         <p className="text-[#f36267] text-sm mb-3">{error}</p>
-        <button onClick={loadPolicies} className="text-xs text-[#4797ff] hover:text-[#338bff]">Retry</button>
+        <button onClick={loadPolicies} className="text-xs text-teal-400 hover:text-teal-300">Retry</button>
       </div>
     )
   }
