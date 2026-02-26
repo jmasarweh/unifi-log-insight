@@ -190,6 +190,7 @@ body {
 
 /* Backgrounds */
 [data-theme="light"] .bg-gray-950 { background-color: #fff; }
+[data-theme="light"] .bg-gray-950\/50 { background-color: rgba(255,255,255,.5); }
 [data-theme="light"] .bg-gray-900 { background-color: #f9fafb; }
 [data-theme="light"] .bg-gray-900\/50 { background-color: rgba(249,250,251,.5); }
 [data-theme="light"] .bg-gray-800 { background-color: #f3f4f6; }
