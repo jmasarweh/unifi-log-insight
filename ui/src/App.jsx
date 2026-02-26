@@ -218,6 +218,8 @@ export default function App() {
       onVpnSaved={(cfg) => reloadConfig(cfg).catch(() => {})}
       version={health?.version}
       latestRelease={latestRelease}
+      totalLogs={health?.total_logs}
+      storage={health?.storage}
     />
   }
 

@@ -55,14 +55,14 @@ const BASE_SECTIONS = [
   },
   {
     id: 'mcp',
-    label: <span className="flex items-center gap-1.5">MCP <span className="text-[10px] px-1 py-0 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Beta</span></span>,
+    label: <span className="flex items-center gap-1.5">MCP <span className="text-[10px] leading-none px-1 py-px rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Beta</span></span>,
     icon: (
       <img src="/mcp-logo.png" alt="MCP" className="mcp-logo" />
     ),
   },
 ]
 
-export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [], onVpnSaved: onVpnSavedApp, version, latestRelease }) {
+export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [], onVpnSaved: onVpnSavedApp, version, latestRelease, totalLogs, storage }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)
   const [netConfig, setNetConfig] = useState(null)
@@ -140,17 +140,19 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-gray-950">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-gray-800 bg-gray-950 shrink-0">
-        <div className="flex items-center gap-3">
-          <svg viewBox="0 0 24 24" className="w-7 h-7 text-blue-400" fill="none" stroke="currentColor">
-            <circle cx="12" cy="12" r="10.5" strokeWidth="1.5" strokeOpacity="0.4" />
-            <path d="M8.5 7.5v5.5a3.5 3.5 0 0 0 7 0V7.5" strokeWidth="2.2" strokeLinecap="round" />
-          </svg>
-          <div>
-            <h1 className="text-lg font-semibold text-gray-200">UniFi Log Insight</h1>
-            {reconfigMode ? (
-              <p className="text-xs text-gray-400">
-                Settings
+      <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950 shrink-0">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <svg viewBox="0 0 24 24" className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor">
+              <circle cx="12" cy="12" r="10.5" strokeWidth="1.5" strokeOpacity="0.4" />
+              <path d="M8.5 7.5v5.5a3.5 3.5 0 0 0 7 0V7.5" strokeWidth="2.2" strokeLinecap="round" />
+            </svg>
+            <span className="text-sm font-semibold text-gray-200">UniFi Log Insight</span>
+          </div>
+          <span className="text-xs text-gray-400 flex items-center">
+            Settings
+            {reconfigMode && (
+              <>
                 <span className="text-gray-600 mx-1">&rsaquo;</span>
                 WAN &amp; Networks
                 <span className="text-gray-600 mx-1">&rsaquo;</span>
@@ -161,11 +163,9 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                 {wizardPath === 'log_detection' && (
                   <><span className="text-gray-600 mx-1">&rsaquo;</span><span className="text-gray-300">Log Detection</span></>
                 )}
-              </p>
-            ) : (
-              <p className="text-xs text-gray-400">Settings</p>
+              </>
             )}
-          </div>
+          </span>
         </div>
         <button
           onClick={onClose}
@@ -199,8 +199,8 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
             </button>
           ))}
           {version && (
-            <div className="mt-auto border-t border-gray-800 px-5 flex items-center justify-center h-[42px]">
-              <div className="flex items-center gap-1.5 w-full">
+            <div className="mt-auto border-t border-gray-800 flex items-center justify-center h-[42px]">
+              <div className="flex items-center gap-1.5">
                 <span className={`text-[10px] ${outdated ? 'text-amber-400' : 'text-gray-400'}`}>v{version}</span>
                 {outdated ? (
                   <button
@@ -264,7 +264,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                   />
                 )}
                 {activeSection === 'data-backups' && (
-                  <SettingsDataBackups />
+                  <SettingsDataBackups totalLogs={totalLogs} storage={storage} />
                 )}
                 {activeSection === 'user-interface' && (
                   <SettingsUserInterface />

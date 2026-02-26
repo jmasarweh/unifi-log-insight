@@ -171,22 +171,22 @@ function buildMatrixData(policies, zones) {
 }
 
 function cellStyle(action, selected) {
-  // Translucent colors + borders matching the log-stream action badges
+  // Non-selected cells get a transparent 2px border to match border-chase size and prevent layout shift
   switch (action) {
     case 'Allow All':
       return selected
         ? 'border-chase border-chase-emerald text-emerald-300 zone-pair-selected-emerald'
-        : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25'
+        : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25 border-2 border-transparent'
     case 'Block All':
       return selected
         ? 'border-chase border-chase-red text-red-300 zone-pair-selected-red'
-        : 'bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500/30'
+        : 'bg-red-500/20 text-red-400 hover:bg-red-500/30 border-2 border-transparent'
     case 'Allow Return':
       return selected
         ? 'border-chase border-chase-cyan text-cyan-300 zone-pair-selected-cyan'
-        : 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/25'
+        : 'bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 border-2 border-transparent'
     default:
-      return 'bg-white/[0.04] text-[#676f79] border border-white/[0.07]'
+      return 'bg-white/[0.04] text-[#676f79] border-2 border-transparent'
   }
 }
 
@@ -251,57 +251,55 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
       </div>
 
       <div className="w-full rounded-lg scroll-fade">
-        <table className="w-full border-separate text-[11px]" style={{ borderSpacing: 0 }}>
-          <thead>
+        <table className="w-full border-separate text-[11px]" style={{ borderSpacing: 0, borderStyle: 'none' }}>
+          <tbody>
             <tr>
-              <th />
-              <th />
-              <th
+              <td />
+              <td />
+              <td
                 colSpan={zones.length}
                 className="text-center text-[10px] font-normal text-[#676f79] pb-1 uppercase tracking-widest"
               >
                 Destination
-              </th>
+              </td>
             </tr>
             <tr>
-              <th className="w-4" />
-              <th className="p-0">
+              <td className="w-4" />
+              <td className="p-0">
                 <button
                   onClick={() => onSelectCell(null)}
                   className={`block w-full px-2.5 py-1.5 text-left font-medium whitespace-nowrap transition-colors rounded-tl-lg ${
                     allSelected
                       ? 'border-chase text-teal-400'
-                      : 'bg-black text-[#cbced2] border border-white/[0.07] hover:bg-gray-900'
+                      : 'bg-black text-[#cbced2] hover:bg-gray-900 border-2 border-transparent'
                   }`}
                 >
                   All Policies ({totalPolicyCount})
                 </button>
-              </th>
+              </td>
               {zones.map((z, i) => (
-                <th
+                <td
                   key={z.id}
-                  className={`zone-label-cell px-2.5 py-1.5 font-medium text-[#cbced2] text-center border border-white/[0.07] bg-black whitespace-nowrap ${
+                  className={`zone-label-cell px-2.5 py-1.5 font-medium text-[#cbced2] text-center bg-black whitespace-nowrap ${
                     i === zones.length - 1 ? 'rounded-tr-lg' : ''
                   }`}
                 >
                   {normalizeZoneName(z.name)}
-                </th>
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
             {zones.map((src, ri) => (
               <tr key={src.id}>
                 {ri === 0 && (
                   <td
                     rowSpan={zones.length}
-                    className="text-[10px] text-[#676f79] font-normal uppercase tracking-widest w-4 select-none bg-black border-r border-white/[0.07] border-l-0 border-t-0 border-b-0"
+                    className="text-[10px] text-[#676f79] font-normal uppercase tracking-widest w-4 select-none"
                     style={{ writingMode: 'vertical-lr', transform: 'rotate(180deg)' }}
                   >
                     <div className="flex items-center justify-center h-full">Source</div>
                   </td>
                 )}
-                <td className={`zone-label-cell px-2.5 py-1.5 font-medium text-[#cbced2] border border-white/[0.07] bg-black whitespace-nowrap text-[11px] ${
+                <td className={`zone-label-cell px-2.5 py-1.5 font-medium text-[#cbced2] bg-black whitespace-nowrap text-[11px] ${
                   ri === zones.length - 1 ? 'rounded-bl-lg' : ''
                 }`}>
                   {normalizeZoneName(src.name)}
@@ -317,7 +315,7 @@ function ZoneMatrix({ zones, cells, selectedCell, onSelectCell, totalPolicyCount
                   if (!cell || cell.defaultAction === null) {
                     return (
                       <td key={dst.id} className={`p-0 ${cornerClass}`}>
-                        <div className={`px-2.5 py-1.5 text-center text-[#676f79] bg-white/[0.04] border border-white/[0.07] ${cornerClass}`}>
+                        <div className={`px-2.5 py-1.5 text-center text-[#676f79] bg-white/[0.04] border-2 border-transparent ${cornerClass}`}>
                           &ndash;
                         </div>
                       </td>

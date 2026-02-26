@@ -57,87 +57,98 @@ export default function SettingsUserInterface() {
   if (!settings) return <div className="text-gray-500 text-sm">Loading...</div>
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="space-y-8">
+      <section>
         <h2 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">User Interface</h2>
-        <p className="text-xs text-gray-400 mb-4">Customize how data is displayed in the log view.</p>
-      </div>
+        <div className="rounded-lg border border-gray-700 bg-gray-950">
+          {/* Country Display */}
+          <div className="p-5">
+            <p className="text-sm text-gray-200 font-medium">Country Display</p>
+            <p className="text-xs text-gray-500 mb-3">Control how countries appear in Source/Destination columns.</p>
+            <div className="space-y-2">
+              {COUNTRY_OPTIONS.map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="country_display"
+                    value={opt.value}
+                    checked={settings.ui_country_display === opt.value}
+                    onChange={() => update('ui_country_display', opt.value)}
+                    className="ui-radio"
+                  />
+                  <span className="text-xs text-gray-300">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-      {/* Country Display */}
-      <section>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Country Display</h3>
-        <p className="text-xs text-gray-500 mb-3">Control how countries appear in Source/Destination columns.</p>
-        <div className="space-y-2">
-          {COUNTRY_OPTIONS.map(opt => (
-            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="country_display"
-                value={opt.value}
-                checked={settings.ui_country_display === opt.value}
-                onChange={() => update('ui_country_display', opt.value)}
-                className="text-teal-500 focus:ring-0 focus:ring-offset-0 bg-gray-800 border-gray-600"
-              />
-              <span className="text-xs text-gray-300">{opt.label}</span>
-            </label>
-          ))}
+          <div className="border-t border-gray-800" />
+
+          {/* IP Subline */}
+          <div className="p-5">
+            <p className="text-sm text-gray-200 font-medium">IP Address Subline</p>
+            <p className="text-xs text-gray-500 mb-3">Show ASN or AbuseIPDB hostname under IP addresses. When enabled, the standalone ASN column is hidden.</p>
+            <div className="space-y-2">
+              {SUBLINE_OPTIONS.map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="ip_subline"
+                    value={opt.value}
+                    checked={settings.ui_ip_subline === opt.value}
+                    onChange={() => update('ui_ip_subline', opt.value)}
+                    className="ui-radio"
+                  />
+                  <span className="text-xs text-gray-300">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-gray-800" />
+
+          {/* Theme */}
+          <div className="p-5">
+            <p className="text-sm text-gray-200 font-medium">Theme</p>
+            <p className="text-xs text-gray-500 mb-3">Switch between dark and light mode.</p>
+            <div className="space-y-2">
+              {THEME_OPTIONS.map(opt => (
+                <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="theme"
+                    value={opt.value}
+                    checked={settings.ui_theme === opt.value}
+                    onChange={() => update('ui_theme', opt.value)}
+                    className="ui-radio"
+                  />
+                  <span className="text-xs text-gray-300">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="border-t border-gray-800" />
+
+          <div className="px-5 py-3 flex items-center justify-between">
+            <div>
+              {status === 'saved' && <span className="text-xs text-emerald-400">Settings saved</span>}
+              {status === 'error' && <span className="text-xs text-red-400">Failed to save</span>}
+            </div>
+            <button
+              onClick={handleSave}
+              disabled={!dirty || saving}
+              className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                dirty
+                  ? 'bg-teal-600 hover:bg-teal-500 text-white'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
         </div>
       </section>
-
-      {/* IP Subline */}
-      <section>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">IP Address Subline</h3>
-        <p className="text-xs text-gray-500 mb-3">Show ASN or AbuseIPDB hostname under IP addresses. When enabled, the standalone ASN column is hidden.</p>
-        <div className="space-y-2">
-          {SUBLINE_OPTIONS.map(opt => (
-            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="ip_subline"
-                value={opt.value}
-                checked={settings.ui_ip_subline === opt.value}
-                onChange={() => update('ui_ip_subline', opt.value)}
-                className="text-teal-500 focus:ring-0 focus:ring-offset-0 bg-gray-800 border-gray-600"
-              />
-              <span className="text-xs text-gray-300">{opt.label}</span>
-            </label>
-          ))}
-        </div>
-      </section>
-
-      {/* Theme */}
-      <section>
-        <h3 className="text-sm font-semibold text-gray-300 mb-1">Theme</h3>
-        <p className="text-xs text-gray-500 mb-3">Switch between dark and light mode.</p>
-        <div className="space-y-2">
-          {THEME_OPTIONS.map(opt => (
-            <label key={opt.value} className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="theme"
-                value={opt.value}
-                checked={settings.ui_theme === opt.value}
-                onChange={() => update('ui_theme', opt.value)}
-                className="text-teal-500 focus:ring-0 focus:ring-offset-0 bg-gray-800 border-gray-600"
-              />
-              <span className="text-xs text-gray-300">{opt.label}</span>
-            </label>
-          ))}
-        </div>
-      </section>
-
-      {/* Save */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={handleSave}
-          disabled={!dirty || saving}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-teal-600 hover:bg-teal-500 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
-        {status === 'saved' && <span className="text-xs text-emerald-400">Settings saved</span>}
-        {status === 'error' && <span className="text-xs text-red-400">Failed to save</span>}
-      </div>
     </div>
   )
 }

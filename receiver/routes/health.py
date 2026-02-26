@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import shutil
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -87,6 +88,23 @@ def health():
         except Exception:
             pass
 
+        # Storage: database size + volume disk usage
+        storage = {}
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_database_size(current_database())")
+                storage['db_size_bytes'] = cur.fetchone()[0]
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        try:
+            usage = shutil.disk_usage('/var/lib/postgresql/data')
+            storage['volume_total_bytes'] = usage.total
+            storage['volume_used_bytes'] = usage.used
+            storage['volume_available_bytes'] = usage.free
+        except Exception:
+            pass
+
         return {
             'status': 'ok',
             'version': APP_VERSION,
@@ -97,6 +115,7 @@ def health():
             'abuseipdb': abuseipdb,
             'maxmind_last_update': maxmind_last_update,
             'maxmind_next_update': maxmind_next_update,
+            'storage': storage,
         }
     except Exception as e:
         conn.rollback()
