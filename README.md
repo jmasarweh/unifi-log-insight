@@ -41,6 +41,7 @@ Single Docker container. No external dependencies. Zero data collection.
 
 - **Live Log Stream** - Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume
 - **AI Agent Integration (Beta)** - Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation
+- **Threat Map** - Interactive world map showing where threats and blocked outbound traffic originate. Switch between heatmap and cluster views, filter by time range, and click any point to inspect individual logs in a sidebar
 - **Dashboard** - Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries
 - **Filters** - Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search
 - **IP Enrichment** - GeoIP (country, city, coordinates), ASN, reverse DNS via MaxMind GeoLite2 with scheduled auto-update and hot-reload
@@ -386,6 +387,17 @@ Access settings via the **gear icon** in the top-right corner. Five sections:
 - **User Interface** - Theme (dark/light), country display format (flag + name, flag only, name only), IP address subline (show ASN beneath IPs in log table)
 - **MCP** *(Beta)* - Enable/disable the MCP server, manage tokens and scopes, view AI activity audit log, and get client setup instructions (see [AI Agent Integration](#-ai-agent-integration-mcp))
 
+### Threat Map
+
+A geographic view of network threats and blocked outbound traffic on an interactive world map.
+
+- **Two modes** - "Threats" shows high-score IPs from AbuseIPDB; "Blocked Outbound" shows outgoing traffic your firewall stopped
+- **Heatmap & Clusters** - Toggle between a heatmap overlay and individual cluster markers that show event counts
+- **Time range** - Filter from the last hour up to 60 days
+- **Click to inspect** - Click any point on the map to open a sidebar with the location summary (country, city, event count, top threat score) and a list of individual log entries. Click a log entry for full details
+- **Auto-refresh** - The map refreshes every 60 seconds to stay current
+- **"View on map"** - From any log detail in the Log Stream, click "View on map" to jump to that log's location on the Threat Map
+
 ### Dashboard
 
 Aggregated views with configurable time range (1h to 365d, based on retention setting):
@@ -523,7 +535,7 @@ All tool calls are logged with the token ID, tool name, parameters, and success/
 | `GET /api/settings/unifi` | Current UniFi API settings |
 | `PUT /api/settings/unifi` | Update UniFi API settings |
 | `POST /api/settings/unifi/test` | Test UniFi connection and save on success |
-| `GET /api/settings/ui` | Current UI display preferences (theme, country format, IP subline) |
+| `GET /api/settings/ui` | Current UI display preferences (theme, country format, IP subline, etc.) |
 | `PUT /api/settings/ui` | Update UI display preferences |
 | `GET /api/firewall/policies` | All firewall policies with zone data |
 | `PATCH /api/firewall/policies/{id}` | Toggle syslog on a firewall policy |
@@ -545,6 +557,8 @@ All tool calls are logged with the token ID, tool name, parameters, and success/
 | `POST /api/settings/unifi/dismiss-upgrade` | Dismiss upgrade notification banner |
 | `POST /api/settings/unifi/dismiss-vpn-toast` | Dismiss VPN introduction toast |
 | `GET /api/threats` | Threat intelligence cache with optional IP/date filters |
+| `GET /api/threats/geo` | Geo-aggregated threat data for the Threat Map (GeoJSON) |
+| `POST /api/logs/batch` | Fetch multiple logs by ID (max 50), used by the Threat Map sidebar |
 | `POST /api/mcp` | MCP JSON-RPC endpoint (bearer token required) |
 | `GET /api/mcp` | MCP SSE streaming endpoint (bearer token required) |
 | `GET /api/settings/mcp` | MCP server settings |
