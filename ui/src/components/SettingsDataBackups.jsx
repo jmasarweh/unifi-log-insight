@@ -141,81 +141,84 @@ export default function SettingsDataBackups() {
         <h2 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">
           Data Retention
         </h2>
-        <div className="rounded-lg border border-gray-700 bg-gray-950 p-5 space-y-5">
-          {/* General retention slider */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-sm text-gray-300">Log retention</label>
-              <span className="text-sm font-mono font-semibold text-gray-200">{retentionDays} days</span>
-            </div>
-            <input
-              type="range"
-              min={1}
-              max={365}
-              value={retentionDays}
-              onChange={e => setRetentionDays(Number(e.target.value))}
-              className="w-full accent-blue-500"
-            />
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {RETENTION_PRESETS.map(preset => (
-                <button
-                  key={preset}
-                  onClick={() => setRetentionDays(preset)}
-                  className={`text-[11px] font-mono px-2 py-0.5 rounded border transition-colors ${
-                    retentionDays === preset
-                      ? 'border-blue-500 text-blue-400 bg-blue-500/10'
-                      : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'
-                  }`}
-                >
-                  {preset}d
-                </button>
-              ))}
-            </div>
-            {retentionDays > 120 && (
-              <div className="mt-2 flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
-                <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                </svg>
-                <p className="text-xs text-yellow-400/90">
-                  Extended retention may affect query performance on large datasets.
-                </p>
+        <div className="rounded-lg border border-gray-700 bg-gray-950">
+          <div className="p-5 space-y-5">
+            {/* General retention slider */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-gray-300">Log retention</label>
+                <span className="text-sm font-mono font-semibold text-gray-200">{retentionDays} days</span>
               </div>
-            )}
-          </div>
+              <input
+                type="range"
+                min={1}
+                max={365}
+                value={retentionDays}
+                onChange={e => setRetentionDays(Number(e.target.value))}
+                className="w-full accent-blue-500"
+              />
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {RETENTION_PRESETS.map(preset => (
+                  <button
+                    key={preset}
+                    onClick={() => setRetentionDays(preset)}
+                    className={`text-[11px] font-mono px-2 py-0.5 rounded border transition-colors ${
+                      retentionDays === preset
+                        ? 'border-blue-500 text-blue-400 bg-blue-500/10'
+                        : 'border-gray-700 text-gray-500 hover:border-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {preset}d
+                  </button>
+                ))}
+              </div>
+              {retentionDays > 120 && (
+                <div className="mt-2 flex items-start gap-2 bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2">
+                  <svg className="w-4 h-4 text-yellow-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                  </svg>
+                  <p className="text-xs text-yellow-400/90">
+                    Extended retention may affect query performance on large datasets.
+                  </p>
+                </div>
+              )}
+            </div>
 
-          {/* DNS retention input */}
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-300">DNS log retention</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={dnsRetentionDays}
-                  onChange={e => setDnsRetentionDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
-                  className="w-16 px-2 py-1 rounded bg-gray-900 border border-gray-600 font-mono text-xs text-gray-200 text-right focus:border-blue-500 focus:outline-none"
-                />
-                <span className="text-xs text-gray-500">days</span>
+            {/* DNS retention input */}
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-gray-300">DNS log retention</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={dnsRetentionDays}
+                    onChange={e => setDnsRetentionDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
+                    className="w-16 px-2 py-1 rounded bg-gray-900 border border-gray-600 font-mono text-xs text-gray-200 text-right focus:border-blue-500 focus:outline-none"
+                  />
+                  <span className="text-xs text-gray-500">days</span>
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Info note */}
-          <div className="flex items-start gap-2 bg-blue-500/10 border border-blue-500/30 rounded px-3 py-2">
-            <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
-            </svg>
-            <p className="text-xs text-blue-400/90">
-              Time range filters in Log Stream and Dashboard automatically adjust to
-              show only ranges with available data. If logs from a previous retention
-              period haven't been cleaned up yet, filters may extend beyond your
-              current retention setting.
-            </p>
+            {/* Info note */}
+            <div className="flex items-start gap-2 bg-blue-500/10 border border-blue-500/30 rounded px-3 py-2">
+              <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clipRule="evenodd" />
+              </svg>
+              <p className="text-xs text-blue-400/90">
+                Time range filters in Log Stream and Dashboard automatically adjust to
+                show only ranges with available data. If logs from a previous retention
+                period haven't been cleaned up yet, filters may extend beyond your
+                current retention setting.
+              </p>
+            </div>
           </div>
 
           {/* Save + status */}
-          <div className="flex items-center justify-between pt-2 border-t border-gray-800">
+          <div className="border-t border-gray-800" />
+          <div className="px-5 py-3 flex items-center justify-between">
             <p className="text-xs text-gray-500">Cleanup runs daily at 03:00 UTC</p>
             <div className="flex items-center gap-3">
               {retentionMsg && (
@@ -253,9 +256,9 @@ export default function SettingsDataBackups() {
         <h2 className="text-sm font-semibold text-gray-300 mb-3 uppercase tracking-wider">
           Backup &amp; Restore
         </h2>
-        <div className="rounded-lg border border-gray-700 bg-gray-950 p-5 space-y-4">
+        <div className="rounded-lg border border-gray-700 bg-gray-950">
           {/* Export */}
-          <div>
+          <div className="p-5">
             <h3 className="text-sm font-semibold text-gray-300 mb-2">Export Configuration</h3>
             <div className="space-y-2">
               <button
@@ -302,7 +305,7 @@ export default function SettingsDataBackups() {
           <div className="border-t border-gray-800" />
 
           {/* Import */}
-          <div>
+          <div className="p-5">
             <h3 className="text-sm font-semibold text-gray-300 mb-2">Import Configuration</h3>
             <input
               ref={fileInputRef}
