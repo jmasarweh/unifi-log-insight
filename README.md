@@ -249,6 +249,54 @@ Retention is configurable via the **Settings > Data & Backups** slider, or via `
 
 ---
 
+## 🧹 Database Maintenance
+
+If you run with strict disk limits or aggressive retention, you may notice disk usage stays high even after old logs are deleted. This section explains why and how to safely reclaim space.
+
+**Why disk usage doesn’t shrink after cleanup:** PostgreSQL `DELETE` removes rows, but it does **not** shrink table files on disk. Space is reclaimed for **reuse**, not returned to the OS. This means log counts drop while disk usage stays near the previous high‑water mark.
+
+**When to do maintenance:** If the container hits disk limits, or you’ve recently reduced retention and want to reclaim disk space.
+
+### Step 1: Run retention cleanup (optional)
+
+This deletes rows older than your retention settings.
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "SELECT cleanup_old_logs(60, 10);"
+```
+
+Use your desired retention values (general logs, DNS logs). If you want to use the values saved in `system_config` (falling back to 60/10 if unset):
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "SELECT cleanup_old_logs(COALESCE((SELECT (value #>> '{}')::int FROM system_config WHERE key='retention_days'), 60), COALESCE((SELECT (value #>> '{}')::int FROM system_config WHERE key='dns_retention_days'), 10));"
+```
+
+### Step 2: Reclaim space for reuse (safe)
+
+This improves performance and lets PostgreSQL reuse freed space, but **does not** shrink disk usage.
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "VACUUM (ANALYZE) logs;"
+```
+
+### Step 3: Shrink disk usage (downtime)
+
+This **does** reduce on‑disk size but takes an exclusive lock on `logs` and can pause ingestion/queries while it runs.
+If possible, stop the container (or at least pause log ingestion) before running this.
+
+```bash
+docker exec -it unifi-log-insight psql -U unifi -d unifi_logs -c "VACUUM (FULL, ANALYZE) logs;"
+```
+
+### Related disk usage (non‑DB)
+
+If disk usage is still high, check:
+
+- Docker container logs (can grow quickly without rotation).
+- PostgreSQL WAL files in `pg_wal` during heavy ingest.
+
+---
+
 ## 🗺️ MaxMind Auto-Update
 
 When credentials are configured, GeoLite2 databases update automatically on **Wednesday and Saturday at 7:00 AM** (local time per `TZ` - [supported timezones](https://gist.github.com/Soheab/3bec6dd6c1e90962ef46b8545823820d)). This aligns with MaxMind's Tuesday/Friday publish schedule, giving a buffer for propagation.
