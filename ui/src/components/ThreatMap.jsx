@@ -216,7 +216,6 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
   const [geoData, setGeoData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [sidebarLocation, setSidebarLocation] = useState(null)
-  const sidebarLocationRef = useRef(null)
 
   const closeSidebar = useCallback(() => setSidebarLocation(null), [])
 
@@ -225,7 +224,6 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
   const geoDataRef = useRef(geoData)
   viewRef.current = view
   geoDataRef.current = geoData
-  sidebarLocationRef.current = sidebarLocation
 
   const visibleRanges = filterVisibleRanges(TIME_RANGES, maxFilterDays)
 
@@ -256,12 +254,13 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
 
   // Auto-refresh every 60s
   useEffect(() => {
+    let mounted = true
     const interval = setInterval(() => {
       fetchThreatGeo({ time_range: timeRange, mode })
-        .then(setGeoData)
+        .then(data => { if (mounted) setGeoData(data) })
         .catch(() => {})
     }, 60000)
-    return () => clearInterval(interval)
+    return () => { mounted = false; clearInterval(interval) }
   }, [timeRange, mode])
 
   // Initialize map
@@ -285,9 +284,11 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
     map.on('click', 'threat-clusters', (e) => {
       const features = map.queryRenderedFeatures(e.point, { layers: ['threat-clusters'] })
       if (!features.length) return
+      const source = map.getSource('threats')
+      if (!source) return
       const clusterId = features[0].properties.cluster_id
-      map.getSource('threats').getClusterExpansionZoom(clusterId, (err, zoom) => {
-        if (err) return
+      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+        if (err || !map.getSource('threats')) return
         map.easeTo({ center: features[0].geometry.coordinates, zoom })
       })
     })
@@ -447,11 +448,13 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
     map.flyTo({ center: [flyTo.lon, flyTo.lat], zoom: 8, duration: 1500 })
 
     // Show popup after fly animation
-    setTimeout(() => marker.togglePopup(), 1600)
+    const popupTimeout = setTimeout(() => marker.togglePopup(), 1600)
 
     // Reset flyTo prop immediately to prevent re-triggering; the flyTo
     // animation (1500ms) and popup open (1600ms setTimeout) complete async.
     if (onFlyToDone) onFlyToDone()
+
+    return () => clearTimeout(popupTimeout)
   }, [flyTo, onFlyToDone])
 
   // Watch for theme changes
@@ -479,6 +482,7 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
             <button
               key={tr}
               onClick={() => setTimeRange(tr)}
+              aria-pressed={timeRange === tr}
               className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
                 timeRange === tr ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-300'
               }`}
@@ -496,6 +500,7 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
             <button
               key={m.id}
               onClick={() => setMode(m.id)}
+              aria-pressed={mode === m.id}
               className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
                 mode === m.id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-300'
               }`}
@@ -513,6 +518,7 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
             <button
               key={v.id}
               onClick={() => setView(v.id)}
+              aria-pressed={view === v.id}
               className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
                 view === v.id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-gray-300'
               }`}
@@ -556,7 +562,7 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
           )}
 
           {/* Legend */}
-          {view === 'heatmap' && geoData?.features?.length > 0 && (
+          {geoData?.features?.length > 0 && (
             <div className="absolute bottom-6 left-4 z-10 bg-gray-950/90 border border-gray-800 rounded-lg px-3 py-2">
               <div className="text-[10px] text-white/70 uppercase tracking-wider mb-1.5">Threat Score</div>
               <div className="flex items-center gap-2 text-[10px] text-white/90">
@@ -565,19 +571,7 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> 70-85</span>
                 <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-900 inline-block" /> 85+</span>
               </div>
-              <div className="text-[10px] text-white/50 mt-1">Glow size = event count</div>
-            </div>
-          )}
-
-          {view === 'clusters' && geoData?.features?.length > 0 && (
-            <div className="absolute bottom-6 left-4 z-10 bg-gray-950/90 border border-gray-800 rounded-lg px-3 py-2">
-              <div className="text-[10px] text-white/70 uppercase tracking-wider mb-1.5">Threat Score</div>
-              <div className="flex items-center gap-2 text-[10px] text-white/90">
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> &lt;50</span>
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" /> 50-70</span>
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" /> 70-85</span>
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-red-900 inline-block" /> 85+</span>
-              </div>
+              {view === 'heatmap' && <div className="text-[10px] text-white/50 mt-1">Glow size = event count</div>}
             </div>
           )}
         </div>
