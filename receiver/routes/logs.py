@@ -269,9 +269,9 @@ def _serialize_log(row):
     for key in ('src_ip', 'dst_ip', 'mac_address'):
         if log.get(key):
             log[key] = str(log[key])
-    if log.get('geo_lat'):
+    if log.get('geo_lat') is not None:
         log['geo_lat'] = float(log['geo_lat'])
-    if log.get('geo_lon'):
+    if log.get('geo_lon') is not None:
         log['geo_lon'] = float(log['geo_lon'])
     return log
 
