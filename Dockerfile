@@ -39,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && dpkg -i /tmp/geoipupdate.deb \
     && rm /tmp/geoipupdate.deb \
     && apt-get remove -y curl \
+    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create Python venv to avoid system package conflicts
@@ -49,7 +50,10 @@ ENV PATH="/app/venv/bin:$PATH"
 COPY receiver/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt \
     && pip uninstall -y pip setuptools \
-    && rm -rf /app/venv/lib/python*/ensurepip
+    && rm -rf /app/venv/lib/python*/ensurepip \
+    && apt-get remove -y python3-pip \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy version file and application code
 COPY VERSION /app/VERSION
