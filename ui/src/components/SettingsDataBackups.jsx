@@ -322,7 +322,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
               >
                 <div className="text-sm font-medium text-gray-200">Everything without API Key</div>
                 <p className="text-xs text-gray-500 mt-1">
-                  WAN Config, Network Labels, UniFi Connection (Host, Site, SSL, Polling), Retention Settings
+                  WAN Config, Network Labels, UniFi Connection (Host, Site, SSL, Polling), Retention Settings, UI Preferences
                 </p>
                 <div className="flex items-start gap-2 mt-1.5 bg-blue-500/10 border border-blue-500/30 rounded px-2.5 py-1.5">
                   <svg className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">

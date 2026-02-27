@@ -24,9 +24,17 @@ export default function SettingsUserInterface() {
   const [status, setStatus] = useState(null)
 
   useEffect(() => {
-    fetchUiSettings().then(setSettings).catch(err => {
+    fetchUiSettings().then(data => {
+      // Seed theme from the active localStorage value so saving non-theme
+      // settings doesn't accidentally overwrite the user's current theme
+      const activeTheme = localStorage.getItem('ui_theme')
+      if (activeTheme && activeTheme !== data.ui_theme) {
+        data.ui_theme = activeTheme
+      }
+      setSettings(data)
+    }).catch(err => {
       console.error('Failed to load UI settings:', err)
-      setSettings({ ui_country_display: 'flag_name', ui_ip_subline: 'none', ui_theme: 'dark' })
+      setSettings({ ui_country_display: 'flag_name', ui_ip_subline: 'none', ui_theme: 'dark', ui_block_highlight: 'on', ui_block_highlight_threshold: 0 })
     })
   }, [])
 
@@ -103,6 +111,37 @@ export default function SettingsUserInterface() {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="border-t border-gray-800" />
+
+          {/* Blocked Row Highlight */}
+          <div className="p-5">
+            <p className="text-sm text-gray-200 font-medium">Blocked Row Highlight</p>
+            <p className="text-xs text-gray-500 mb-3">Highlight blocked firewall log rows with a red background.</p>
+            <label className="flex items-center gap-2 cursor-pointer mb-3">
+              <input
+                type="checkbox"
+                checked={settings.ui_block_highlight === 'on'}
+                onChange={e => update('ui_block_highlight', e.target.checked ? 'on' : 'off')}
+                className="ui-checkbox"
+              />
+              <span className="text-xs text-gray-300">Enable red highlight on blocked rows</span>
+            </label>
+            {settings.ui_block_highlight === 'on' && (
+              <div className="ml-6">
+                <p className="text-xs text-gray-400 mb-1">Minimum threat score</p>
+                <p className="text-xs text-gray-500 mb-2">Only highlight blocked rows when threat score meets this threshold. Set to 0 to highlight all blocked rows.</p>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={settings.ui_block_highlight_threshold ?? 0}
+                  onChange={e => update('ui_block_highlight_threshold', Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-20 px-2 py-1 rounded bg-gray-900 border border-gray-700 text-xs text-gray-200 focus:border-teal-500 focus:outline-none"
+                />
+              </div>
+            )}
           </div>
 
           <div className="border-t border-gray-800" />

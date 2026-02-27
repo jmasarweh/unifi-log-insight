@@ -34,9 +34,7 @@ def get_current_config():
         "vpn_networks": get_config(enricher_db, "vpn_networks", {}),
         "wan_ip_by_iface": get_config(enricher_db, "wan_ip_by_iface", {}),
         "vpn_toast_dismissed": get_config(enricher_db, "vpn_toast_dismissed", False),
-        "ui_country_display": get_config(enricher_db, "ui_country_display", "flag_name"),
-        "ui_ip_subline": get_config(enricher_db, "ui_ip_subline", "none"),
-        "ui_theme": get_config(enricher_db, "ui_theme", "dark"),
+        **{k: get_config(enricher_db, k, v) for k, v in _UI_SETTINGS_DEFAULTS.items()},
         "mcp_enabled": get_config(enricher_db, "mcp_enabled", False),
         "mcp_audit_enabled": get_config(enricher_db, "mcp_audit_enabled", False),
         "mcp_audit_retention_days": get_config(enricher_db, "mcp_audit_retention_days", 10),
@@ -307,6 +305,25 @@ def list_interfaces():
     return {'interfaces': result}
 
 
+# ── UI Settings (defaults & validation) ──────────────────────────────────────
+
+_UI_SETTINGS_DEFAULTS = {
+    'ui_country_display': 'flag_name',
+    'ui_ip_subline': 'none',
+    'ui_theme': 'dark',
+    'ui_block_highlight': 'on',
+    'ui_block_highlight_threshold': 0,
+}
+
+_UI_SETTINGS_VALID = {
+    'ui_country_display': {'flag_name', 'flag_only', 'name_only'},
+    'ui_ip_subline': {'asn_or_abuse', 'none'},
+    'ui_theme': {'dark', 'light'},
+    'ui_block_highlight': {'on', 'off'},
+    'ui_block_highlight_threshold': (0, 100),
+}
+
+
 # ── Config Export/Import ─────────────────────────────────────────────────────
 
 # Keys that are always exported (user-configured settings)
@@ -318,6 +335,7 @@ _EXPORTABLE_KEYS = [
     'unifi_controller_name', 'unifi_controller_type',
     'retention_days', 'dns_retention_days',
     'mcp_enabled', 'mcp_audit_enabled', 'mcp_audit_retention_days', 'mcp_allowed_origins',
+    *_UI_SETTINGS_DEFAULTS.keys(),
 ]
 # NOTE: unifi_username, unifi_password, and unifi_site_id are NEVER exported
 # (security + site_id is controller-specific and would break on import).
@@ -577,20 +595,7 @@ def _estimate_log_counts() -> dict:
         put_conn(conn)
 
 
-# ── UI Settings ──────────────────────────────────────────────────────────────
-
-_UI_SETTINGS_DEFAULTS = {
-    'ui_country_display': 'flag_name',
-    'ui_ip_subline': 'none',
-    'ui_theme': 'dark',
-}
-
-_UI_SETTINGS_VALID = {
-    'ui_country_display': {'flag_name', 'flag_only', 'name_only'},
-    'ui_ip_subline': {'asn_or_abuse', 'none'},
-    'ui_theme': {'dark', 'light'},
-}
-
+# ── UI Settings (endpoints) ──────────────────────────────────────────────────
 
 @router.get("/api/settings/ui")
 def get_ui_settings():
@@ -601,10 +606,20 @@ def get_ui_settings():
 @router.put("/api/settings/ui")
 def update_ui_settings(body: dict):
     """Save UI display settings to system_config."""
-    for key, valid_values in _UI_SETTINGS_VALID.items():
-        if key in body:
-            val = body[key]
-            if val not in valid_values:
+    for key, constraint in _UI_SETTINGS_VALID.items():
+        if key not in body:
+            continue
+        val = body[key]
+        if isinstance(constraint, set):
+            if val not in constraint:
                 raise HTTPException(400, f"Invalid value for {key}: {val}")
-            set_config(enricher_db, key, val)
+        else:  # tuple = (lo, hi) range
+            try:
+                val = int(val)
+            except (ValueError, TypeError):
+                raise HTTPException(400, f"{key} must be an integer") from None
+            lo, hi = constraint
+            if not (lo <= val <= hi):
+                raise HTTPException(400, f"{key} must be between {lo} and {hi}")
+        set_config(enricher_db, key, val)
     return {"success": True}

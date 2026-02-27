@@ -108,13 +108,17 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
   const srcSubline = sublineText && log.direction === 'inbound' && !isPrivateIP(log.src_ip) ? sublineText : null
   const dstSubline = sublineText && log.direction !== 'inbound' && log.dst_ip && !isPrivateIP(log.dst_ip) ? sublineText : null
 
+  const highlightBlock = uiSettings?.ui_block_highlight !== 'off'
+    && log.rule_action === 'block'
+    && (log.threat_score ?? 0) >= (uiSettings?.ui_block_highlight_threshold ?? 0)
+
   return (
     <>
       <tr
         onClick={onToggle}
         className={`cursor-pointer transition-colors hover:bg-gray-800/30 ${
           isExpanded ? 'expanded-row' : 'border-b border-gray-800/50'
-        } ${log.rule_action === 'block' ? 'bg-red-950/10' : ''}`}
+        } ${highlightBlock ? 'bg-red-950/10' : ''}`}
       >
         {/* Time */}
         <td className="px-3 py-1.5 text-[13px] text-gray-400 whitespace-nowrap font-light">
