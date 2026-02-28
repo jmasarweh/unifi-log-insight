@@ -490,18 +490,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
         <div className="relative">
           <input
             type="text"
-            placeholder="Dst port..."
-            value={dstPortSearch}
-            onChange={e => setDstPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
-          />
-          {dstPortSearch && (
-            <button onClick={() => setDstPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
-          )}
-        </div>
-        <div className="relative">
-          <input
-            type="text"
             placeholder="Src port..."
             value={srcPortSearch}
             onChange={e => setSrcPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
@@ -509,6 +497,18 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           />
           {srcPortSearch && (
             <button onClick={() => setSrcPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Dst port..."
+            value={dstPortSearch}
+            onChange={e => setDstPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+          />
+          {dstPortSearch && (
+            <button onClick={() => setDstPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
           )}
         </div>
         <div className="relative">
