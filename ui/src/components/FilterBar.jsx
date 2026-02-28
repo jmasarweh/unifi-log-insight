@@ -43,8 +43,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   const [selectedProtocols, setSelectedProtocols] = useState(
     filters.protocol ? filters.protocol.split(',') : []
   )
-  const [hostnameSearch, setHostnameSearch] = useState(filters.hostname || '')
-
   const parsePort = (v) => {
     if (v === '' || v === '!') return null
     const clean = v.startsWith('!') ? v.slice(1) : v
@@ -119,11 +117,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     return () => clearTimeout(t)
   }, [srcPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, hostname: hostnameSearch || null }), 400)
-    return () => clearTimeout(t)
-  }, [hostnameSearch]) // eslint-disable-line react-hooks/exhaustive-deps
-
   // Auto-correct selected range if it exceeds maxFilterDays
   useEffect(() => {
     if (!maxFilterDays) return
@@ -172,7 +165,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     asnSearch,
     dstPortSearch,
     srcPortSearch,
-    hostnameSearch,
   ].filter(Boolean).length
 
   const toggleAction = (action) => {
@@ -570,18 +562,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             </div>
           )}
         </div>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Hostname..."
-            value={hostnameSearch}
-            onChange={e => setHostnameSearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36 ${hostnameSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
-          />
-          {hostnameSearch && (
-            <button onClick={() => setHostnameSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
-          )}
-        </div>
         <div className="relative flex-1 sm:max-w-xs">
           <input
             type="text"
@@ -609,7 +589,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSrcPortSearch('')
             setProtocolSearch('')
             setSelectedProtocols([])
-            setHostnameSearch('')
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
