@@ -192,6 +192,155 @@ def get_logs(
         put_conn(conn)
 
 
+# ── Aggregation ──────────────────────────────────────────────────────────────
+
+# Maps user-facing group_by values to SQL expressions and column aliases.
+_GROUP_BY_MAP = {
+    'src_ip':    ('src_ip::text',       'src_ip'),
+    'dst_ip':    ('dst_ip::text',       'dst_ip'),
+    'country':   ('geo_country',        'geo_country'),
+    'asn':       ('asn_name',           'asn_name'),
+    'rule_name': ('rule_name',          'rule_name'),
+    'service':   ('service_name',       'service_name'),
+}
+
+_VALID_PREFIXES = {8, 16, 22, 24}
+
+# Whitelist mapping group_by values to the actual SQL column name for CIDR collapsing.
+_CIDR_COLUMN = {'src_ip': 'src_ip', 'dst_ip': 'dst_ip'}
+
+
+@router.get("/api/logs/aggregate")
+def get_logs_aggregate(
+    group_by: str = Query(..., description="Group by: src_ip, dst_ip, country, asn, rule_name, service"),
+    prefix_length: Optional[int] = Query(None, description=f"CIDR prefix for IP grouping: {', '.join(str(p) for p in sorted(_VALID_PREFIXES))}"),
+    having_min_total: Optional[int] = Query(None, ge=1, description="Min row count per group"),
+    having_min_unique_ips: Optional[int] = Query(None, ge=1, description="Min distinct src_ip per group"),
+    limit: int = Query(100, ge=1, le=500),
+    # ── All standard log filters ──
+    log_type: Optional[str] = Query(None),
+    time_range: Optional[str] = Query(None),
+    time_from: Optional[str] = Query(None),
+    time_to: Optional[str] = Query(None),
+    src_ip: Optional[str] = Query(None),
+    dst_ip: Optional[str] = Query(None),
+    ip: Optional[str] = Query(None),
+    direction: Optional[str] = Query(None),
+    rule_action: Optional[str] = Query(None),
+    rule_name: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    threat_min: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
+    service: Optional[str] = Query(None),
+    interface: Optional[str] = Query(None),
+    vpn_only: bool = Query(False),
+    asn: Optional[str] = Query(None),
+    dst_port: Optional[int] = Query(None, ge=1, le=65535),
+    src_port: Optional[int] = Query(None, ge=1, le=65535),
+    protocol: Optional[str] = Query(None),
+    hostname: Optional[str] = Query(None),
+):
+    """Aggregate logs by a dimension, returning grouped counts and optional metrics."""
+    if group_by not in _GROUP_BY_MAP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid group_by. Must be one of: {', '.join(sorted(_GROUP_BY_MAP))}"
+        )
+
+    if prefix_length is not None:
+        if group_by not in ('src_ip', 'dst_ip'):
+            raise HTTPException(status_code=400, detail="prefix_length only applies to src_ip or dst_ip grouping")
+        if prefix_length not in _VALID_PREFIXES:
+            raise HTTPException(status_code=400, detail=f"prefix_length must be one of: {sorted(_VALID_PREFIXES)}")
+
+    if having_min_unique_ips is not None and group_by == 'src_ip' and prefix_length is None:
+        raise HTTPException(status_code=400, detail="having_min_unique_ips requires prefix_length when grouping by src_ip")
+
+    where, params = build_log_query(
+        log_type, time_range, time_from, time_to,
+        src_ip, dst_ip, ip, direction, rule_action,
+        rule_name, country, threat_min, search, service,
+        interface, vpn_only, asn=asn,
+        dst_port=dst_port, src_port=src_port, protocol=protocol,
+        hostname=hostname,
+    )
+
+    # Build GROUP BY expression and per-clause param lists
+    sql_expr, alias = _GROUP_BY_MAP[group_by]
+    collapsing_cidrs = prefix_length is not None
+    select_params = []   # params referenced in SELECT
+    group_params = []    # params referenced in GROUP BY
+
+    if collapsing_cidrs:
+        ip_col = _CIDR_COLUMN[group_by]  # KeyError if group_by not in whitelist
+        sql_expr = f"network(set_masklen({ip_col}, %s))::text"
+        alias = f"{group_by}_cidr"
+        select_params.append(prefix_length)
+        group_params.append(prefix_length)
+
+    # Distinct-IP counts are omitted only when every row in the group is
+    # already a single IP (group_by=src_ip/dst_ip without prefix_length).
+    # With CIDR collapsing, each group contains many IPs so the counts
+    # remain useful.
+    is_grouping_individual_ips = not collapsing_cidrs
+    select_parts = [f"{sql_expr} AS {alias}", "COUNT(*) AS total"]
+    if not (group_by == 'src_ip' and is_grouping_individual_ips):
+        select_parts.append("COUNT(DISTINCT src_ip) AS unique_src_ips")
+    if not (group_by == 'dst_ip' and is_grouping_individual_ips):
+        select_parts.append("COUNT(DISTINCT dst_ip) AS unique_dst_ips")
+
+    # When collapsing IPs into CIDRs, surface the most common country / ASN
+    if collapsing_cidrs:
+        # PostgreSQL-specific MODE() ordered-set aggregate: returns the most
+        # frequently occurring value in the group (top country / ASN here).
+        select_parts.append("MODE() WITHIN GROUP (ORDER BY geo_country) AS top_country")
+        select_parts.append("MODE() WITHIN GROUP (ORDER BY asn_name) AS top_asn")
+
+    # HAVING clauses
+    having_parts = []
+    having_params = []
+    if having_min_total is not None:
+        having_parts.append("COUNT(*) >= %s")
+        having_params.append(having_min_total)
+    if having_min_unique_ips is not None:
+        having_parts.append("COUNT(DISTINCT src_ip) >= %s")
+        having_params.append(having_min_unique_ips)
+
+    having_sql = f"HAVING {' AND '.join(having_parts)}" if having_parts else ""
+
+    sql = f"""
+        SELECT {', '.join(select_parts)}
+        FROM logs
+        WHERE {where}
+        GROUP BY {sql_expr}
+        {having_sql}
+        ORDER BY total DESC
+        LIMIT %s
+    """
+
+    # Assemble params in SQL clause order to match the %s placeholders:
+    #   SELECT → WHERE → GROUP BY → HAVING → LIMIT
+    final_params = select_params + params + group_params + having_params + [limit]
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, final_params)
+            rows = [dict(r) for r in cur.fetchall()]
+        return {
+            'group_by': group_by,
+            'prefix_length': prefix_length,
+            'count': len(rows),
+            'data': rows,
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error in log aggregation")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
 # ── Shared helpers for detailed log queries ──────────────────────────────────
 
 # Join ip_threats on both src and dst to fill abuse fields for logs not yet
