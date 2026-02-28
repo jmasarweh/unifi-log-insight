@@ -109,7 +109,6 @@ def get_logs(
     dst_port: Optional[str] = Query(None, description="Destination port (prefix with ! to negate)"),
     src_port: Optional[str] = Query(None, description="Source port (prefix with ! to negate)"),
     protocol: Optional[str] = Query(None, description="Comma-separated: TCP,UDP,ICMP (prefix with ! to negate)"),
-    hostname: Optional[str] = Query(None, description="Hostname search (prefix with ! to negate)"),
     sort: str = Query("timestamp", description="Sort field"),
     order: str = Query("desc", description="asc or desc"),
     page: int = Query(1, ge=1),
@@ -121,7 +120,6 @@ def get_logs(
         rule_name, country, threat_min, search, service,
         interface, vpn_only, asn=asn,
         dst_port=dst_port, src_port=src_port, protocol=protocol,
-        hostname=hostname,
     )
 
     # Whitelist sort columns
@@ -238,7 +236,6 @@ def get_logs_aggregate(
     dst_port: Optional[str] = Query(None, description="Destination port (prefix with ! to negate)"),
     src_port: Optional[str] = Query(None, description="Source port (prefix with ! to negate)"),
     protocol: Optional[str] = Query(None, description="Comma-separated: TCP,UDP,ICMP (prefix with ! to negate)"),
-    hostname: Optional[str] = Query(None, description="Hostname search (prefix with ! to negate)"),
 ):
     """Aggregate logs by a dimension, returning grouped counts and optional metrics."""
     if group_by not in _GROUP_BY_MAP:
@@ -262,7 +259,6 @@ def get_logs_aggregate(
         rule_name, country, threat_min, search, service,
         interface, vpn_only, asn=asn,
         dst_port=dst_port, src_port=src_port, protocol=protocol,
-        hostname=hostname,
     )
 
     # Build GROUP BY expression and per-clause param lists
@@ -538,7 +534,6 @@ def export_csv_endpoint(
     dst_port: Optional[str] = Query(None),
     src_port: Optional[str] = Query(None),
     protocol: Optional[str] = Query(None),
-    hostname: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=100000),
 ):
     where, params = build_log_query(
@@ -546,7 +541,6 @@ def export_csv_endpoint(
         src_ip, dst_ip, ip, direction, rule_action,
         rule_name, country, threat_min, search, service, interface, vpn_only, asn=asn,
         dst_port=dst_port, src_port=src_port, protocol=protocol,
-        hostname=hostname,
     )
 
     export_columns = [

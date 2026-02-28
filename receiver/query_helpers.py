@@ -68,7 +68,6 @@ def build_log_query(
     dst_port: Optional[str] = None,
     src_port: Optional[str] = None,
     protocol: Optional[str] = None,
-    hostname: Optional[str] = None,
 ) -> tuple[str, list]:
     """Build WHERE clause and params from filters."""
     conditions = []
@@ -203,13 +202,6 @@ def build_log_query(
         keyword = "NOT IN" if negated else "IN"
         conditions.append(f"UPPER(protocol) {keyword} ({placeholders})")
         params.extend(protocols)
-
-    if hostname:
-        negated, val = _parse_negation(hostname)
-        escaped_hostname = _escape_like(val)
-        op = "NOT ILIKE" if negated else "ILIKE"
-        conditions.append(f"hostname {op} %s ESCAPE '\\'")
-        params.append(f"%{escaped_hostname}%")
 
     if vpn_only:
         from parsers import VPN_INTERFACE_PREFIXES

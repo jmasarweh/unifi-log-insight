@@ -18,7 +18,6 @@ const DEFAULT_FILTERS = {
   dst_port: null,
   src_port: null,
   protocol: null,
-  hostname: null,
   page: 1,
   per_page: 50,
   sort: 'timestamp',
