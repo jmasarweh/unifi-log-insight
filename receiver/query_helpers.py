@@ -42,6 +42,10 @@ def build_log_query(
     interface: Optional[str],
     vpn_only: bool = False,
     asn: Optional[str] = None,
+    dst_port: Optional[int] = None,
+    src_port: Optional[int] = None,
+    protocol: Optional[str] = None,
+    hostname: Optional[str] = None,
 ) -> tuple[str, list]:
     """Build WHERE clause and params from filters."""
     conditions = []
@@ -132,6 +136,25 @@ def build_log_query(
         escaped_asn = _escape_like(asn)
         conditions.append("asn_name ILIKE %s ESCAPE '\\'")
         params.append(f"%{escaped_asn}%")
+
+    if dst_port is not None:
+        conditions.append("dst_port = %s")
+        params.append(dst_port)
+
+    if src_port is not None:
+        conditions.append("src_port = %s")
+        params.append(src_port)
+
+    if protocol:
+        protocols = [p.strip().upper() for p in protocol.split(',')]
+        placeholders = ','.join(['%s'] * len(protocols))
+        conditions.append(f"UPPER(protocol) IN ({placeholders})")
+        params.extend(protocols)
+
+    if hostname:
+        escaped_hostname = _escape_like(hostname)
+        conditions.append("hostname ILIKE %s ESCAPE '\\'")
+        params.append(f"%{escaped_hostname}%")
 
     if vpn_only:
         from parsers import VPN_INTERFACE_PREFIXES

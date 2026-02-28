@@ -35,6 +35,16 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   )
   const [countrySearch, setCountrySearch] = useState(filters.country || '')
   const [asnSearch, setAsnSearch] = useState(filters.asn || '')
+  const [dstPortSearch, setDstPortSearch] = useState(String(filters.dst_port ?? ''))
+  const [srcPortSearch, setSrcPortSearch] = useState(String(filters.src_port ?? ''))
+  const [protocolSearch, setProtocolSearch] = useState(filters.protocol || '')
+  const [hostnameSearch, setHostnameSearch] = useState(filters.hostname || '')
+
+  const parsePort = (v) => {
+    if (v === '') return null
+    const n = parseInt(v, 10)
+    return !isNaN(n) && n >= 1 && n <= 65535 ? n : null
+  }
 
   // Ref to avoid stale closures in debounce effects
   const filtersRef = useRef(filters)
@@ -79,6 +89,30 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     const t = setTimeout(() => onChange({ ...filtersRef.current, asn: asnSearch || null }), 400)
     return () => clearTimeout(t)
   }, [asnSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      onChange({ ...filtersRef.current, dst_port: parsePort(dstPortSearch) })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [dstPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      onChange({ ...filtersRef.current, src_port: parsePort(srcPortSearch) })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [srcPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange({ ...filtersRef.current, protocol: protocolSearch || null }), 400)
+    return () => clearTimeout(t)
+  }, [protocolSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => onChange({ ...filtersRef.current, hostname: hostnameSearch || null }), 400)
+    return () => clearTimeout(t)
+  }, [hostnameSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-correct selected range if it exceeds maxFilterDays
   useEffect(() => {
@@ -125,6 +159,10 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     selectedInterfaces.length > 0 ? true : null,
     countrySearch,
     asnSearch,
+    dstPortSearch,
+    srcPortSearch,
+    protocolSearch,
+    hostnameSearch,
   ].filter(Boolean).length
 
   const toggleAction = (action) => {
@@ -446,6 +484,54 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             <button onClick={() => setAsnSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
           )}
         </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Dst port..."
+            value={dstPortSearch}
+            onChange={e => setDstPortSearch(e.target.value.replace(/[^0-9]/g, ''))}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24"
+          />
+          {dstPortSearch && (
+            <button onClick={() => setDstPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Src port..."
+            value={srcPortSearch}
+            onChange={e => setSrcPortSearch(e.target.value.replace(/[^0-9]/g, ''))}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24"
+          />
+          {srcPortSearch && (
+            <button onClick={() => setSrcPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Protocol..."
+            value={protocolSearch}
+            onChange={e => setProtocolSearch(e.target.value)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28"
+          />
+          {protocolSearch && (
+            <button onClick={() => setProtocolSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Hostname..."
+            value={hostnameSearch}
+            onChange={e => setHostnameSearch(e.target.value)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36"
+          />
+          {hostnameSearch && (
+            <button onClick={() => setHostnameSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
         <div className="relative flex-1 sm:max-w-xs">
           <input
             type="text"
@@ -469,6 +555,10 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSelectedInterfaces([])
             setCountrySearch('')
             setAsnSearch('')
+            setDstPortSearch('')
+            setSrcPortSearch('')
+            setProtocolSearch('')
+            setHostnameSearch('')
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
