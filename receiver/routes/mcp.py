@@ -288,6 +288,11 @@ def _tools_catalog() -> list[dict]:
             "inputSchema": {"type": "object", "properties": {}},
         },
         {
+            "name": "list_protocols",
+            "description": "List distinct protocols seen in logs (e.g. TCP, UDP, ICMP).",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
             "name": "export_logs_csv_url",
             "description": "Return a CSV export URL for logs matching filters (downloadable file).",
             "inputSchema": {
@@ -381,6 +386,7 @@ _TOOL_SCOPES = {
     'get_top_threat_ips': ['logs.read'],
     'list_threat_ips': ['logs.read'],
     'list_services': ['logs.read'],
+    'list_protocols': ['logs.read'],
     'export_logs_csv_url': ['logs.read'],
     'list_firewall_policies': ['firewall.read'],
     'set_firewall_syslog': ['firewall.syslog'],
@@ -508,6 +514,7 @@ _TOOL_HANDLERS = {
     'get_top_threat_ips':     _tool_get_top_threat_ips,
     'list_threat_ips':        _tool_list_threat_ips,
     'list_services':          lambda _: logs_routes.get_services(),
+    'list_protocols':         lambda _: logs_routes.get_protocols(),
     'export_logs_csv_url':    _tool_export_logs_csv_url,
     'list_firewall_policies': lambda _: unifi_routes.get_firewall_policies(),
     'set_firewall_syslog':    _tool_set_firewall_syslog,

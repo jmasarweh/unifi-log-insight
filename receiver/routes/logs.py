@@ -688,3 +688,26 @@ def get_services():
         raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)
+
+
+@router.get("/api/protocols")
+def get_protocols():
+    """Return distinct protocols seen in logs for dropdown filtering."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT UPPER(protocol) AS protocol
+                FROM logs
+                WHERE protocol IS NOT NULL
+                ORDER BY protocol
+            """)
+            protocols = [row[0] for row in cur.fetchall()]
+        conn.commit()
+        return {'protocols': protocols}
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching protocols")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)

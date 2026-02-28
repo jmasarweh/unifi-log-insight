@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { fetchServices, fetchInterfaces } from '../api'
+import { fetchServices, fetchInterfaces, fetchProtocols } from '../api'
 import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES, timeRangeToDays, filterVisibleRanges } from '../utils'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
@@ -37,7 +37,12 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   const [asnSearch, setAsnSearch] = useState(filters.asn || '')
   const [dstPortSearch, setDstPortSearch] = useState(filters.dst_port ?? '')
   const [srcPortSearch, setSrcPortSearch] = useState(filters.src_port ?? '')
-  const [protocolSearch, setProtocolSearch] = useState(filters.protocol || '')
+  const [protocolSearch, setProtocolSearch] = useState('')
+  const [protocols, setProtocols] = useState([])
+  const [showProtocolDropdown, setShowProtocolDropdown] = useState(false)
+  const [selectedProtocols, setSelectedProtocols] = useState(
+    filters.protocol ? filters.protocol.split(',') : []
+  )
   const [hostnameSearch, setHostnameSearch] = useState(filters.hostname || '')
 
   const parsePort = (v) => {
@@ -58,6 +63,13 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     fetchServices()
       .then(data => setServices(data.services || []))
       .catch(err => { console.error('Failed to load services:', err); setServices([]) })
+  }, [])
+
+  // Load protocols for dropdown
+  useEffect(() => {
+    fetchProtocols()
+      .then(data => setProtocols(data.protocols || []))
+      .catch(err => { console.error('Failed to load protocols:', err); setProtocols([]) })
   }, [])
 
   // Load interfaces for filtering
@@ -108,11 +120,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   }, [srcPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, protocol: protocolSearch || null }), 400)
-    return () => clearTimeout(t)
-  }, [protocolSearch]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
     const t = setTimeout(() => onChange({ ...filtersRef.current, hostname: hostnameSearch || null }), 400)
     return () => clearTimeout(t)
   }, [hostnameSearch]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -160,11 +167,11 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     textSearch,
     selectedServices.length > 0 ? true : null,
     selectedInterfaces.length > 0 ? true : null,
+    selectedProtocols.length > 0 ? true : null,
     countrySearch,
     asnSearch,
     dstPortSearch,
     srcPortSearch,
-    protocolSearch,
     hostnameSearch,
   ].filter(Boolean).length
 
@@ -514,13 +521,53 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
         <div className="relative">
           <input
             type="text"
-            placeholder="Protocol..."
+            placeholder={selectedProtocols.length > 0 ? `${selectedProtocols.length} protocol(s)` : "Protocol..."}
             value={protocolSearch}
-            onChange={e => setProtocolSearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28 ${protocolSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            onChange={e => {
+              setProtocolSearch(e.target.value)
+              setShowProtocolDropdown(true)
+            }}
+            onFocus={() => setShowProtocolDropdown(true)}
+            onBlur={() => setTimeout(() => setShowProtocolDropdown(false), 200)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-32"
           />
-          {protocolSearch && (
-            <button onClick={() => setProtocolSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          {selectedProtocols.length > 0 && (
+            <button
+              onClick={() => {
+                setSelectedProtocols([])
+                onChange({ ...filters, protocol: null })
+              }}
+              className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
+            >✕</button>
+          )}
+          {showProtocolDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-40 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
+              {protocols
+                .filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase()))
+                .map(protocol => (
+                  <div
+                    key={protocol}
+                    onClick={() => {
+                      const updated = selectedProtocols.includes(protocol)
+                        ? selectedProtocols.filter(p => p !== protocol)
+                        : [...selectedProtocols, protocol]
+                      setSelectedProtocols(updated)
+                      onChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
+                      setProtocolSearch('')
+                    }}
+                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                      selectedProtocols.includes(protocol)
+                        ? 'bg-blue-500/20 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-800'
+                    }`}
+                  >
+                    {protocol}
+                  </div>
+                ))}
+              {protocols.filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase())).length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-400">No matching protocols</div>
+              )}
+            </div>
           )}
         </div>
         <div className="relative">
@@ -561,6 +608,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setDstPortSearch('')
             setSrcPortSearch('')
             setProtocolSearch('')
+            setSelectedProtocols([])
             setHostnameSearch('')
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
