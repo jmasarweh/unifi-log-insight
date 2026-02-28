@@ -317,7 +317,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="IP address..."
             value={ipSearch}
             onChange={e => setIpSearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ipSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ipSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {ipSearch && (
             <button onClick={() => setIpSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -329,7 +329,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Rule name..."
             value={ruleSearch}
             onChange={e => setRuleSearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ruleSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ruleSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {ruleSearch && (
             <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -468,7 +468,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Country code..."
             value={countrySearch}
             onChange={e => setCountrySearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28 ${countrySearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28 ${countrySearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {countrySearch && (
             <button onClick={() => setCountrySearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -480,7 +480,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="ASN..."
             value={asnSearch}
             onChange={e => setAsnSearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36 ${asnSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36 ${asnSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {asnSearch && (
             <button onClick={() => setAsnSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -492,7 +492,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Src port..."
             value={srcPortSearch}
             onChange={e => setSrcPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${srcPortSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${srcPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {srcPortSearch && (
             <button onClick={() => setSrcPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -504,7 +504,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Dst port..."
             value={dstPortSearch}
             onChange={e => setDstPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {dstPortSearch && (
             <button onClick={() => setDstPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -568,7 +568,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Search raw log..."
             value={textSearch}
             onChange={e => setTextSearch(e.target.value)}
-            className={`w-full bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 ${textSearch.startsWith('!') ? 'border-red-500/50' : 'border-gray-700'}`}
+            className={`w-full bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 ${textSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {textSearch && (
             <button onClick={() => setTextSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>

@@ -250,6 +250,11 @@ def get_logs_aggregate(
         if prefix_length not in _VALID_PREFIXES:
             raise HTTPException(status_code=400, detail=f"prefix_length must be one of: {sorted(_VALID_PREFIXES)}")
 
+    # having_min_unique_ips counts distinct src_ips per group.  When group_by='src_ip'
+    # without prefix_length, each group IS a single src_ip, so "min unique IPs" is
+    # always 1 — the filter would be meaningless.  With prefix_length it aggregates
+    # into CIDR blocks where unique-IP counts vary.  For group_by='dst_ip' (no prefix),
+    # unique src_ip counts per dst_ip are naturally variable, so no prefix is needed.
     if having_min_unique_ips is not None and group_by == 'src_ip' and prefix_length is None:
         raise HTTPException(status_code=400, detail="having_min_unique_ips requires prefix_length when grouping by src_ip")
 
