@@ -2,8 +2,11 @@
 Query building helpers shared by log and export endpoints.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_negation(value: str) -> tuple[bool, str]:
@@ -24,8 +27,9 @@ def _parse_port(value: str) -> tuple[bool, int | None]:
         port = int(clean)
         if 1 <= port <= 65535:
             return negated, port
+        logger.debug("Port value out of range (1-65535): %r", value)
     except (ValueError, TypeError):
-        pass
+        logger.debug("Non-numeric port value: %r", value)
     return negated, None
 
 
