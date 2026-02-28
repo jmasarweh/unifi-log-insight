@@ -156,8 +156,9 @@ def build_log_query(
     if search:
         negated, val = _parse_negation(search)
         op = "NOT ILIKE" if negated else "ILIKE"
-        conditions.append(f"raw_log {op} %s")
-        params.append(f"%{val}%")
+        escaped = _escape_like(val)
+        conditions.append(f"raw_log {op} %s ESCAPE '\\'")
+        params.append(f"%{escaped}%")
 
     if service:
         negated, val = _parse_negation(service)
