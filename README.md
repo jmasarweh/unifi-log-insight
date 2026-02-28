@@ -24,6 +24,7 @@ Single Docker container. No external dependencies. Zero data collection.
 - [🔧 Troubleshooting](#-troubleshooting)
 - [⚖️ Disclaimer](#-disclaimer)
 - [📄 License](#-license-1)
+- [🖥️ App Screenshots](#app-screenshots)
 
 ## ✨ Features
 
