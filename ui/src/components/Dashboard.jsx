@@ -231,24 +231,28 @@ function TopList({ title, items, renderItem }) {
   )
 }
 
+const TR_KEY = 'unifi-log-insight:time-range'
+
 export default function Dashboard({ maxFilterDays }) {
-  const [timeRange, setTimeRange] = useState('24h')
+  const [timeRange, setTimeRangeState] = useState(() => sessionStorage.getItem(TR_KEY) || '24h')
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  const setTimeRange = (tr) => {
+    setTimeRangeState(tr)
+    sessionStorage.setItem(TR_KEY, tr)
+  }
+
   const visibleRanges = filterVisibleRanges(TIME_RANGES, maxFilterDays)
 
-  // Auto-correct selected range if it exceeds maxFilterDays
+  // Auto-correct selected range if it exceeds visible ranges (respects ceiling).
+  // Depends on [maxFilterDays] only — including visibleRanges/timeRange would
+  // create an infinite loop (effect sets timeRange → re-render → new array ref → repeat).
   useEffect(() => {
-    if (!maxFilterDays) return
-    const currentDays = timeRangeToDays(timeRange)
-    if (currentDays >= 1 && currentDays > maxFilterDays) {
-      const largest = [...TIME_RANGES].reverse().find(tr => {
-        const d = timeRangeToDays(tr)
-        return d < 1 || d <= maxFilterDays
-      })
-      if (largest) setTimeRange(largest)
-    }
+    if (!maxFilterDays || visibleRanges.length === 0) return
+    if (visibleRanges.includes(timeRange)) return
+    const largest = [...visibleRanges].reverse().find(tr => timeRangeToDays(tr) >= 1) || visibleRanges[visibleRanges.length - 1]
+    if (largest && largest !== timeRange) setTimeRange(largest)
   }, [maxFilterDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

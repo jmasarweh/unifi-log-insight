@@ -141,8 +141,10 @@ def build_log_query(
         negated, val = _parse_negation(rule_action)
         actions = [a.strip() for a in val.split(',')]
         placeholders = ','.join(['%s'] * len(actions))
-        keyword = "NOT IN" if negated else "IN"
-        conditions.append(f"rule_action {keyword} ({placeholders})")
+        if negated:
+            conditions.append(f"(rule_action NOT IN ({placeholders}) OR rule_action IS NULL)")
+        else:
+            conditions.append(f"rule_action IN ({placeholders})")
         params.extend(actions)
 
     if rule_name:

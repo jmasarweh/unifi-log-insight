@@ -153,6 +153,7 @@ export const DIRECTION_COLORS = {
 
 // Convert time range string (e.g. '7d', '24h') to days
 export function timeRangeToDays(value) {
+  if (!value) return 0
   const match = value.match(/^(\d+)([hd])$/)
   if (!match) return 0
   const num = parseInt(match[1], 10)
