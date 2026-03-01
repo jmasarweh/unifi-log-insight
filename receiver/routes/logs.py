@@ -93,19 +93,22 @@ def get_logs(
     time_range: Optional[str] = Query(None, description="1h,6h,24h,7d,30d,60d"),
     time_from: Optional[str] = Query(None, description="ISO datetime"),
     time_to: Optional[str] = Query(None, description="ISO datetime"),
-    src_ip: Optional[str] = Query(None),
-    dst_ip: Optional[str] = Query(None),
-    ip: Optional[str] = Query(None, description="Search both src and dst"),
+    src_ip: Optional[str] = Query(None, description="Source IP search (prefix with ! to negate)"),
+    dst_ip: Optional[str] = Query(None, description="Dest IP search (prefix with ! to negate)"),
+    ip: Optional[str] = Query(None, description="Search both src and dst (prefix with ! to negate)"),
     direction: Optional[str] = Query(None, description="Comma-separated: inbound,outbound,inter_vlan,nat"),
-    rule_action: Optional[str] = Query(None, description="Comma-separated: allow,block,redirect"),
-    rule_name: Optional[str] = Query(None),
-    country: Optional[str] = Query(None, description="Comma-separated country codes"),
+    rule_action: Optional[str] = Query(None, description="Comma-separated: allow,block,redirect (prefix with ! to negate)"),
+    rule_name: Optional[str] = Query(None, description="Rule name search (prefix with ! to negate)"),
+    country: Optional[str] = Query(None, description="Comma-separated country codes (prefix with ! to negate)"),
     threat_min: Optional[int] = Query(None, description="Minimum threat score"),
-    search: Optional[str] = Query(None, description="Full-text search in raw_log"),
-    service: Optional[str] = Query(None, description="Comma-separated service names"),
+    search: Optional[str] = Query(None, description="Full-text search in raw_log (prefix with ! to negate)"),
+    service: Optional[str] = Query(None, description="Comma-separated service names (prefix with ! to negate)"),
     interface: Optional[str] = Query(None, description="Comma-separated interface names"),
     vpn_only: bool = Query(False, description="Show only VPN traffic"),
     asn: Optional[str] = Query(None, description="ASN name search"),
+    dst_port: Optional[str] = Query(None, description="Destination port (prefix with ! to negate)"),
+    src_port: Optional[str] = Query(None, description="Source port (prefix with ! to negate)"),
+    protocol: Optional[str] = Query(None, description="Comma-separated: TCP,UDP,ICMP (prefix with ! to negate)"),
     sort: str = Query("timestamp", description="Sort field"),
     order: str = Query("desc", description="asc or desc"),
     page: int = Query(1, ge=1),
@@ -116,13 +119,14 @@ def get_logs(
         src_ip, dst_ip, ip, direction, rule_action,
         rule_name, country, threat_min, search, service,
         interface, vpn_only, asn=asn,
+        dst_port=dst_port, src_port=src_port, protocol=protocol,
     )
 
     # Whitelist sort columns
     allowed_sorts = {
-        'timestamp', 'log_type', 'src_ip', 'dst_ip', 'protocol', 'service_name',
-        'direction', 'rule_action', 'rule_name', 'geo_country',
-        'threat_score', 'created_at',
+        'timestamp', 'log_type', 'src_ip', 'dst_ip', 'src_port', 'dst_port',
+        'protocol', 'service_name', 'direction', 'rule_action', 'rule_name',
+        'geo_country', 'threat_score', 'hostname', 'created_at',
     }
     sort_col = sort if sort in allowed_sorts else 'timestamp'
     sort_dir = 'ASC' if order.lower() == 'asc' else 'DESC'
@@ -181,6 +185,159 @@ def get_logs(
     except Exception as e:
         conn.rollback()
         logger.exception("Error fetching logs")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+# ── Aggregation ──────────────────────────────────────────────────────────────
+
+# Maps user-facing group_by values to SQL expressions and column aliases.
+_GROUP_BY_MAP = {
+    'src_ip':    ('src_ip::text',       'src_ip'),
+    'dst_ip':    ('dst_ip::text',       'dst_ip'),
+    'country':   ('geo_country',        'geo_country'),
+    'asn':       ('asn_name',           'asn_name'),
+    'rule_name': ('rule_name',          'rule_name'),
+    'service':   ('service_name',       'service_name'),
+}
+
+_VALID_PREFIXES = {8, 16, 22, 24}
+
+# Whitelist mapping group_by values to the actual SQL column name for CIDR collapsing.
+_CIDR_COLUMN = {'src_ip': 'src_ip', 'dst_ip': 'dst_ip'}
+
+
+@router.get("/api/logs/aggregate")
+def get_logs_aggregate(
+    group_by: str = Query(..., description="Group by: src_ip, dst_ip, country, asn, rule_name, service"),
+    prefix_length: Optional[int] = Query(None, description=f"CIDR prefix for IP grouping: {', '.join(str(p) for p in sorted(_VALID_PREFIXES))}"),
+    having_min_total: Optional[int] = Query(None, ge=1, description="Min row count per group"),
+    having_min_unique_ips: Optional[int] = Query(None, ge=1, description="Min distinct src_ip per group"),
+    limit: int = Query(100, ge=1, le=500),
+    # ── All standard log filters ──
+    log_type: Optional[str] = Query(None),
+    time_range: Optional[str] = Query(None),
+    time_from: Optional[str] = Query(None),
+    time_to: Optional[str] = Query(None),
+    src_ip: Optional[str] = Query(None),
+    dst_ip: Optional[str] = Query(None),
+    ip: Optional[str] = Query(None),
+    direction: Optional[str] = Query(None),
+    rule_action: Optional[str] = Query(None),
+    rule_name: Optional[str] = Query(None),
+    country: Optional[str] = Query(None),
+    threat_min: Optional[int] = Query(None),
+    search: Optional[str] = Query(None),
+    service: Optional[str] = Query(None),
+    interface: Optional[str] = Query(None),
+    vpn_only: bool = Query(False),
+    asn: Optional[str] = Query(None),
+    dst_port: Optional[str] = Query(None, description="Destination port (prefix with ! to negate)"),
+    src_port: Optional[str] = Query(None, description="Source port (prefix with ! to negate)"),
+    protocol: Optional[str] = Query(None, description="Comma-separated: TCP,UDP,ICMP (prefix with ! to negate)"),
+):
+    """Aggregate logs by a dimension, returning grouped counts and optional metrics."""
+    if group_by not in _GROUP_BY_MAP:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid group_by. Must be one of: {', '.join(sorted(_GROUP_BY_MAP))}"
+        )
+
+    if prefix_length is not None:
+        if group_by not in ('src_ip', 'dst_ip'):
+            raise HTTPException(status_code=400, detail="prefix_length only applies to src_ip or dst_ip grouping")
+        if prefix_length not in _VALID_PREFIXES:
+            raise HTTPException(status_code=400, detail=f"prefix_length must be one of: {sorted(_VALID_PREFIXES)}")
+
+    # having_min_unique_ips counts distinct src_ips per group.  When group_by='src_ip'
+    # without prefix_length, each group IS a single src_ip, so "min unique IPs" is
+    # always 1 — the filter would be meaningless.  With prefix_length it aggregates
+    # into CIDR blocks where unique-IP counts vary.  For group_by='dst_ip' (no prefix),
+    # unique src_ip counts per dst_ip are naturally variable, so no prefix is needed.
+    if having_min_unique_ips is not None and group_by == 'src_ip' and prefix_length is None:
+        raise HTTPException(status_code=400, detail="having_min_unique_ips requires prefix_length when grouping by src_ip")
+
+    where, params = build_log_query(
+        log_type, time_range, time_from, time_to,
+        src_ip, dst_ip, ip, direction, rule_action,
+        rule_name, country, threat_min, search, service,
+        interface, vpn_only, asn=asn,
+        dst_port=dst_port, src_port=src_port, protocol=protocol,
+    )
+
+    # Build GROUP BY expression and per-clause param lists
+    sql_expr, alias = _GROUP_BY_MAP[group_by]
+    collapsing_cidrs = prefix_length is not None
+    select_params = []   # params referenced in SELECT
+    group_params = []    # params referenced in GROUP BY
+
+    if collapsing_cidrs:
+        ip_col = _CIDR_COLUMN[group_by]  # KeyError if group_by not in whitelist
+        sql_expr = f"network(set_masklen({ip_col}, %s))::text"
+        alias = f"{group_by}_cidr"
+        select_params.append(prefix_length)
+        group_params.append(prefix_length)
+
+    # Distinct-IP counts are omitted only when every row in the group is
+    # already a single IP (group_by=src_ip/dst_ip without prefix_length).
+    # With CIDR collapsing, each group contains many IPs so the counts
+    # remain useful.
+    is_grouping_individual_ips = not collapsing_cidrs
+    select_parts = [f"{sql_expr} AS {alias}", "COUNT(*) AS total"]
+    if not (group_by == 'src_ip' and is_grouping_individual_ips):
+        select_parts.append("COUNT(DISTINCT src_ip) AS unique_src_ips")
+    if not (group_by == 'dst_ip' and is_grouping_individual_ips):
+        select_parts.append("COUNT(DISTINCT dst_ip) AS unique_dst_ips")
+
+    # When collapsing IPs into CIDRs, surface the most common country / ASN
+    if collapsing_cidrs:
+        # PostgreSQL-specific MODE() ordered-set aggregate: returns the most
+        # frequently occurring value in the group (top country / ASN here).
+        select_parts.append("MODE() WITHIN GROUP (ORDER BY geo_country) AS top_country")
+        select_parts.append("MODE() WITHIN GROUP (ORDER BY asn_name) AS top_asn")
+
+    # HAVING clauses
+    having_parts = []
+    having_params = []
+    if having_min_total is not None:
+        having_parts.append("COUNT(*) >= %s")
+        having_params.append(having_min_total)
+    if having_min_unique_ips is not None:
+        having_parts.append("COUNT(DISTINCT src_ip) >= %s")
+        having_params.append(having_min_unique_ips)
+
+    having_sql = f"HAVING {' AND '.join(having_parts)}" if having_parts else ""
+
+    sql = f"""
+        SELECT {', '.join(select_parts)}
+        FROM logs
+        WHERE {where}
+        GROUP BY {sql_expr}
+        {having_sql}
+        ORDER BY total DESC
+        LIMIT %s
+    """
+
+    # Assemble params in SQL clause order to match the %s placeholders:
+    #   SELECT → WHERE → GROUP BY → HAVING → LIMIT
+    final_params = select_params + params + group_params + having_params + [limit]
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, final_params)
+            rows = [dict(r) for r in cur.fetchall()]
+        conn.commit()
+        return {
+            'group_by': group_by,
+            'prefix_length': prefix_length,
+            'count': len(rows),
+            'data': rows,
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error in log aggregation")
         raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)
@@ -380,12 +537,16 @@ def export_csv_endpoint(
     interface: Optional[str] = Query(None),
     vpn_only: bool = Query(False),
     asn: Optional[str] = Query(None),
+    dst_port: Optional[str] = Query(None),
+    src_port: Optional[str] = Query(None),
+    protocol: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=100000),
 ):
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
         rule_name, country, threat_min, search, service, interface, vpn_only, asn=asn,
+        dst_port=dst_port, src_port=src_port, protocol=protocol,
     )
 
     export_columns = [
@@ -524,6 +685,29 @@ def get_services():
     except Exception as e:
         conn.rollback()
         logger.exception("Error fetching services")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+@router.get("/api/protocols")
+def get_protocols():
+    """Return distinct protocols seen in logs for dropdown filtering."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT protocol
+                FROM logs
+                WHERE protocol IS NOT NULL
+                ORDER BY protocol
+            """)
+            protocols = [row[0] for row in cur.fetchall()]
+        conn.commit()
+        return {'protocols': protocols}
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching protocols")
         raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)

@@ -213,7 +213,7 @@ def _tools_catalog() -> list[dict]:
     return [
         {
             "name": "search_logs",
-            "description": "Search logs with filters (log type, time range, IPs, actions, services, ASN, etc.).",
+            "description": "Search logs with filters (log type, time range, IPs, ports, protocol, actions, services, ASN, etc.). Most text filters support ! prefix for negation.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -221,19 +221,22 @@ def _tools_catalog() -> list[dict]:
                     "time_range": {"type": "string", "description": "1h,6h,24h,7d,30d,60d"},
                     "time_from": {"type": "string", "description": "ISO datetime"},
                     "time_to": {"type": "string", "description": "ISO datetime"},
-                    "src_ip": {"type": "string"},
-                    "dst_ip": {"type": "string"},
-                    "ip": {"type": "string", "description": "Search both src and dst"},
+                    "src_ip": {"type": "string", "description": "Source IP (prefix with ! to negate)"},
+                    "dst_ip": {"type": "string", "description": "Dest IP (prefix with ! to negate)"},
+                    "ip": {"type": "string", "description": "Search both src and dst (prefix with ! to negate)"},
                     "direction": {"type": "string", "description": "Comma-separated: inbound,outbound,inter_vlan,nat"},
-                    "rule_action": {"type": "string", "description": "Comma-separated: allow,block,redirect"},
-                    "rule_name": {"type": "string"},
-                    "country": {"type": "string", "description": "Comma-separated country codes"},
+                    "rule_action": {"type": "string", "description": "Comma-separated: allow,block,redirect (prefix with ! to negate)"},
+                    "rule_name": {"type": "string", "description": "Rule name search (prefix with ! to negate)"},
+                    "country": {"type": "string", "description": "Comma-separated country codes (prefix with ! to negate)"},
                     "threat_min": {"type": "integer"},
-                    "search": {"type": "string", "description": "Full-text search in raw_log"},
-                    "service": {"type": "string", "description": "Comma-separated service names"},
+                    "search": {"type": "string", "description": "Full-text search in raw_log (prefix with ! to negate)"},
+                    "service": {"type": "string", "description": "Comma-separated service names (prefix with ! to negate)"},
                     "interface": {"type": "string", "description": "Comma-separated interface names"},
                     "vpn_only": {"type": "boolean"},
-                    "asn": {"type": "string"},
+                    "asn": {"type": "string", "description": "ASN name search (prefix with ! to negate)"},
+                    "dst_port": {"type": "string", "description": "Destination port (prefix with ! to negate)"},
+                    "src_port": {"type": "string", "description": "Source port (prefix with ! to negate)"},
+                    "protocol": {"type": "string", "description": "Comma-separated: TCP,UDP,ICMP (prefix with ! to negate)"},
                     "sort": {"type": "string"},
                     "order": {"type": "string", "description": "asc or desc"},
                     "page": {"type": "integer"},
@@ -288,6 +291,46 @@ def _tools_catalog() -> list[dict]:
             "inputSchema": {"type": "object", "properties": {}},
         },
         {
+            "name": "list_protocols",
+            "description": "List distinct protocols seen in logs (e.g. TCP, UDP, ICMP).",
+            "inputSchema": {"type": "object", "properties": {}},
+        },
+        {
+            "name": "aggregate_logs",
+            "description": "Aggregate logs by a dimension (src_ip, dst_ip, country, asn, rule_name, service) with counts. Supports CIDR grouping for IPs.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "group_by": {"type": "string", "description": "Group by: src_ip, dst_ip, country, asn, rule_name, service"},
+                    "prefix_length": {"type": "integer", "description": "CIDR prefix for IP grouping: 8, 16, 22, 24"},
+                    "having_min_total": {"type": "integer", "description": "Min row count per group"},
+                    "having_min_unique_ips": {"type": "integer", "description": "Min distinct src_ip per group"},
+                    "limit": {"type": "integer", "description": "Max groups to return (1-500)"},
+                    "log_type": {"type": "string"},
+                    "time_range": {"type": "string"},
+                    "time_from": {"type": "string"},
+                    "time_to": {"type": "string"},
+                    "src_ip": {"type": "string"},
+                    "dst_ip": {"type": "string"},
+                    "ip": {"type": "string"},
+                    "direction": {"type": "string"},
+                    "rule_action": {"type": "string"},
+                    "rule_name": {"type": "string"},
+                    "country": {"type": "string"},
+                    "threat_min": {"type": "integer"},
+                    "search": {"type": "string"},
+                    "service": {"type": "string"},
+                    "interface": {"type": "string"},
+                    "vpn_only": {"type": "boolean"},
+                    "asn": {"type": "string"},
+                    "dst_port": {"type": "string"},
+                    "src_port": {"type": "string"},
+                    "protocol": {"type": "string"},
+                },
+                "required": ["group_by"],
+            },
+        },
+        {
             "name": "export_logs_csv_url",
             "description": "Return a CSV export URL for logs matching filters (downloadable file).",
             "inputSchema": {
@@ -310,6 +353,9 @@ def _tools_catalog() -> list[dict]:
                     "interface": {"type": "string"},
                     "vpn_only": {"type": "boolean"},
                     "asn": {"type": "string"},
+                    "dst_port": {"type": "string"},
+                    "src_port": {"type": "string"},
+                    "protocol": {"type": "string"},
                     "limit": {"type": "integer", "description": "1-100000"},
                 },
             },
@@ -381,6 +427,8 @@ _TOOL_SCOPES = {
     'get_top_threat_ips': ['logs.read'],
     'list_threat_ips': ['logs.read'],
     'list_services': ['logs.read'],
+    'list_protocols': ['logs.read'],
+    'aggregate_logs': ['logs.read'],
     'export_logs_csv_url': ['logs.read'],
     'list_firewall_policies': ['firewall.read'],
     'set_firewall_syslog': ['firewall.syslog'],
@@ -415,6 +463,9 @@ def _tool_search_logs(args: dict) -> dict:
         interface=args.get('interface'),
         vpn_only=_as_bool(args.get('vpn_only', False)),
         asn=args.get('asn'),
+        dst_port=args.get('dst_port'),
+        src_port=args.get('src_port'),
+        protocol=args.get('protocol'),
         sort=args.get('sort', 'timestamp'),
         order=args.get('order', 'desc'),
         page=page,
@@ -448,6 +499,36 @@ def _tool_list_threat_ips(args: dict) -> dict:
         limit=limit,
         sort=args.get('sort', 'threat_score'),
         order=args.get('order', 'desc'),
+    )
+
+
+def _tool_aggregate_logs(args: dict) -> dict:
+    return logs_routes.get_logs_aggregate(
+        group_by=args.get('group_by', ''),
+        prefix_length=_as_int(args.get('prefix_length')),
+        having_min_total=_as_int(args.get('having_min_total')),
+        having_min_unique_ips=_as_int(args.get('having_min_unique_ips')),
+        limit=_as_int(args.get('limit'), 100),
+        log_type=args.get('log_type'),
+        time_range=args.get('time_range'),
+        time_from=args.get('time_from'),
+        time_to=args.get('time_to'),
+        src_ip=args.get('src_ip'),
+        dst_ip=args.get('dst_ip'),
+        ip=args.get('ip'),
+        direction=args.get('direction'),
+        rule_action=args.get('rule_action'),
+        rule_name=args.get('rule_name'),
+        country=args.get('country'),
+        threat_min=_as_int(args.get('threat_min')),
+        search=args.get('search'),
+        service=args.get('service'),
+        interface=args.get('interface'),
+        vpn_only=_as_bool(args.get('vpn_only', False)),
+        asn=args.get('asn'),
+        dst_port=args.get('dst_port'),
+        src_port=args.get('src_port'),
+        protocol=args.get('protocol'),
     )
 
 
@@ -508,6 +589,8 @@ _TOOL_HANDLERS = {
     'get_top_threat_ips':     _tool_get_top_threat_ips,
     'list_threat_ips':        _tool_list_threat_ips,
     'list_services':          lambda _: logs_routes.get_services(),
+    'list_protocols':         lambda _: logs_routes.get_protocols(),
+    'aggregate_logs':         _tool_aggregate_logs,
     'export_logs_csv_url':    _tool_export_logs_csv_url,
     'list_firewall_policies': lambda _: unifi_routes.get_firewall_policies(),
     'set_firewall_syslog':    _tool_set_firewall_syslog,
@@ -518,7 +601,18 @@ _TOOL_HANDLERS = {
     'list_interfaces':        lambda _: setup_routes.list_interfaces(),
 }
 
-# TODO: Add a guard/test to ensure _TOOL_HANDLERS and _TOOL_SCOPES stay in sync.
+# Runtime guard: ensure _TOOL_HANDLERS and _TOOL_SCOPES stay in sync.
+_handler_keys = set(_TOOL_HANDLERS.keys())
+_scope_keys = set(_TOOL_SCOPES.keys())
+if _handler_keys != _scope_keys:
+    _missing_scopes = _handler_keys - _scope_keys
+    _missing_handlers = _scope_keys - _handler_keys
+    raise RuntimeError(
+        f"_TOOL_HANDLERS / _TOOL_SCOPES key mismatch! "
+        f"In handlers but not scopes: {_missing_scopes or 'none'}. "
+        f"In scopes but not handlers: {_missing_handlers or 'none'}."
+    )
+
 
 def _handle_tool_call(name: str, args: dict) -> dict:
     handler = _TOOL_HANDLERS.get(name)

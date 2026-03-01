@@ -24,7 +24,7 @@ Single Docker container. No external dependencies. Zero data collection.
 - [🔧 Troubleshooting](#-troubleshooting)
 - [⚖️ Disclaimer](#-disclaimer)
 - [📄 License](#-license-1)
-- [🖥️ App Screenshots](#app-screenshots)
+- [📸 App Screenshots](#-app-screenshots)
 
 ## ✨ Features
 
@@ -509,12 +509,14 @@ All tool calls are logged with the token ID, tool name, parameters, and success/
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/logs` | Paginated log list with all filters |
+| `GET /api/logs` | Paginated log list with all filters (prefix any filter with `!` to negate) |
+| `GET /api/logs/aggregate` | Aggregate logs by dimension (`src_ip`, `dst_ip`, `country`, `asn`, `rule_name`, `service`) with optional CIDR prefix grouping, HAVING thresholds, and all standard log filters |
 | `GET /api/logs/{id}` | Single log detail with threat data |
 | `GET /api/stats?time_range=24h` | Dashboard aggregations |
 | `GET /api/export` | CSV export with current filters |
 | `GET /api/health` | Health check with total count and latest timestamp |
 | `GET /api/services` | Distinct service names for filter dropdown |
+| `GET /api/protocols` | Distinct protocols seen in logs for filter dropdown |
 | `GET /api/interfaces` | Distinct interfaces seen in logs |
 | `GET /api/config` | Current system configuration (WAN, labels, setup status) |
 | `POST /api/setup/complete` | Save wizard configuration |
@@ -706,7 +708,7 @@ This project is not affiliated with, endorsed by, or associated with Ubiquiti In
 
 MIT
 
-## App Screenshots
+## 📸 App Screenshots
 
 ---
 
