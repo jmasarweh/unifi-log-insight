@@ -100,20 +100,29 @@ def build_log_query(
     if src_ip:
         negated, val = _parse_negation(src_ip)
         op = "NOT LIKE" if negated else "LIKE"
-        conditions.append(f"src_ip::text {op} %s ESCAPE '\\'")
+        if negated:
+            conditions.append(f"(src_ip::text {op} %s ESCAPE '\\' OR src_ip IS NULL)")
+        else:
+            conditions.append(f"src_ip::text {op} %s ESCAPE '\\'") 
         params.append(f"%{_escape_like(val)}%")
 
     if dst_ip:
         negated, val = _parse_negation(dst_ip)
         op = "NOT LIKE" if negated else "LIKE"
-        conditions.append(f"dst_ip::text {op} %s ESCAPE '\\'")
+        if negated:
+            conditions.append(f"(dst_ip::text {op} %s ESCAPE '\\' OR dst_ip IS NULL)")
+        else:
+            conditions.append(f"dst_ip::text {op} %s ESCAPE '\\'") 
         params.append(f"%{_escape_like(val)}%")
 
     if ip:
         negated, val = _parse_negation(ip)
         escaped_ip = _escape_like(val)
         if negated:
-            conditions.append("(src_ip::text NOT LIKE %s ESCAPE '\\' AND dst_ip::text NOT LIKE %s ESCAPE '\\')")
+            conditions.append(
+                "((src_ip::text NOT LIKE %s ESCAPE '\\' OR src_ip IS NULL)"
+                " AND (dst_ip::text NOT LIKE %s ESCAPE '\\' OR dst_ip IS NULL))"
+            )
         else:
             conditions.append("(src_ip::text LIKE %s ESCAPE '\\' OR dst_ip::text LIKE %s ESCAPE '\\')")
         params.extend([f"%{escaped_ip}%", f"%{escaped_ip}%"])
@@ -189,7 +198,10 @@ def build_log_query(
         negated, val = _parse_negation(asn)
         escaped_asn = _escape_like(val)
         op = "NOT ILIKE" if negated else "ILIKE"
-        conditions.append(f"asn_name {op} %s ESCAPE '\\'")
+        if negated:
+            conditions.append(f"(asn_name {op} %s ESCAPE '\\' OR asn_name IS NULL)")
+        else:
+            conditions.append(f"asn_name {op} %s ESCAPE '\\'") 
         params.append(f"%{escaped_asn}%")
 
     if dst_port:
