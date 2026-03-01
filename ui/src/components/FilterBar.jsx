@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { fetchServices, fetchInterfaces, fetchProtocols } from '../api'
 import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES, timeRangeToDays, filterVisibleRanges } from '../utils'
+import DateRangePicker from './DateRangePicker'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
 const TIME_RANGES = [
@@ -117,18 +118,15 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     return () => clearTimeout(t)
   }, [srcPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-correct selected range if it exceeds maxFilterDays
+  // Auto-correct selected range if it exceeds visible ranges (respects ceiling)
+  // Skip when in custom date mode (time_range is null, time_from/time_to are set)
   useEffect(() => {
-    if (!maxFilterDays) return
-    const currentDays = timeRangeToDays(filters.time_range)
-    if (currentDays >= 1 && currentDays > maxFilterDays) {
-      const largest = [...TIME_RANGES].reverse().find(tr => {
-        const d = timeRangeToDays(tr.value)
-        return d < 1 || d <= maxFilterDays
-      })
-      if (largest && largest.value !== filters.time_range) {
-        onChange({ ...filters, time_range: largest.value })
-      }
+    if (!maxFilterDays || visibleRanges.length === 0) return
+    if (!filters.time_range && filters.time_from) return
+    if (visibleRanges.some(tr => tr.value === filters.time_range)) return
+    const largest = [...visibleRanges].reverse().find(tr => timeRangeToDays(tr.value) >= 1) || visibleRanges[visibleRanges.length - 1]
+    if (largest && largest.value !== filters.time_range) {
+      onChange({ ...filters, time_range: largest.value })
     }
   }, [maxFilterDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -154,7 +152,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     filters.rule_action,           // actions narrowed
     filters.direction,             // directions narrowed
     filters.vpn_only,              // VPN filter active
-    filters.time_range !== '24h' ? filters.time_range : null,
+    (filters.time_from || filters.time_to) || (filters.time_range !== '24h' ? filters.time_range : null),
     ipSearch,
     ruleSearch,
     textSearch,
@@ -296,7 +294,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           {visibleRanges.map(tr => (
             <button
               key={tr.value}
-              onClick={() => onChange({ ...filters, time_range: tr.value })}
+              onClick={() => onChange({ ...filters, time_range: tr.value, time_from: null, time_to: null })}
               className={`px-2 py-1 rounded text-xs font-medium transition-all ${
                 filters.time_range === tr.value
                   ? 'bg-gray-700 text-white'
@@ -306,6 +304,18 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
               {tr.label}
             </button>
           ))}
+          <DateRangePicker
+            isActive={!filters.time_range && !!(filters.time_from || filters.time_to)}
+            timeFrom={filters.time_from}
+            timeTo={filters.time_to}
+            maxFilterDays={maxFilterDays}
+            onApply={({ time_from, time_to }) =>
+              onChange({ ...filters, time_range: null, time_from, time_to })
+            }
+            onClear={() =>
+              onChange({ ...filters, time_range: '24h', time_from: null, time_to: null })
+            }
+          />
         </div>
       </div>
 
@@ -335,59 +345,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           />
           {ruleSearch && (
             <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
-          )}
-        </div>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder={selectedServices.length > 0 ? `${selectedServices.length} service(s)` : "Service..."}
-            value={serviceSearch}
-            onChange={e => {
-              setServiceSearch(e.target.value)
-              setShowServiceDropdown(true)
-            }}
-            onFocus={() => setShowServiceDropdown(true)}
-            onBlur={() => setTimeout(() => setShowServiceDropdown(false), 200)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
-          />
-          {selectedServices.length > 0 && (
-            <button
-              onClick={() => {
-                setSelectedServices([])
-                onChange({ ...filters, service: null })
-              }}
-              className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
-            >✕</button>
-          )}
-          {showServiceDropdown && (
-            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
-              {services
-                .filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase()))
-                .slice(0, 50)
-                .map(service => (
-                  <div
-                    key={service}
-                    onClick={() => {
-                      const updated = selectedServices.includes(service)
-                        ? selectedServices.filter(s => s !== service)
-                        : [...selectedServices, service]
-                      setSelectedServices(updated)
-                      onChange({ ...filters, service: updated.length ? updated.join(',') : null })
-                      setServiceSearch('')
-                    }}
-                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                      selectedServices.includes(service)
-                        ? 'bg-blue-500/20 text-blue-400'
-                        : 'text-gray-300 hover:bg-gray-800'
-                    }`}
-                  >
-                    {service}
-                  </div>
-                ))}
-              {services.filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase())).length === 0 && (
-                <div className="px-3 py-2 text-xs text-gray-400">No matching services</div>
-              )}
-            </div>
           )}
         </div>
         <div className="relative">
@@ -462,32 +419,6 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
                     })
               })()}
             </div>
-          )}
-        </div>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Country code..."
-            title="Comma-separated codes (e.g. US,CN). Prefix with ! to exclude all listed countries."
-            value={countrySearch}
-            onChange={e => setCountrySearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28 ${countrySearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
-          />
-          {countrySearch && (
-            <button onClick={() => setCountrySearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
-          )}
-        </div>
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="ASN..."
-            title="Prefix with ! to exclude matching ASNs"
-            value={asnSearch}
-            onChange={e => setAsnSearch(e.target.value)}
-            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36 ${asnSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
-          />
-          {asnSearch && (
-            <button onClick={() => setAsnSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
           )}
         </div>
         <div className="relative">
@@ -568,6 +499,85 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             </div>
           )}
         </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={selectedServices.length > 0 ? `${selectedServices.length} service(s)` : "Service..."}
+            value={serviceSearch}
+            onChange={e => {
+              setServiceSearch(e.target.value)
+              setShowServiceDropdown(true)
+            }}
+            onFocus={() => setShowServiceDropdown(true)}
+            onBlur={() => setTimeout(() => setShowServiceDropdown(false), 200)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
+          />
+          {selectedServices.length > 0 && (
+            <button
+              onClick={() => {
+                setSelectedServices([])
+                onChange({ ...filters, service: null })
+              }}
+              className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
+            >✕</button>
+          )}
+          {showServiceDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-56 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
+              {services
+                .filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase()))
+                .slice(0, 50)
+                .map(service => (
+                  <div
+                    key={service}
+                    onClick={() => {
+                      const updated = selectedServices.includes(service)
+                        ? selectedServices.filter(s => s !== service)
+                        : [...selectedServices, service]
+                      setSelectedServices(updated)
+                      onChange({ ...filters, service: updated.length ? updated.join(',') : null })
+                      setServiceSearch('')
+                    }}
+                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                      selectedServices.includes(service)
+                        ? 'bg-blue-500/20 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-800'
+                    }`}
+                  >
+                    {service}
+                  </div>
+                ))}
+              {services.filter(s => s.toLowerCase().includes(serviceSearch.toLowerCase())).length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-400">No matching services</div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Country code..."
+            title="Comma-separated codes (e.g. US,CN). Prefix with ! to exclude all listed countries."
+            value={countrySearch}
+            onChange={e => setCountrySearch(e.target.value)}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28 ${countrySearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
+          />
+          {countrySearch && (
+            <button onClick={() => setCountrySearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="ASN..."
+            title="Prefix with ! to exclude matching ASNs"
+            value={asnSearch}
+            onChange={e => setAsnSearch(e.target.value)}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36 ${asnSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
+          />
+          {asnSearch && (
+            <button onClick={() => setAsnSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
         <div className="relative flex-1 sm:max-w-xs">
           <input
             type="text"
@@ -596,7 +606,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSrcPortSearch('')
             setProtocolSearch('')
             setSelectedProtocols([])
-            onChange({ time_range: '24h', page: 1, per_page: 50 })
+            onChange({ time_range: '24h', time_from: null, time_to: null, page: 1, per_page: 50 })
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
         >
