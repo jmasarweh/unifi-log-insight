@@ -53,6 +53,12 @@ export async function fetchServices() {
   return resp.json()
 }
 
+export async function fetchProtocols() {
+  const resp = await fetch(`${BASE}/protocols`)
+  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  return resp.json()
+}
+
 export function getExportUrl(params = {}) {
   return `${BASE}/export?${buildQS(params)}`
 }
