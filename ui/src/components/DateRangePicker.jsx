@@ -47,6 +47,11 @@ export default function DateRangePicker({ isActive, timeFrom, timeTo, onApply, o
     setEndTime('23:59')
   }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Compute earliest allowed date based on maxFilterDays
+  const earliestDate = maxFilterDays
+    ? new Date(Date.now() - maxFilterDays * 86400000)
+    : undefined
+
   const combineDateAndTime = (date, time) => {
     const [h = 0, m = 0] = (time || '').split(':').map(Number)
     const d = new Date(date)
@@ -84,11 +89,6 @@ export default function DateRangePicker({ isActive, timeFrom, timeTo, onApply, o
   }
 
   const label = formatLabel()
-
-  // Compute earliest allowed date based on maxFilterDays
-  const earliestDate = maxFilterDays
-    ? new Date(Date.now() - maxFilterDays * 86400000)
-    : undefined
 
   return (
     <div className="relative" ref={ref}>

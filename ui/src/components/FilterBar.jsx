@@ -85,7 +85,9 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   }, [ipSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, rule_name: ruleSearch || null }), 400)
+    // Normalize: UI displays "] " (space after bracket) for readability but DB stores "]" (no space)
+    const normalized = ruleSearch ? ruleSearch.replace(/\]\s+/g, ']') : null
+    const t = setTimeout(() => onChange({ ...filtersRef.current, rule_name: normalized }), 400)
     return () => clearTimeout(t)
   }, [ruleSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -124,7 +126,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     if (!maxFilterDays || visibleRanges.length === 0) return
     if (!filters.time_range && filters.time_from) return
     if (visibleRanges.some(tr => tr.value === filters.time_range)) return
-    const largest = [...visibleRanges].reverse().find(tr => timeRangeToDays(tr.value) >= 1) || visibleRanges[visibleRanges.length - 1]
+    const largest = visibleRanges.findLast(tr => timeRangeToDays(tr.value) >= 1) || visibleRanges[visibleRanges.length - 1]
     if (largest && largest.value !== filters.time_range) {
       onChange({ ...filters, time_range: largest.value })
     }
@@ -490,7 +492,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
                         : 'text-gray-300 hover:bg-gray-800'
                     }`}
                   >
-                    {protocol}
+                    {protocol.toUpperCase()}
                   </div>
                 ))}
               {protocols.filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase())).length === 0 && (
