@@ -315,6 +315,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           <input
             type="text"
             placeholder="IP address..."
+            title="Prefix with ! to exclude matching IPs"
             value={ipSearch}
             onChange={e => setIpSearch(e.target.value)}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ipSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
@@ -327,6 +328,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           <input
             type="text"
             placeholder="Rule name..."
+            title="Prefix with ! to exclude matching rules"
             value={ruleSearch}
             onChange={e => setRuleSearch(e.target.value)}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ruleSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
@@ -466,6 +468,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           <input
             type="text"
             placeholder="Country code..."
+            title="Comma-separated codes (e.g. US,CN). Prefix with ! to exclude all listed countries."
             value={countrySearch}
             onChange={e => setCountrySearch(e.target.value)}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28 ${countrySearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
@@ -478,6 +481,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           <input
             type="text"
             placeholder="ASN..."
+            title="Prefix with ! to exclude matching ASNs"
             value={asnSearch}
             onChange={e => setAsnSearch(e.target.value)}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36 ${asnSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
@@ -490,6 +494,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           <input
             type="text"
             placeholder="Src port..."
+            title="Prefix with ! to exclude this port"
             value={srcPortSearch}
             onChange={e => setSrcPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${srcPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
@@ -502,6 +507,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           <input
             type="text"
             placeholder="Dst port..."
+            title="Prefix with ! to exclude this port"
             value={dstPortSearch}
             onChange={e => setDstPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
@@ -566,6 +572,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           <input
             type="text"
             placeholder="Search raw log..."
+            title="Prefix with ! to exclude matching log entries"
             value={textSearch}
             onChange={e => setTextSearch(e.target.value)}
             className={`w-full bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 ${textSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}

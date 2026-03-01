@@ -328,6 +328,7 @@ def get_logs_aggregate(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, final_params)
             rows = [dict(r) for r in cur.fetchall()]
+        conn.commit()
         return {
             'group_by': group_by,
             'prefix_length': prefix_length,
@@ -696,7 +697,7 @@ def get_protocols():
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                SELECT DISTINCT UPPER(protocol) AS protocol
+                SELECT DISTINCT protocol
                 FROM logs
                 WHERE protocol IS NOT NULL
                 ORDER BY protocol

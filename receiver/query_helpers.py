@@ -189,15 +189,19 @@ def build_log_query(
     if dst_port:
         negated, port_val = _parse_port(dst_port)
         if port_val is not None:
-            op = "!=" if negated else "="
-            conditions.append(f"dst_port {op} %s")
+            if negated:
+                conditions.append("(dst_port != %s OR dst_port IS NULL)")
+            else:
+                conditions.append("dst_port = %s")
             params.append(port_val)
 
     if src_port:
         negated, port_val = _parse_port(src_port)
         if port_val is not None:
-            op = "!=" if negated else "="
-            conditions.append(f"src_port {op} %s")
+            if negated:
+                conditions.append("(src_port != %s OR src_port IS NULL)")
+            else:
+                conditions.append("src_port = %s")
             params.append(port_val)
 
     if protocol:
@@ -205,7 +209,7 @@ def build_log_query(
         protocols = [p.strip().upper() for p in val.split(',')]
         placeholders = ','.join(['%s'] * len(protocols))
         keyword = "NOT IN" if negated else "IN"
-        conditions.append(f"UPPER(protocol) {keyword} ({placeholders})")
+        conditions.append(f"protocol {keyword} ({placeholders})")
         params.extend(protocols)
 
     if vpn_only:

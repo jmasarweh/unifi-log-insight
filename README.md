@@ -24,7 +24,7 @@ Single Docker container. No external dependencies. Zero data collection.
 - [🔧 Troubleshooting](#-troubleshooting)
 - [⚖️ Disclaimer](#-disclaimer)
 - [📄 License](#-license-1)
-- [🖥️ App Screenshots](#app-screenshots)
+- [📸 App Screenshots](#-app-screenshots)
 
 ## ✨ Features
 
@@ -706,7 +706,7 @@ This project is not affiliated with, endorsed by, or associated with Ubiquiti In
 
 MIT
 
-## App Screenshots
+## 📸 App Screenshots
 
 ---
 
