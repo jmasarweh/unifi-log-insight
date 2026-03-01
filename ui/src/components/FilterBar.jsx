@@ -427,7 +427,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Src port..."
             title="Prefix with ! to exclude this port"
             value={srcPortSearch}
-            onChange={e => { const raw = e.target.value; const hasNeg = raw.includes('!'); const digits = raw.replace(/[^0-9]/g, ''); setSrcPortSearch(hasNeg ? '!' + digits : digits); }}
+            onChange={e => { const raw = e.target.value; const hasNeg = raw.startsWith('!'); const digits = raw.replace(/[^0-9]/g, ''); setSrcPortSearch(hasNeg ? '!' + digits : digits); }}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${srcPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {srcPortSearch && (
@@ -440,7 +440,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Dst port..."
             title="Prefix with ! to exclude this port"
             value={dstPortSearch}
-            onChange={e => { const raw = e.target.value; const hasNeg = raw.includes('!'); const digits = raw.replace(/[^0-9]/g, ''); setDstPortSearch(hasNeg ? '!' + digits : digits); }}
+            onChange={e => { const raw = e.target.value; const hasNeg = raw.startsWith('!'); const digits = raw.replace(/[^0-9]/g, ''); setDstPortSearch(hasNeg ? '!' + digits : digits); }}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {dstPortSearch && (
@@ -471,31 +471,31 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           )}
           {showProtocolDropdown && (
             <div className="absolute top-full left-0 mt-1 w-40 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
-              {protocols
-                .filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase()))
-                .map(protocol => (
-                  <div
-                    key={protocol}
-                    onClick={() => {
-                      const updated = selectedProtocols.includes(protocol)
-                        ? selectedProtocols.filter(p => p !== protocol)
-                        : [...selectedProtocols, protocol]
-                      setSelectedProtocols(updated)
-                      onChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
-                      setProtocolSearch('')
-                    }}
-                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                      selectedProtocols.includes(protocol)
-                        ? 'bg-blue-500/20 text-blue-400'
-                        : 'text-gray-300 hover:bg-gray-800'
-                    }`}
-                  >
-                    {protocol}
-                  </div>
-                ))}
-              {protocols.filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase())).length === 0 && (
-                <div className="px-3 py-2 text-xs text-gray-400">No matching protocols</div>
-              )}
+              {(() => {
+                const filtered = protocols.filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase()))
+                return filtered.length === 0
+                  ? <div className="px-3 py-2 text-xs text-gray-400">No matching protocols</div>
+                  : filtered.map(protocol => (
+                      <div
+                        key={protocol}
+                        onClick={() => {
+                          const updated = selectedProtocols.includes(protocol)
+                            ? selectedProtocols.filter(p => p !== protocol)
+                            : [...selectedProtocols, protocol]
+                          setSelectedProtocols(updated)
+                          onChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
+                          setProtocolSearch('')
+                        }}
+                        className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                          selectedProtocols.includes(protocol)
+                            ? 'bg-blue-500/20 text-blue-400'
+                            : 'text-gray-300 hover:bg-gray-800'
+                        }`}
+                      >
+                        {protocol}
+                      </div>
+                    ))
+              })()}
             </div>
           )}
         </div>
@@ -606,7 +606,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSrcPortSearch('')
             setProtocolSearch('')
             setSelectedProtocols([])
-            onChange({ time_range: '24h', time_from: null, time_to: null, page: 1, per_page: 50 })
+            onChange({ time_range: '24h', time_from: null, time_to: null, page: 1, per_page: 50, ip: null, rule_name: null, search: null, service: null, interface: null, protocol: null, dst_port: null, src_port: null, country: null, asn: null, log_type: null, rule_action: null, direction: null, vpn_only: null })
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
         >
