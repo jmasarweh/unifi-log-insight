@@ -2,8 +2,35 @@
 Query building helpers shared by log and export endpoints.
 """
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_negation(value: str) -> tuple[bool, str]:
+    """Check if a filter value is negated (prefixed with '!').
+    Returns (is_negated, clean_value).
+    """
+    if value.startswith('!'):
+        return True, value[1:]
+    return False, value
+
+
+def _parse_port(value: str) -> tuple[bool, int | None]:
+    """Parse a port filter value, supporting '!' prefix for negation.
+    Returns (is_negated, port_int_or_None).
+    """
+    negated, clean = _parse_negation(value)
+    try:
+        port = int(clean)
+        if 1 <= port <= 65535:
+            return negated, port
+        logger.debug("Port value out of range (1-65535): %r", value)
+    except (ValueError, TypeError):
+        logger.debug("Non-numeric port value: %r", value)
+    return negated, None
 
 
 def parse_time_range(time_range: str) -> Optional[datetime]:
@@ -42,6 +69,9 @@ def build_log_query(
     interface: Optional[str],
     vpn_only: bool = False,
     asn: Optional[str] = None,
+    dst_port: Optional[str] = None,
+    src_port: Optional[str] = None,
+    protocol: Optional[str] = None,
 ) -> tuple[str, list]:
     """Build WHERE clause and params from filters."""
     conditions = []
@@ -68,16 +98,24 @@ def build_log_query(
         params.append(time_to)
 
     if src_ip:
-        conditions.append("src_ip::text LIKE %s ESCAPE '\\'")
-        params.append(f"%{_escape_like(src_ip)}%")
+        negated, val = _parse_negation(src_ip)
+        op = "NOT LIKE" if negated else "LIKE"
+        conditions.append(f"src_ip::text {op} %s ESCAPE '\\'")
+        params.append(f"%{_escape_like(val)}%")
 
     if dst_ip:
-        conditions.append("dst_ip::text LIKE %s ESCAPE '\\'")
-        params.append(f"%{_escape_like(dst_ip)}%")
+        negated, val = _parse_negation(dst_ip)
+        op = "NOT LIKE" if negated else "LIKE"
+        conditions.append(f"dst_ip::text {op} %s ESCAPE '\\'")
+        params.append(f"%{_escape_like(val)}%")
 
     if ip:
-        escaped_ip = _escape_like(ip)
-        conditions.append("(src_ip::text LIKE %s ESCAPE '\\' OR dst_ip::text LIKE %s ESCAPE '\\')")
+        negated, val = _parse_negation(ip)
+        escaped_ip = _escape_like(val)
+        if negated:
+            conditions.append("(src_ip::text NOT LIKE %s ESCAPE '\\' AND dst_ip::text NOT LIKE %s ESCAPE '\\')")
+        else:
+            conditions.append("(src_ip::text LIKE %s ESCAPE '\\' OR dst_ip::text LIKE %s ESCAPE '\\')")
         params.extend([f"%{escaped_ip}%", f"%{escaped_ip}%"])
 
     if direction:
@@ -91,20 +129,28 @@ def build_log_query(
         params.extend(directions)
 
     if rule_action:
-        actions = [a.strip() for a in rule_action.split(',')]
+        negated, val = _parse_negation(rule_action)
+        actions = [a.strip() for a in val.split(',')]
         placeholders = ','.join(['%s'] * len(actions))
-        conditions.append(f"rule_action IN ({placeholders})")
+        keyword = "NOT IN" if negated else "IN"
+        conditions.append(f"rule_action {keyword} ({placeholders})")
         params.extend(actions)
 
     if rule_name:
-        escaped = _escape_like(rule_name)
-        conditions.append("(rule_name ILIKE %s ESCAPE '\\' OR rule_desc ILIKE %s ESCAPE '\\')")
+        negated, val = _parse_negation(rule_name)
+        escaped = _escape_like(val)
+        if negated:
+            conditions.append("(rule_name NOT ILIKE %s ESCAPE '\\' OR rule_name IS NULL) AND (rule_desc NOT ILIKE %s ESCAPE '\\' OR rule_desc IS NULL)")
+        else:
+            conditions.append("(rule_name ILIKE %s ESCAPE '\\' OR rule_desc ILIKE %s ESCAPE '\\')")
         params.extend([f"%{escaped}%", f"%{escaped}%"])
 
     if country:
-        countries = [c.strip().upper() for c in country.split(',')]
+        negated, val = _parse_negation(country)
+        countries = [c.strip().upper() for c in val.split(',')]
         placeholders = ','.join(['%s'] * len(countries))
-        conditions.append(f"geo_country IN ({placeholders})")
+        keyword = "NOT IN" if negated else "IN"
+        conditions.append(f"geo_country {keyword} ({placeholders})")
         params.extend(countries)
 
     if threat_min is not None:
@@ -112,13 +158,18 @@ def build_log_query(
         params.append(threat_min)
 
     if search:
-        conditions.append("raw_log ILIKE %s")
-        params.append(f"%{search}%")
+        negated, val = _parse_negation(search)
+        op = "NOT ILIKE" if negated else "ILIKE"
+        escaped = _escape_like(val)
+        conditions.append(f"raw_log {op} %s ESCAPE '\\'")
+        params.append(f"%{escaped}%")
 
     if service:
-        services = [s.strip() for s in service.split(',')]
+        negated, val = _parse_negation(service)
+        services = [s.strip() for s in val.split(',')]
         placeholders = ','.join(['%s'] * len(services))
-        conditions.append(f"service_name IN ({placeholders})")
+        keyword = "NOT IN" if negated else "IN"
+        conditions.append(f"service_name {keyword} ({placeholders})")
         params.extend(services)
 
     if interface:
@@ -129,9 +180,33 @@ def build_log_query(
         params.extend(ifaces)  # Twice: once for interface_in, once for interface_out
 
     if asn:
-        escaped_asn = _escape_like(asn)
-        conditions.append("asn_name ILIKE %s ESCAPE '\\'")
+        negated, val = _parse_negation(asn)
+        escaped_asn = _escape_like(val)
+        op = "NOT ILIKE" if negated else "ILIKE"
+        conditions.append(f"asn_name {op} %s ESCAPE '\\'")
         params.append(f"%{escaped_asn}%")
+
+    if dst_port:
+        negated, port_val = _parse_port(dst_port)
+        if port_val is not None:
+            op = "!=" if negated else "="
+            conditions.append(f"dst_port {op} %s")
+            params.append(port_val)
+
+    if src_port:
+        negated, port_val = _parse_port(src_port)
+        if port_val is not None:
+            op = "!=" if negated else "="
+            conditions.append(f"src_port {op} %s")
+            params.append(port_val)
+
+    if protocol:
+        negated, val = _parse_negation(protocol)
+        protocols = [p.strip().upper() for p in val.split(',')]
+        placeholders = ','.join(['%s'] * len(protocols))
+        keyword = "NOT IN" if negated else "IN"
+        conditions.append(f"UPPER(protocol) {keyword} ({placeholders})")
+        params.extend(protocols)
 
     if vpn_only:
         from parsers import VPN_INTERFACE_PREFIXES

@@ -58,6 +58,11 @@ CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE se
 CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_logs_action_time  ON logs (rule_action, timestamp DESC);
 
+-- Indexes for newly exposed filters
+CREATE INDEX IF NOT EXISTS idx_logs_src_port     ON logs (src_port) WHERE src_port IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_logs_dst_port     ON logs (dst_port) WHERE dst_port IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_logs_protocol     ON logs (protocol) WHERE protocol IS NOT NULL;
+
 -- Retention cleanup function (configurable periods)
 CREATE OR REPLACE FUNCTION cleanup_old_logs(
     general_days INTEGER DEFAULT 60,

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { fetchServices, fetchInterfaces } from '../api'
+import { fetchServices, fetchInterfaces, fetchProtocols } from '../api'
 import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES, timeRangeToDays, filterVisibleRanges } from '../utils'
 
 const LOG_TYPES = ['firewall', 'dns', 'dhcp', 'wifi', 'system']
@@ -35,6 +35,22 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   )
   const [countrySearch, setCountrySearch] = useState(filters.country || '')
   const [asnSearch, setAsnSearch] = useState(filters.asn || '')
+  const [dstPortSearch, setDstPortSearch] = useState(filters.dst_port ?? '')
+  const [srcPortSearch, setSrcPortSearch] = useState(filters.src_port ?? '')
+  const [protocolSearch, setProtocolSearch] = useState('')
+  const [protocols, setProtocols] = useState([])
+  const [showProtocolDropdown, setShowProtocolDropdown] = useState(false)
+  const [selectedProtocols, setSelectedProtocols] = useState(
+    filters.protocol ? filters.protocol.split(',') : []
+  )
+  const parsePort = (v) => {
+    if (v === '' || v === '!') return null
+    const clean = v.startsWith('!') ? v.slice(1) : v
+    const n = parseInt(clean, 10)
+    if (isNaN(n) || n < 1 || n > 65535) return null
+    // Return as string to preserve '!' prefix for negation
+    return v.startsWith('!') ? `!${n}` : String(n)
+  }
 
   // Ref to avoid stale closures in debounce effects
   const filtersRef = useRef(filters)
@@ -45,6 +61,13 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     fetchServices()
       .then(data => setServices(data.services || []))
       .catch(err => { console.error('Failed to load services:', err); setServices([]) })
+  }, [])
+
+  // Load protocols for dropdown
+  useEffect(() => {
+    fetchProtocols()
+      .then(data => setProtocols(data.protocols || []))
+      .catch(err => { console.error('Failed to load protocols:', err); setProtocols([]) })
   }, [])
 
   // Load interfaces for filtering
@@ -79,6 +102,20 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     const t = setTimeout(() => onChange({ ...filtersRef.current, asn: asnSearch || null }), 400)
     return () => clearTimeout(t)
   }, [asnSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      onChange({ ...filtersRef.current, dst_port: parsePort(dstPortSearch) })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [dstPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      onChange({ ...filtersRef.current, src_port: parsePort(srcPortSearch) })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [srcPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-correct selected range if it exceeds maxFilterDays
   useEffect(() => {
@@ -123,8 +160,11 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     textSearch,
     selectedServices.length > 0 ? true : null,
     selectedInterfaces.length > 0 ? true : null,
+    selectedProtocols.length > 0 ? true : null,
     countrySearch,
     asnSearch,
+    dstPortSearch,
+    srcPortSearch,
   ].filter(Boolean).length
 
   const toggleAction = (action) => {
@@ -277,7 +317,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="IP address..."
             value={ipSearch}
             onChange={e => setIpSearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ipSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {ipSearch && (
             <button onClick={() => setIpSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -289,7 +329,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Rule name..."
             value={ruleSearch}
             onChange={e => setRuleSearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40"
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-40 ${ruleSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {ruleSearch && (
             <button onClick={() => setRuleSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -428,7 +468,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Country code..."
             value={countrySearch}
             onChange={e => setCountrySearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28"
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-28 ${countrySearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {countrySearch && (
             <button onClick={() => setCountrySearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -440,10 +480,86 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="ASN..."
             value={asnSearch}
             onChange={e => setAsnSearch(e.target.value)}
-            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36"
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-36 ${asnSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {asnSearch && (
             <button onClick={() => setAsnSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Src port..."
+            value={srcPortSearch}
+            onChange={e => setSrcPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${srcPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
+          />
+          {srcPortSearch && (
+            <button onClick={() => setSrcPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Dst port..."
+            value={dstPortSearch}
+            onChange={e => setDstPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
+            className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
+          />
+          {dstPortSearch && (
+            <button onClick={() => setDstPortSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
+          )}
+        </div>
+        <div className="relative">
+          <input
+            type="text"
+            placeholder={selectedProtocols.length > 0 ? `${selectedProtocols.length} protocol(s)` : "Protocol..."}
+            value={protocolSearch}
+            onChange={e => {
+              setProtocolSearch(e.target.value)
+              setShowProtocolDropdown(true)
+            }}
+            onFocus={() => setShowProtocolDropdown(true)}
+            onBlur={() => setTimeout(() => setShowProtocolDropdown(false), 200)}
+            className="bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-32"
+          />
+          {selectedProtocols.length > 0 && (
+            <button
+              onClick={() => {
+                setSelectedProtocols([])
+                onChange({ ...filters, protocol: null })
+              }}
+              className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
+            >✕</button>
+          )}
+          {showProtocolDropdown && (
+            <div className="absolute top-full left-0 mt-1 w-40 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
+              {protocols
+                .filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase()))
+                .map(protocol => (
+                  <div
+                    key={protocol}
+                    onClick={() => {
+                      const updated = selectedProtocols.includes(protocol)
+                        ? selectedProtocols.filter(p => p !== protocol)
+                        : [...selectedProtocols, protocol]
+                      setSelectedProtocols(updated)
+                      onChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
+                      setProtocolSearch('')
+                    }}
+                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                      selectedProtocols.includes(protocol)
+                        ? 'bg-blue-500/20 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-800'
+                    }`}
+                  >
+                    {protocol}
+                  </div>
+                ))}
+              {protocols.filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase())).length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-400">No matching protocols</div>
+              )}
+            </div>
           )}
         </div>
         <div className="relative flex-1 sm:max-w-xs">
@@ -452,7 +568,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Search raw log..."
             value={textSearch}
             onChange={e => setTextSearch(e.target.value)}
-            className="w-full bg-gray-800/50 border border-gray-700 rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500"
+            className={`w-full bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 ${textSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {textSearch && (
             <button onClick={() => setTextSearch('')} className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs">✕</button>
@@ -469,6 +585,10 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSelectedInterfaces([])
             setCountrySearch('')
             setAsnSearch('')
+            setDstPortSearch('')
+            setSrcPortSearch('')
+            setProtocolSearch('')
+            setSelectedProtocols([])
             onChange({ time_range: '24h', page: 1, per_page: 50 })
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
