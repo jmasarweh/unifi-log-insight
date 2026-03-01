@@ -601,7 +601,18 @@ _TOOL_HANDLERS = {
     'list_interfaces':        lambda _: setup_routes.list_interfaces(),
 }
 
-# TODO: Add a guard/test to ensure _TOOL_HANDLERS and _TOOL_SCOPES stay in sync.
+# Runtime guard: ensure _TOOL_HANDLERS and _TOOL_SCOPES stay in sync.
+_handler_keys = set(_TOOL_HANDLERS.keys())
+_scope_keys = set(_TOOL_SCOPES.keys())
+if _handler_keys != _scope_keys:
+    _missing_scopes = _handler_keys - _scope_keys
+    _missing_handlers = _scope_keys - _handler_keys
+    raise RuntimeError(
+        f"_TOOL_HANDLERS / _TOOL_SCOPES key mismatch! "
+        f"In handlers but not scopes: {_missing_scopes or 'none'}. "
+        f"In scopes but not handlers: {_missing_handlers or 'none'}."
+    )
+
 
 def _handle_tool_call(name: str, args: dict) -> dict:
     handler = _TOOL_HANDLERS.get(name)

@@ -150,7 +150,10 @@ def build_log_query(
         countries = [c.strip().upper() for c in val.split(',')]
         placeholders = ','.join(['%s'] * len(countries))
         keyword = "NOT IN" if negated else "IN"
-        conditions.append(f"geo_country {keyword} ({placeholders})")
+        condition = f"geo_country {keyword} ({placeholders})"
+        if negated:
+            condition = f"({condition} OR geo_country IS NULL)"
+        conditions.append(condition)
         params.extend(countries)
 
     if threat_min is not None:
@@ -169,7 +172,10 @@ def build_log_query(
         services = [s.strip() for s in val.split(',')]
         placeholders = ','.join(['%s'] * len(services))
         keyword = "NOT IN" if negated else "IN"
-        conditions.append(f"service_name {keyword} ({placeholders})")
+        condition = f"service_name {keyword} ({placeholders})"
+        if negated:
+            condition = f"({condition} OR service_name IS NULL)"
+        conditions.append(condition)
         params.extend(services)
 
     if interface:
@@ -209,7 +215,10 @@ def build_log_query(
         protocols = [p.strip().upper() for p in val.split(',')]
         placeholders = ','.join(['%s'] * len(protocols))
         keyword = "NOT IN" if negated else "IN"
-        conditions.append(f"protocol {keyword} ({placeholders})")
+        condition = f"protocol {keyword} ({placeholders})"
+        if negated:
+            condition = f"({condition} OR protocol IS NULL)"
+        conditions.append(condition)
         params.extend(protocols)
 
     if vpn_only:

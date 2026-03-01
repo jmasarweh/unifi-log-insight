@@ -496,7 +496,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Src port..."
             title="Prefix with ! to exclude this port"
             value={srcPortSearch}
-            onChange={e => setSrcPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
+            onChange={e => { const raw = e.target.value; const hasNeg = raw.includes('!'); const digits = raw.replace(/[^0-9]/g, ''); setSrcPortSearch(hasNeg ? '!' + digits : digits); }}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${srcPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {srcPortSearch && (
@@ -509,7 +509,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             placeholder="Dst port..."
             title="Prefix with ! to exclude this port"
             value={dstPortSearch}
-            onChange={e => setDstPortSearch(e.target.value.replace(/[^0-9!]/g, '').replace(/!(?=.*!)/g, ''))}
+            onChange={e => { const raw = e.target.value; const hasNeg = raw.includes('!'); const digits = raw.replace(/[^0-9]/g, ''); setDstPortSearch(hasNeg ? '!' + digits : digits); }}
             className={`bg-gray-800/50 border rounded px-3 py-1.5 text-xs text-gray-300 placeholder-gray-500 focus:outline-none focus:border-gray-500 w-full sm:w-24 ${dstPortSearch.startsWith('!') ? 'border-amber-400/60' : 'border-gray-700'}`}
           />
           {dstPortSearch && (
