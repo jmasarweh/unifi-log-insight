@@ -85,7 +85,9 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   }, [ipSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, rule_name: ruleSearch || null }), 400)
+    // Normalize: UI displays "] " (space after bracket) for readability but DB stores "]" (no space)
+    const normalized = ruleSearch ? ruleSearch.replace(/\]\s+/g, ']') : null
+    const t = setTimeout(() => onChange({ ...filtersRef.current, rule_name: normalized }), 400)
     return () => clearTimeout(t)
   }, [ruleSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -124,7 +126,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     if (!maxFilterDays || visibleRanges.length === 0) return
     if (!filters.time_range && filters.time_from) return
     if (visibleRanges.some(tr => tr.value === filters.time_range)) return
-    const largest = [...visibleRanges].reverse().find(tr => timeRangeToDays(tr.value) >= 1) || visibleRanges[visibleRanges.length - 1]
+    const largest = visibleRanges.findLast(tr => timeRangeToDays(tr.value) >= 1) || visibleRanges[visibleRanges.length - 1]
     if (largest && largest.value !== filters.time_range) {
       onChange({ ...filters, time_range: largest.value })
     }
@@ -471,31 +473,31 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           )}
           {showProtocolDropdown && (
             <div className="absolute top-full left-0 mt-1 w-40 bg-gray-950 border border-gray-700 rounded shadow-lg max-h-60 overflow-y-auto z-20">
-              {(() => {
-                const filtered = protocols.filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase()))
-                return filtered.length === 0
-                  ? <div className="px-3 py-2 text-xs text-gray-400">No matching protocols</div>
-                  : filtered.map(protocol => (
-                      <div
-                        key={protocol}
-                        onClick={() => {
-                          const updated = selectedProtocols.includes(protocol)
-                            ? selectedProtocols.filter(p => p !== protocol)
-                            : [...selectedProtocols, protocol]
-                          setSelectedProtocols(updated)
-                          onChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
-                          setProtocolSearch('')
-                        }}
-                        className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
-                          selectedProtocols.includes(protocol)
-                            ? 'bg-blue-500/20 text-blue-400'
-                            : 'text-gray-300 hover:bg-gray-800'
-                        }`}
-                      >
-                        {protocol}
-                      </div>
-                    ))
-              })()}
+              {protocols
+                .filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase()))
+                .map(protocol => (
+                  <div
+                    key={protocol}
+                    onClick={() => {
+                      const updated = selectedProtocols.includes(protocol)
+                        ? selectedProtocols.filter(p => p !== protocol)
+                        : [...selectedProtocols, protocol]
+                      setSelectedProtocols(updated)
+                      onChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
+                      setProtocolSearch('')
+                    }}
+                    className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
+                      selectedProtocols.includes(protocol)
+                        ? 'bg-blue-500/20 text-blue-400'
+                        : 'text-gray-300 hover:bg-gray-800'
+                    }`}
+                  >
+                    {protocol.toUpperCase()}
+                  </div>
+                ))}
+              {protocols.filter(p => p.toLowerCase().includes(protocolSearch.toLowerCase())).length === 0 && (
+                <div className="px-3 py-2 text-xs text-gray-400">No matching protocols</div>
+              )}
             </div>
           )}
         </div>

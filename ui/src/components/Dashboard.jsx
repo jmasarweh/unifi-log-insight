@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchStats } from '../api'
-import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES, timeRangeToDays, filterVisibleRanges } from '../utils'
-
-const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d', '60d', '90d', '180d', '365d']
+import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES } from '../utils'
+import useTimeRange from '../hooks/useTimeRange'
 
 export function DashboardSkeleton() {
   return (
@@ -231,29 +230,10 @@ function TopList({ title, items, renderItem }) {
   )
 }
 
-const TR_KEY = 'unifi-log-insight:time-range'
-
 export default function Dashboard({ maxFilterDays }) {
-  const [timeRange, setTimeRangeState] = useState(() => sessionStorage.getItem(TR_KEY) || '24h')
+  const [timeRange, setTimeRange, visibleRanges] = useTimeRange(maxFilterDays)
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
-
-  const setTimeRange = (tr) => {
-    setTimeRangeState(tr)
-    sessionStorage.setItem(TR_KEY, tr)
-  }
-
-  const visibleRanges = filterVisibleRanges(TIME_RANGES, maxFilterDays)
-
-  // Auto-correct selected range if it exceeds visible ranges (respects ceiling).
-  // Depends on [maxFilterDays] only — including visibleRanges/timeRange would
-  // create an infinite loop (effect sets timeRange → re-render → new array ref → repeat).
-  useEffect(() => {
-    if (!maxFilterDays || visibleRanges.length === 0) return
-    if (visibleRanges.includes(timeRange)) return
-    const largest = [...visibleRanges].reverse().find(tr => timeRangeToDays(tr) >= 1) || visibleRanges[visibleRanges.length - 1]
-    if (largest && largest !== timeRange) setTimeRange(largest)
-  }, [maxFilterDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let mounted = true
