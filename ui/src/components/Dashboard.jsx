@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchStats } from '../api'
-import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES } from '../utils'
+import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES, formatServiceName } from '../utils'
 import useTimeRange from '../hooks/useTimeRange'
 
 export function DashboardSkeleton() {
@@ -547,7 +547,7 @@ export default function Dashboard({ maxFilterDays }) {
           items={stats.top_blocked_services || []}
           renderItem={(item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-gray-300 truncate mr-2">{item.service_name}</span>
+              <span className="text-gray-300 truncate mr-2">{formatServiceName(item.service_name)}</span>
               <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
             </div>
           )}
@@ -558,7 +558,7 @@ export default function Dashboard({ maxFilterDays }) {
           items={stats.top_allowed_services || []}
           renderItem={(item, i) => (
             <div key={i} className="flex items-center justify-between text-xs">
-              <span className="text-gray-300 truncate mr-2">{item.service_name}</span>
+              <span className="text-gray-300 truncate mr-2">{formatServiceName(item.service_name)}</span>
               <span className="text-gray-400 shrink-0">{formatNumber(item.count)}</span>
             </div>
           )}

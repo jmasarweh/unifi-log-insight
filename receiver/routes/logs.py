@@ -15,7 +15,7 @@ from psycopg2.extras import RealDictCursor
 from db import get_config, get_wan_ips_from_config
 from deps import get_conn, put_conn, enricher_db
 from parsers import VPN_PREFIX_DESCRIPTIONS
-from query_helpers import build_log_query
+from query_helpers import build_log_query, validate_time_params
 from services import get_service_description
 
 
@@ -114,6 +114,7 @@ def get_logs(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
 ):
+    time_range, time_from, time_to = validate_time_params(time_range, time_from, time_to)
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
@@ -258,6 +259,7 @@ def get_logs_aggregate(
     if having_min_unique_ips is not None and group_by == 'src_ip' and prefix_length is None:
         raise HTTPException(status_code=400, detail="having_min_unique_ips requires prefix_length when grouping by src_ip")
 
+    time_range, time_from, time_to = validate_time_params(time_range, time_from, time_to)
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,
@@ -542,6 +544,7 @@ def export_csv_endpoint(
     protocol: Optional[str] = Query(None),
     limit: int = Query(10000, ge=1, le=100000),
 ):
+    time_range, time_from, time_to = validate_time_params(time_range, time_from, time_to)
     where, params = build_log_query(
         log_type, time_range, time_from, time_to,
         src_ip, dst_ip, ip, direction, rule_action,

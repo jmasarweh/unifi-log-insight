@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { FlagIcon, getInterfaceName, decodeThreatCategories, isPrivateIP } from '../utils'
+import { FlagIcon, getInterfaceName, decodeThreatCategories, isPrivateIP, formatServiceName } from '../utils'
 import { fetchAbuseIPDBStatus, enrichIP } from '../api'
 import CopyButton from './CopyButton'
 
@@ -217,7 +217,7 @@ export default function LogDetail({ log, hiddenColumns = new Set() }) {
         <div key="service">
           <span className="text-gray-400 text-[12px] uppercase tracking-wider">Service</span>
           <div className="text-gray-300 text-sm mt-0.5">
-            {displayLog.service_name}
+            {formatServiceName(displayLog.service_name)}
             {displayLog.dst_port && (
               <span className="text-gray-400"> (port {displayLog.dst_port})</span>
             )}

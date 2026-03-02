@@ -1,12 +1,14 @@
-import React, { Suspense, useState, useEffect, useLayoutEffect, useMemo, useCallback } from 'react'
+import React, { Suspense, useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react'
 import LogStream from './components/LogStream'
 import SetupWizard from './components/SetupWizard'
 import SettingsOverlay from './components/SettingsOverlay'
 import { DashboardSkeleton } from './components/Dashboard'
 import { ThreatMapSkeleton } from './components/ThreatMap'
+import FlowViewSkeleton from './components/FlowViewSkeleton'
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'))
 const ThreatMap = React.lazy(() => import('./components/ThreatMap'))
+const FlowView = React.lazy(() => import('./components/FlowView'))
 import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dismissVpnToast, fetchInterfaces, updateUiSettings } from './api'
 import { loadInterfaceLabels } from './utils'
 import { isVpnInterface } from './vpnUtils'
@@ -14,6 +16,7 @@ import { isVpnInterface } from './vpnUtils'
 const TABS = [
   { id: 'logs', label: 'Log Stream' },
   { id: 'dashboard', label: 'Dashboard' },
+  { id: 'flow-view', label: 'Flow View' },
   { id: 'threat-map', label: 'Threat Map' },
 ]
 
@@ -67,6 +70,13 @@ export default function App() {
   const [showVpnToast, setShowVpnToast] = useState(false)
   const [mapFlyTo, setMapFlyTo] = useState(null)
   const clearMapFlyTo = useCallback(() => setMapFlyTo(null), [])
+  const [logsDrill, setLogsDrill] = useState(null)
+  const clearLogsDrill = useCallback(() => setLogsDrill(null), [])
+  const [drillSource, setDrillSource] = useState(null)
+  const activeTabRef = useRef(activeTab)
+  activeTabRef.current = activeTab
+  const drillSourceRef = useRef(drillSource)
+  drillSourceRef.current = drillSource
   const [unlabeledVpn, setUnlabeledVpn] = useState([])
   const [showWanToast, setShowWanToast] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('ui_theme') || 'dark')
@@ -192,6 +202,29 @@ export default function App() {
     }
     window.addEventListener('viewOnMap', handler)
     return () => window.removeEventListener('viewOnMap', handler)
+  }, [])
+
+  // Listen for "Drill to logs" events from FlowView
+  useEffect(() => {
+    const handler = (e) => {
+      setDrillSource(activeTabRef.current)
+      setLogsDrill(e.detail)
+      setActiveTab('logs')
+    }
+    window.addEventListener('drillToLogs', handler)
+    return () => window.removeEventListener('drillToLogs', handler)
+  }, [])
+
+  // Listen for "Return from drill" — navigate back to source tab
+  useEffect(() => {
+    const handler = () => {
+      if (drillSourceRef.current) {
+        setActiveTab(drillSourceRef.current)
+        setDrillSource(null)
+      }
+    }
+    window.addEventListener('returnFromDrill', handler)
+    return () => window.removeEventListener('returnFromDrill', handler)
   }, [])
 
   const maxFilterDays = useMemo(() => {
@@ -457,9 +490,16 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} />}
+        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} drillFilters={logsDrill} onDrillConsumed={clearLogsDrill} />}
         <Suspense fallback={<DashboardSkeleton />}>
           {activeTab === 'dashboard' && <Dashboard maxFilterDays={maxFilterDays} />}
+        </Suspense>
+        <Suspense fallback={<FlowViewSkeleton />}>
+          {(activeTab === 'flow-view' || drillSource === 'flow-view') && (
+            <div className={activeTab !== 'flow-view' ? 'hidden' : 'contents'}>
+              <FlowView maxFilterDays={maxFilterDays} />
+            </div>
+          )}
         </Suspense>
         <Suspense fallback={<ThreatMapSkeleton />}>
           {activeTab === 'threat-map' && <ThreatMap maxFilterDays={maxFilterDays} flyTo={mapFlyTo} onFlyToDone={clearMapFlyTo} />}

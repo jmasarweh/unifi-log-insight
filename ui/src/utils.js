@@ -27,6 +27,12 @@ export function formatNumber(n) {
   return n.toLocaleString()
 }
 
+export function formatServiceName(name) {
+  if (!name) return '—'
+  if (name === 'Unknown' || name === 'unknown') return 'Unknown'
+  return name.toUpperCase()
+}
+
 export function isPrivateIP(ip) {
   if (!ip) return true
   // IPv6 private/reserved ranges
@@ -48,6 +54,20 @@ export function isPrivateIP(ip) {
     if (second >= 16 && second <= 31) return true
   }
   return false
+}
+
+/**
+ * Resolve ASN/abuse subline for source and destination IPs.
+ * ASN belongs to the enriched (remote) IP: inbound → source, otherwise → destination.
+ * Returns { srcSubline, dstSubline }.
+ */
+export function resolveIpSublines({ asn_name, abuse_hostnames, direction, src_ip, dst_ip }) {
+  const text = asn_name || abuse_hostnames || null
+  if (!text) return { srcSubline: null, dstSubline: null }
+  return {
+    srcSubline: direction === 'inbound' && !isPrivateIP(src_ip) ? text : null,
+    dstSubline: direction !== 'inbound' && dst_ip && !isPrivateIP(dst_ip) ? text : null,
+  }
 }
 
 export const LOG_TYPE_STYLES = {

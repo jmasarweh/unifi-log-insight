@@ -11,6 +11,8 @@ const DEFAULT_FILTERS = {
   rule_action: null,
   direction: null,
   ip: null,
+  src_ip: null,
+  dst_ip: null,
   rule_name: null,
   search: null,
   service: null,
@@ -41,7 +43,7 @@ const TOGGLEABLE_COLUMNS = [
   { key: 'categories', label: 'Categories' },
 ]
 
-export default function LogStream({ version, latestRelease, maxFilterDays }) {
+export default function LogStream({ version, latestRelease, maxFilterDays, drillFilters, onDrillConsumed }) {
   const [filters, setFilters] = useState(() => {
     const restored = { ...DEFAULT_FILTERS }
     try {
@@ -76,6 +78,43 @@ export default function LogStream({ version, latestRelease, maxFilterDays }) {
   const pendingRef = useRef(null)
   const scrollRef = useRef(null)
   const [showScrollTop, setShowScrollTop] = useState(false)
+  const [drillContext, setDrillContext] = useState(null)
+
+  // Apply drill filters from FlowView (F1/F4/F8)
+  useEffect(() => {
+    if (!drillFilters) return
+    setFilters(prev => ({
+      ...DEFAULT_FILTERS,
+      time_range: drillFilters.time_range || prev.time_range,
+      ip: null,
+      src_ip: drillFilters.src_ip || null,
+      dst_ip: drillFilters.dst_ip || null,
+      dst_port: drillFilters.dst_port?.toString() || null,
+      service: drillFilters.service || null,
+      log_type: 'firewall',
+      page: 1,
+      per_page: prev.per_page,
+      sort: prev.sort,
+      order: prev.order,
+    }))
+    // Build display string for drill indicator banner
+    const parts = []
+    if (drillFilters.src_ip) parts.push(drillFilters.src_ip)
+    if (drillFilters.dst_ip) parts.push(drillFilters.dst_ip)
+    const label = parts.join(' \u2192 ')
+    const portProto = [
+      drillFilters.dst_port && `:${drillFilters.dst_port}`,
+      drillFilters.service,
+    ].filter(Boolean).join(' ')
+    setDrillContext(label + (portProto ? ` ${portProto}` : ''))
+    onDrillConsumed?.()
+  }, [drillFilters]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const clearDrill = useCallback(() => {
+    setDrillContext(null)
+    setFilters(prev => ({ ...DEFAULT_FILTERS, per_page: prev.per_page, sort: prev.sort, order: prev.order }))
+    window.dispatchEvent(new Event('returnFromDrill'))
+  }, [])
 
   // Load UI display settings
   useEffect(() => {
@@ -231,6 +270,13 @@ export default function LogStream({ version, latestRelease, maxFilterDays }) {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Drill indicator banner (F8) */}
+      {drillContext && (
+        <div className="flex items-center justify-between px-4 py-1.5 bg-blue-500/10 border-b border-blue-500/30 text-xs text-blue-400">
+          <span>Showing: <span className="font-medium text-blue-300">{drillContext}</span></span>
+          <button onClick={clearDrill} className="text-blue-400 hover:text-blue-300 ml-4">&#x2715;</button>
+        </div>
+      )}
       {/* Filters */}
       <div className="px-4 py-3 border-b border-gray-800 bg-gray-950">
         <FilterBar filters={filters} onChange={handleFilterChange} maxFilterDays={maxFilterDays} />

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { fetchLogsBatch } from '../api'
-import { FlagIcon, decodeThreatCategories, getInterfaceName } from '../utils'
+import { FlagIcon, decodeThreatCategories, getInterfaceName, formatServiceName } from '../utils'
 
 const ACTION_STYLES = {
   block: 'text-red-400',
@@ -102,7 +102,7 @@ function LogDetailPanel({ log }) {
           <Row label="Action" value={
             <span className={ACTION_STYLES[log.rule_action] || ''}>{log.rule_action || '—'}</span>
           } />
-          {log.service_name && <Row label="Service" value={log.service_name} />}
+          {log.service_name && <Row label="Service" value={formatServiceName(log.service_name)} />}
           {log.rule_desc && <Row label="Policy" value={log.rule_desc.replace(/\](?!\s)/, '] ')} />}
           <Row label="Direction" value={log.direction} />
         </div>
