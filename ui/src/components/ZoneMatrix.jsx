@@ -1,34 +1,36 @@
 import { useState, useEffect } from 'react'
 import { fetchZoneMatrix } from '../api'
 import { formatNumber } from '../utils'
+import FullscreenToggle from './FullscreenToggle'
+import InfoTooltip from './InfoTooltip'
 
 const THEMES = {
   dark: {
     labelBg: '#1f2937',
     labelText: '#d1d5db',
     mutedText: '#9ca3af',
-    emptyBg: '#273549',
-    emptyText: '#9fb1c8',
+    emptyBg: 'transparent',
+    emptyText: '#4b5563',
     tiers: [
-      { bg: '#253447', color: '#d1d5db' },
-      { bg: '#20527a', color: '#e0f2fe' },
-      { bg: '#1d67a3', color: '#f0f9ff' },
-      { bg: '#1d4ed8', color: '#dbeafe' },
-      { bg: '#312e81', color: '#eef2ff' },
+      { bg: '#0ea5e9', color: '#f0f9ff' },
+      { bg: '#6366f1', color: '#eef2ff' },
+      { bg: '#8b5cf6', color: '#f5f3ff' },
+      { bg: '#d946ef', color: '#fdf4ff' },
+      { bg: '#ec4899', color: '#fdf2f8' },
     ],
   },
   light: {
-    labelBg: '#f8fafc',
+    labelBg: '#e2e8f0',
     labelText: '#334155',
     mutedText: '#64748b',
-    emptyBg: '#eef2f7',
-    emptyText: '#64748b',
+    emptyBg: 'transparent',
+    emptyText: '#cbd5e1',
     tiers: [
-      { bg: '#eff6ff', color: '#1e3a8a' },
-      { bg: '#dbeafe', color: '#1e40af' },
-      { bg: '#bfdbfe', color: '#1e3a8a' },
-      { bg: '#93c5fd', color: '#1e3a8a' },
-      { bg: '#3b82f6', color: '#eff6ff' },
+      { bg: '#0ea5e9', color: '#f0f9ff' },
+      { bg: '#6366f1', color: '#eef2ff' },
+      { bg: '#8b5cf6', color: '#f5f3ff' },
+      { bg: '#d946ef', color: '#fdf4ff' },
+      { bg: '#ec4899', color: '#fdf2f8' },
     ],
   },
 }
@@ -44,12 +46,17 @@ const getTier = (total, maxTotal, theme) => {
 }
 
 // Shared card shell (matches header alignment with TopIPPairs)
-function Shell({ children, headerExtra }) {
+function Shell({ children, headerContent, isFullscreen, onToggleFullscreen }) {
   return (
-    <div className="border border-gray-800 rounded-lg flex flex-col h-full overflow-hidden">
-      <div className="flex h-11 items-center justify-between px-4 border-b border-gray-800 shrink-0">
-        <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Zone Traffic Matrix</h3>
-        {headerExtra}
+    <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-gray-950' : 'border border-gray-800 rounded-lg'} flex flex-col h-full overflow-hidden`}>
+      <div className="flex h-11 items-center gap-3 px-4 border-b border-gray-800 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Zone Traffic Matrix</h3>
+          {headerContent}
+        </div>
+        {onToggleFullscreen && (
+          <FullscreenToggle isFullscreen={isFullscreen} onToggle={onToggleFullscreen} className="ml-auto" />
+        )}
       </div>
       {children}
     </div>
@@ -61,6 +68,8 @@ export default function ZoneMatrix({ filters, refreshKey, onCellClick, activeCel
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [tooltip, setTooltip] = useState(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const toggleFullscreen = () => setIsFullscreen(f => !f)
   const [themeMode, setThemeMode] = useState(() => {
     if (typeof document === 'undefined') return 'dark'
     return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'
@@ -76,7 +85,7 @@ export default function ZoneMatrix({ filters, refreshKey, onCellClick, activeCel
       .catch(err => { if (!cancelled) setError(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [filters.time_range, filters.rule_action, filters.direction, refreshKey])
+  }, [filters.time_range, filters.time_from, filters.time_to, filters.rule_action, filters.direction, refreshKey])
 
   useEffect(() => {
     const root = document.documentElement
@@ -88,9 +97,9 @@ export default function ZoneMatrix({ filters, refreshKey, onCellClick, activeCel
     return () => obs.disconnect()
   }, [])
 
-  if (loading) return <Shell><div className="flex items-center justify-center h-48 text-xs text-gray-500">Loading zone matrix...</div></Shell>
-  if (error) return <Shell><div className="flex items-center justify-center h-48 text-xs text-red-400">{error}</div></Shell>
-  if (!data?.cells?.length) return <Shell><div className="flex items-center justify-center h-48 text-xs text-gray-500">No zone traffic data for this time range</div></Shell>
+  if (loading) return <Shell isFullscreen={isFullscreen} onToggleFullscreen={toggleFullscreen}><div className="flex items-center justify-center h-48 text-xs text-gray-500">Loading zone matrix...</div></Shell>
+  if (error) return <Shell isFullscreen={isFullscreen} onToggleFullscreen={toggleFullscreen}><div className="flex items-center justify-center h-48 text-xs text-red-400">{error}</div></Shell>
+  if (!data?.cells?.length) return <Shell isFullscreen={isFullscreen} onToggleFullscreen={toggleFullscreen}><div className="flex items-center justify-center h-48 text-xs text-gray-500">No zone traffic data for this time range</div></Shell>
 
   const { cells, interfaces, labels } = data
   const cellMap = new Map()
@@ -117,7 +126,7 @@ export default function ZoneMatrix({ filters, refreshKey, onCellClick, activeCel
   }
 
   return (
-    <Shell headerExtra={<span className="text-[11px]" style={{ color: theme.mutedText }}>Click a zone pair to filter</span>}>
+    <Shell headerContent={<InfoTooltip><p>Click a zone pair cell to filter the Flow Graph and IP Pairs table by that source/destination zone.</p></InfoTooltip>} isFullscreen={isFullscreen} onToggleFullscreen={toggleFullscreen}>
       <div className="overflow-auto flex-1 min-h-0 scroll-fade p-4">
         <table className="w-full border-separate text-[11px]" style={{ borderSpacing: 3 }}>
           <tbody>
