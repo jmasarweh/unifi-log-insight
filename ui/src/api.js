@@ -387,7 +387,19 @@ export async function updateUiSettings(settings) {
 
 // ── Version Check ────────────────────────────────────────────────────────────
 
-export async function fetchLatestRelease() {
+export async function fetchLatestRelease(currentVersion) {
+  // Beta builds: include pre-releases when finding the latest
+  if (currentVersion && currentVersion.includes('-beta')) {
+    const resp = await fetch(
+      'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases?per_page=1'
+    )
+    if (!resp.ok) return null
+    const data = await resp.json()
+    if (!data.length) return null
+    const r = data[0]
+    return { tag: r.tag_name, url: r.html_url, body: r.body || '', prerelease: r.prerelease }
+  }
+  // Stable builds: /releases/latest skips pre-releases automatically
   const resp = await fetch(
     'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases/latest'
   )
@@ -402,7 +414,5 @@ export async function fetchAllReleases() {
   )
   if (!resp.ok) return null
   const data = await resp.json()
-  return data
-    .filter(r => !r.prerelease)
-    .map(r => ({ tag: r.tag_name, url: r.html_url, body: r.body || '' }))
+  return data.map(r => ({ tag: r.tag_name, url: r.html_url, body: r.body || '', prerelease: r.prerelease }))
 }

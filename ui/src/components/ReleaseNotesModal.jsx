@@ -24,12 +24,20 @@ export function renderMarkdown(md) {
 
 export function isNewerVersion(latest, current) {
   if (!latest || !current) return false
-  const parse = v => v.replace(/^v/, '').split('.').map(Number)
-  const [lMaj, lMin, lPatch] = parse(latest)
-  const [cMaj, cMin, cPatch] = parse(current)
+  const parse = v => {
+    const clean = v.replace(/^v/, '')
+    const [base, pre] = clean.split('-')
+    const parts = base.split('.').map(Number)
+    // stable (no pre-release) ranks higher than any beta
+    const preNum = pre ? parseInt(pre.split('.').pop(), 10) || 0 : Infinity
+    return [...parts, preNum]
+  }
+  const [lMaj, lMin, lPatch, lPre] = parse(latest)
+  const [cMaj, cMin, cPatch, cPre] = parse(current)
   if (lMaj !== cMaj) return lMaj > cMaj
   if (lMin !== cMin) return lMin > cMin
-  return lPatch > cPatch
+  if (lPatch !== cPatch) return lPatch > cPatch
+  return lPre > cPre
 }
 
 export default function ReleaseNotesModal({ latestRelease, onClose, currentVersion }) {
@@ -63,13 +71,13 @@ export default function ReleaseNotesModal({ latestRelease, onClose, currentVersi
               <span className="text-[10px] text-gray-500">Loading versions...</span>
             ) : allReleases && allReleases.length > 1 && (
               <div className="flex items-center gap-1.5">
-                <label htmlFor="previous-releases-select" className="text-xs text-gray-500">Previous Releases:</label>
+                <label htmlFor="previous-releases-select" className="text-xs text-gray-500">Other Releases:</label>
                 <select
                   id="previous-releases-select"
                   value={displayedRelease.tag}
                   onChange={e => {
                     const rel = allReleases.find(r => r.tag === e.target.value)
-                    if (rel) setSelectedRelease(rel.tag === allReleases[0].tag ? null : rel)
+                    if (rel) setSelectedRelease(rel.tag === latestRelease.tag ? null : rel)
                   }}
                   className="px-2 py-1 bg-gray-900 border border-gray-600 rounded text-[11px] text-gray-300 focus:border-teal-500 focus:outline-none"
                 >

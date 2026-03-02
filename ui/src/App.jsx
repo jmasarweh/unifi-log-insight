@@ -179,6 +179,7 @@ export default function App() {
   }, [config, configLoaded])
 
   useEffect(() => {
+    if (!health?.version) return
     const cached = sessionStorage.getItem('latest_release')
     if (cached) {
       try {
@@ -186,13 +187,13 @@ export default function App() {
         if (Date.now() - ts < 3600000) { setLatestRelease(data); return }
       } catch { /* ignore */ }
     }
-    fetchLatestRelease().then(release => {
+    fetchLatestRelease(health.version).then(release => {
       if (release) {
         setLatestRelease(release)
         sessionStorage.setItem('latest_release', JSON.stringify({ data: release, ts: Date.now() }))
       }
     })
-  }, [])
+  }, [health?.version])
 
   // Listen for "View on map" events from LogDetail
   useEffect(() => {
