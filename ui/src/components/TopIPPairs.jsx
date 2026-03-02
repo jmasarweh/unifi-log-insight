@@ -26,6 +26,8 @@ const FILTER_LABELS = {
   interface_out: 'Interface Out',
 }
 
+// onIpClick(ip, rowIndex) — rowIndex is used by FlowView's toggle logic:
+// clicking the same IP in the same row closes the panel, different row keeps it open.
 export default function TopIPPairs({ filters, refreshKey, sankeyFilter, onClearSankeyFilter, zoneFilter, onClearZoneFilter, onIpClick }) {
   const [pairs, setPairs] = useState([])
   const [loading, setLoading] = useState(true)

@@ -83,9 +83,9 @@ export default function LogStream({ version, latestRelease, maxFilterDays, drill
   // Apply drill filters from FlowView (F1/F4/F8)
   useEffect(() => {
     if (!drillFilters) return
-    setFilters({
+    setFilters(prev => ({
       ...DEFAULT_FILTERS,
-      time_range: drillFilters.time_range || filters.time_range,
+      time_range: drillFilters.time_range || prev.time_range,
       ip: null,
       src_ip: drillFilters.src_ip || null,
       dst_ip: drillFilters.dst_ip || null,
@@ -93,10 +93,10 @@ export default function LogStream({ version, latestRelease, maxFilterDays, drill
       service: drillFilters.service || null,
       log_type: 'firewall',
       page: 1,
-      per_page: filters.per_page,
-      sort: filters.sort,
-      order: filters.order,
-    })
+      per_page: prev.per_page,
+      sort: prev.sort,
+      order: prev.order,
+    }))
     // Build display string for drill indicator banner
     const parts = []
     if (drillFilters.src_ip) parts.push(drillFilters.src_ip)

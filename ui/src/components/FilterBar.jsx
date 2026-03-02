@@ -18,6 +18,15 @@ const TIME_RANGES = [
 const ACTIONS = ['allow', 'block', 'redirect']
 const DIRECTIONS = ['inbound', 'outbound', 'inter_vlan', 'nat']
 
+const RESET_FILTERS = {
+  time_range: '24h', time_from: null, time_to: null,
+  page: 1, per_page: 50,
+  ip: null, rule_name: null, search: null, service: null,
+  interface: null, protocol: null, dst_port: null, src_port: null,
+  country: null, asn: null,
+  log_type: null, rule_action: null, direction: null, vpn_only: null,
+}
+
 export default function FilterBar({ filters, onChange, maxFilterDays }) {
   const [ipSearch, setIpSearch] = useState(filters.ip || '')
   const [ruleSearch, setRuleSearch] = useState(filters.rule_name || '')
@@ -629,7 +638,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSrcPortSearch('')
             setProtocolSearch('')
             setSelectedProtocols([])
-            wrappedOnChange({ time_range: '24h', time_from: null, time_to: null, page: 1, per_page: 50, ip: null, rule_name: null, search: null, service: null, interface: null, protocol: null, dst_port: null, src_port: null, country: null, asn: null, log_type: null, rule_action: null, direction: null, vpn_only: null })
+            wrappedOnChange(RESET_FILTERS)
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
         >

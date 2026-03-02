@@ -8,10 +8,26 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-VALID_TIME_RANGES = {'1h', '6h', '24h', '7d', '30d', '60d', '90d', '180d', '365d'}
+# Single source of truth for valid time ranges and their deltas
+_TIME_RANGE_DELTAS = {
+    '1h': timedelta(hours=1),
+    '6h': timedelta(hours=6),
+    '24h': timedelta(hours=24),
+    '7d': timedelta(days=7),
+    '30d': timedelta(days=30),
+    '60d': timedelta(days=60),
+    '90d': timedelta(days=90),
+    '180d': timedelta(days=180),
+    '365d': timedelta(days=365),
+}
+VALID_TIME_RANGES = set(_TIME_RANGE_DELTAS)
 
 
-def validate_time_params(time_range, time_from, time_to):
+def validate_time_params(
+    time_range: Optional[str],
+    time_from: Optional[str],
+    time_to: Optional[str],
+) -> tuple[Optional[str], Optional[str], Optional[str]]:
     """Validate and sanitize time parameters."""
     if time_range and time_range not in VALID_TIME_RANGES:
         time_range = '24h'
@@ -60,18 +76,7 @@ def _parse_port(value: str) -> tuple[bool, int | None]:
 def parse_time_range(time_range: str) -> Optional[datetime]:
     """Convert time range string to a datetime cutoff."""
     now = datetime.now(timezone.utc)
-    mapping = {
-        '1h': timedelta(hours=1),
-        '6h': timedelta(hours=6),
-        '24h': timedelta(hours=24),
-        '7d': timedelta(days=7),
-        '30d': timedelta(days=30),
-        '60d': timedelta(days=60),
-        '90d': timedelta(days=90),
-        '180d': timedelta(days=180),
-        '365d': timedelta(days=365),
-    }
-    delta = mapping.get(time_range)
+    delta = _TIME_RANGE_DELTAS.get(time_range)
     return now - delta if delta else None
 
 
