@@ -39,6 +39,7 @@ const getIfaceBadgeClass = (iface, wanList = []) => {
 
 export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFilter, hostIp }) {
   const [dims, setDims] = useState(['src_ip', 'dst_port', 'dst_ip'])
+  const [showCenter, setShowCenter] = useState(true)
   const [topN, setTopN] = useState(15)
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -62,13 +63,18 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
     return () => ro.disconnect()
   }, [])
 
+  const activeDims = useMemo(
+    () => showCenter ? dims : [dims[0], dims[2]],
+    [dims, showCenter]
+  )
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
     fetchFlowGraph({
       ...filters,
-      dimensions: dims.join(','),
+      dimensions: activeDims.join(','),
       top_n: topN,
       ip: hostIp || undefined,
     })
@@ -76,7 +82,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
       .catch(err => { if (!cancelled) setError(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [filters.time_range, filters.rule_action, filters.direction, dims, topN, hostIp, refreshKey])
+  }, [filters.time_range, filters.rule_action, filters.direction, activeDims, topN, hostIp, refreshKey])
 
   const setDim = (index, value) => {
     setDims(prev => {
@@ -171,11 +177,11 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
       return {
         x: isFirst ? 4 : isLast ? layout.width - 4 : center,
         anchor: isFirst ? 'start' : isLast ? 'end' : 'middle',
-        label: dimLabel(dims[i]),
+        label: dimLabel(activeDims[i]),
         color: (COLUMN_COLORS[i] || COLUMN_COLORS[0]).node,
       }
     })
-  }, [layout, dims])
+  }, [layout, activeDims])
 
   // Render node label based on type
   const renderLabel = (node, isDimmed) => {
@@ -277,22 +283,41 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
         <div className="h-5 w-px bg-gray-700" />
 
         {/* Dimension selectors with labels */}
-        {dims.map((d, i) => (
-          <div key={i} className="flex items-center gap-1.5">
-            <span className="text-[10px] text-gray-500 uppercase tracking-wider">{['Left', 'Center', 'Right'][i]}</span>
-            <select
-              value={d}
-              onChange={e => setDim(i, e.target.value)}
-              className="bg-gray-800/50 text-gray-300 text-xs rounded px-2 py-0.5 border border-gray-700 focus:outline-none focus:border-gray-500 cursor-pointer"
-            >
-              {DIMENSION_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value} disabled={dims.includes(opt.value) && dims[i] !== opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
+        {dims.map((d, i) => {
+          // Skip center selector when center column is hidden
+          if (i === 1 && !showCenter) return null
+          const colLabel = ['Left', 'Center', 'Right'][i]
+          const colColor = COLUMN_COLORS[showCenter ? i : i === 2 ? 1 : i]
+          return (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: colColor.node }}>{colLabel}</span>
+              <select
+                value={d}
+                onChange={e => setDim(i, e.target.value)}
+                className="bg-gray-800/50 text-gray-300 text-xs rounded px-2 py-0.5 border border-gray-700 focus:outline-none focus:border-gray-500 cursor-pointer"
+              >
+                {DIMENSION_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value} disabled={dims.includes(opt.value) && dims[i] !== opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )
+        })}
+
+        {/* Toggle center column */}
+        <button
+          onClick={() => setShowCenter(v => !v)}
+          title={showCenter ? 'Hide center column' : 'Show center column'}
+          className={`text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border transition-colors cursor-pointer ${
+            showCenter
+              ? 'bg-gray-800/50 border-gray-700 text-gray-400 hover:border-gray-500 hover:text-gray-300'
+              : 'bg-purple-900/30 border-purple-700/60 text-purple-400 hover:border-purple-500'
+          }`}
+        >
+          {showCenter ? '2 cols' : '3 cols'}
+        </button>
 
         <div className="h-5 w-px bg-gray-700" />
 

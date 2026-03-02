@@ -41,28 +41,27 @@ MIN_TOP_N = 3
 
 
 def _build_sankey(rows, dims, requested_top_n, applied_top_n):
-    """Convert aggregated rows into nodes + links for the Sankey chart."""
+    """Convert aggregated rows into nodes + links for the Sankey chart.
+
+    Supports 2 or 3 dimensions. For 2 dims the SQL returns columns a, b (no c).
+    """
     node_values = {}  # id -> total value
     link_map = {}     # (source_id, target_id) -> value
 
-    dim_a, dim_b, dim_c = dims
+    n_dims = len(dims)
+    dim_keys = ['a', 'b', 'c'][:n_dims]
 
     for row in rows:
-        a_val, b_val, c_val, value = row['a'], row['b'], row['c'], row['value']
-        a_id = f"{dim_a}:{a_val}"
-        b_id = f"{dim_b}:{b_val}"
-        c_id = f"{dim_c}:{c_val}"
+        value = row['value']
+        ids = [f"{dims[i]}:{row[dim_keys[i]]}" for i in range(n_dims)]
 
-        # Accumulate node values
-        node_values[a_id] = node_values.get(a_id, 0) + value
-        node_values[b_id] = node_values.get(b_id, 0) + value
-        node_values[c_id] = node_values.get(c_id, 0) + value
+        for nid in ids:
+            node_values[nid] = node_values.get(nid, 0) + value
 
-        # Accumulate link values (a→b and b→c)
-        ab = (a_id, b_id)
-        link_map[ab] = link_map.get(ab, 0) + value
-        bc = (b_id, c_id)
-        link_map[bc] = link_map.get(bc, 0) + value
+        # Accumulate link values between consecutive columns
+        for i in range(n_dims - 1):
+            key = (ids[i], ids[i + 1])
+            link_map[key] = link_map.get(key, 0) + value
 
     nodes = [
         {"id": nid, "label": nid.split(":", 1)[1], "type": nid.split(":", 1)[0], "value": val}
@@ -195,8 +194,8 @@ def get_flow_graph(
 ):
     # Validate dimensions
     dims = [d.strip() for d in dimensions.split(',')]
-    if len(dims) != 3 or len(set(dims)) != 3:
-        raise HTTPException(status_code=400, detail="dimensions must be exactly 3 unique values")
+    if len(dims) not in (2, 3) or len(set(dims)) != len(dims):
+        raise HTTPException(status_code=400, detail="dimensions must be 2 or 3 unique values")
     for d in dims:
         if d not in ALLOWED_DIMENSIONS:
             raise HTTPException(status_code=400, detail=f"Invalid dimension: {d}. Allowed: {sorted(ALLOWED_DIMENSIONS)}")
@@ -221,9 +220,8 @@ def get_flow_graph(
         search=None, service=None, interface=interface,
     )
 
-    dim_a_expr = DIMENSION_EXPRS[dims[0]]
-    dim_b_expr = DIMENSION_EXPRS[dims[1]]
-    dim_c_expr = DIMENSION_EXPRS[dims[2]]
+    dim_exprs = [DIMENSION_EXPRS[d] for d in dims]
+    n_dims = len(dims)
 
     requested_top_n = top_n
     base_params = params + ip_params_extra
@@ -232,6 +230,17 @@ def get_flow_graph(
     conn = get_conn()
     try:
         while top_n >= MIN_TOP_N:
+            # Build SQL dynamically to support 2 or 3 dimensions
+            col_letters = ['a', 'b', 'c'][:n_dims]
+            top_ctes = '\n'.join(
+                f"top_{col} AS (SELECT {dim_exprs[i]} AS val FROM filtered GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT %s),"
+                for i, col in enumerate(col_letters)
+            )
+            select_cols = ',\n                    '.join(
+                f"CASE WHEN {dim_exprs[i]} IN (SELECT val FROM top_{col}) THEN ({dim_exprs[i]})::text ELSE 'Other' END AS {col}"
+                for i, col in enumerate(col_letters)
+            )
+            group_cols = ', '.join(col_letters)
             sql = f"""
             WITH filtered AS (
                 SELECT src_ip, dst_ip, dst_port, LOWER(protocol) AS protocol,
@@ -241,22 +250,18 @@ def get_flow_graph(
                   AND src_ip IS NOT NULL AND dst_ip IS NOT NULL
                   {ip_filter}
             ),
-            top_a AS (SELECT {dim_a_expr} AS val FROM filtered GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT %s),
-            top_b AS (SELECT {dim_b_expr} AS val FROM filtered GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT %s),
-            top_c AS (SELECT {dim_c_expr} AS val FROM filtered GROUP BY 1 ORDER BY COUNT(*) DESC LIMIT %s),
+            {top_ctes}
             mapped AS (
                 SELECT
-                    CASE WHEN {dim_a_expr} IN (SELECT val FROM top_a) THEN ({dim_a_expr})::text ELSE 'Other' END AS a,
-                    CASE WHEN {dim_b_expr} IN (SELECT val FROM top_b) THEN ({dim_b_expr})::text ELSE 'Other' END AS b,
-                    CASE WHEN {dim_c_expr} IN (SELECT val FROM top_c) THEN ({dim_c_expr})::text ELSE 'Other' END AS c
+                    {select_cols}
                 FROM filtered
             )
-            SELECT a, b, c, COUNT(*) AS value
+            SELECT {group_cols}, COUNT(*) AS value
             FROM mapped
-            GROUP BY a, b, c
+            GROUP BY {group_cols}
             ORDER BY value DESC
             """
-            query_params = base_params + [top_n, top_n, top_n]
+            query_params = base_params + [top_n] * n_dims
 
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 cur.execute(sql, query_params)
