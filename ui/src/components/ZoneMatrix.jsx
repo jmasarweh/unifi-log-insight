@@ -43,12 +43,13 @@ const getTier = (total, maxTotal, theme) => {
   return theme.tiers[4]
 }
 
-// Shared card shell for loading/error/empty states (matches header alignment with TopIPPairs)
-function Shell({ children }) {
+// Shared card shell (matches header alignment with TopIPPairs)
+function Shell({ children, headerExtra }) {
   return (
     <div className="border border-gray-800 rounded-lg flex flex-col h-full overflow-hidden">
       <div className="flex h-11 items-center justify-between px-4 border-b border-gray-800 shrink-0">
         <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Zone Traffic Matrix</h3>
+        {headerExtra}
       </div>
       {children}
     </div>
@@ -116,13 +117,7 @@ export default function ZoneMatrix({ filters, refreshKey, onCellClick, activeCel
   }
 
   return (
-    <div className="border border-gray-800 rounded-lg flex flex-col h-full overflow-hidden">
-      {/* Header — matches SankeyChart / TopIPPairs exactly: px-4 py-2.5 border-b */}
-      <div className="flex h-11 items-center justify-between px-4 border-b border-gray-800 shrink-0">
-        <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider">Zone Traffic Matrix</h3>
-        <span className="text-[11px]" style={{ color: theme.mutedText }}>Click a zone pair to filter</span>
-      </div>
-
+    <Shell headerExtra={<span className="text-[11px]" style={{ color: theme.mutedText }}>Click a zone pair to filter</span>}>
       <div className="overflow-auto flex-1 min-h-0 scroll-fade p-4">
         <table className="w-full border-separate text-[11px]" style={{ borderSpacing: 3 }}>
           <tbody>
@@ -234,6 +229,6 @@ export default function ZoneMatrix({ filters, refreshKey, onCellClick, activeCel
           </div>
         )}
       </div>
-    </div>
+    </Shell>
   )
 }

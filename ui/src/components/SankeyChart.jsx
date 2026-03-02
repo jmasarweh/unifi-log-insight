@@ -76,7 +76,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
       .catch(err => { if (!cancelled) setError(err.message) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [filters.time_range, filters.rule_action, filters.direction, dims.join(','), topN, hostIp, refreshKey])
+  }, [filters.time_range, filters.rule_action, filters.direction, dims, topN, hostIp, refreshKey])
 
   const setDim = (index, value) => {
     setDims(prev => {
@@ -123,20 +123,24 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
     }
   }, [data, chartWidth])
 
+  // Sorted unique x0 positions (one per column) — cached to avoid O(n²) in color lookups
+  const sortedCols = useMemo(() => {
+    if (!layout) return []
+    return [...new Set(layout.nodes.map(n => n.x0))].sort((a, b) => a - b)
+  }, [layout])
+
   const getNodeColor = (node) => {
     if (node.label === 'Other') return OTHER_COLOR.node
-    if (!layout) return COLUMN_COLORS[0].node
-    const cols = [...new Set(layout.nodes.map(n => n.x0))].sort((a, b) => a - b)
-    const colIdx = cols.indexOf(node.x0)
+    if (!sortedCols.length) return COLUMN_COLORS[0].node
+    const colIdx = sortedCols.indexOf(node.x0)
     return (COLUMN_COLORS[colIdx] || COLUMN_COLORS[0]).node
   }
 
   const getLinkColor = (link) => {
     const srcNode = link.source
     if (srcNode.label === 'Other') return OTHER_COLOR.link
-    if (!layout) return COLUMN_COLORS[0].link
-    const cols = [...new Set(layout.nodes.map(n => n.x0))].sort((a, b) => a - b)
-    const colIdx = cols.indexOf(srcNode.x0)
+    if (!sortedCols.length) return COLUMN_COLORS[0].link
+    const colIdx = sortedCols.indexOf(srcNode.x0)
     return (COLUMN_COLORS[colIdx] || COLUMN_COLORS[0]).link
   }
 
