@@ -1,14 +1,16 @@
 """Dashboard statistics endpoint."""
 
+import ipaddress
 import logging
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Query, HTTPException
 from psycopg2.extras import RealDictCursor
 
 from db import get_config, get_wan_ips_from_config
 from deps import get_conn, put_conn, enricher_db
-from query_helpers import parse_time_range
+from query_helpers import parse_time_range, build_log_query, validate_time_params, VALID_TIME_RANGES
 
 logger = logging.getLogger('api.stats')
 
@@ -307,6 +309,123 @@ def get_stats(
     except Exception as e:
         conn.rollback()
         logger.exception("Error fetching stats")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+@router.get("/api/stats/ip-pairs")
+def get_ip_pairs(
+    time_range: Optional[str] = Query("24h"),
+    time_from: Optional[str] = Query(None),
+    time_to: Optional[str] = Query(None),
+    log_type: Optional[str] = Query("firewall"),
+    rule_action: Optional[str] = Query(None),
+    direction: Optional[str] = Query(None),
+    interface: Optional[str] = Query(None),
+    service: Optional[str] = Query(None),
+    src_ip: Optional[str] = Query(None),
+    dst_ip: Optional[str] = Query(None),
+    dst_port: Optional[str] = Query(None),
+    protocol: Optional[str] = Query(None),
+    interface_in: Optional[str] = Query(None),
+    interface_out: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100),
+):
+    time_range, time_from, time_to = validate_time_params(time_range, time_from, time_to)
+
+    # Pass dst_port and protocol through build_log_query (they use = matching)
+    where, params = build_log_query(
+        log_type=log_type, time_range=time_range, time_from=time_from, time_to=time_to,
+        src_ip=None, dst_ip=None, ip=None, direction=direction,
+        rule_action=rule_action, rule_name=None, country=None, threat_min=None,
+        search=None, service=service, interface=interface,
+        dst_port=dst_port, protocol=protocol,
+    )
+
+    # Exact-match filters for cross-filtering (NOT through build_log_query LIKE path)
+    # Uses ::inet cast to leverage existing INET indexes on src_ip/dst_ip
+    if src_ip:
+        try:
+            ipaddress.ip_address(src_ip)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail="Invalid src_ip") from err
+        where += " AND src_ip = %s::inet"
+        params.append(src_ip)
+    if dst_ip:
+        try:
+            ipaddress.ip_address(dst_ip)
+        except ValueError as err:
+            raise HTTPException(status_code=400, detail="Invalid dst_ip") from err
+        where += " AND dst_ip = %s::inet"
+        params.append(dst_ip)
+    if interface_in:
+        where += " AND interface_in = %s"
+        params.append(interface_in)
+    if interface_out:
+        where += " AND interface_out = %s"
+        params.append(interface_out)
+
+    sql = f"""
+    WITH pair_counts AS (
+        SELECT
+            src_ip, dst_ip, dst_port, LOWER(protocol) AS protocol,
+            MODE() WITHIN GROUP (ORDER BY service_name) AS service_name,
+            COUNT(*) AS total_count,
+            COUNT(*) FILTER (WHERE rule_action = 'allow') AS allow_count,
+            COUNT(*) FILTER (WHERE rule_action = 'block') AS block_count,
+            MAX(threat_score) AS max_threat_score,
+            MODE() WITHIN GROUP (ORDER BY asn_name) FILTER (WHERE asn_name IS NOT NULL) AS asn_name,
+            MODE() WITHIN GROUP (ORDER BY direction) FILTER (WHERE direction IS NOT NULL) AS direction
+        FROM logs
+        WHERE {where}
+          AND src_ip IS NOT NULL AND dst_ip IS NOT NULL
+          AND dst_port IS NOT NULL AND protocol IS NOT NULL
+        GROUP BY src_ip, dst_ip, dst_port, LOWER(protocol)
+        ORDER BY total_count DESC
+        LIMIT %s
+    )
+    SELECT
+        host(p.src_ip) AS src_ip, host(p.dst_ip) AS dst_ip,
+        p.dst_port, p.protocol, p.service_name,
+        p.total_count, p.allow_count, p.block_count, p.max_threat_score, p.asn_name, p.direction,
+        COALESCE(cs.device_name, ds.device_name) AS src_device_name,
+        COALESCE(cd.device_name, dd.device_name) AS dst_device_name
+    FROM pair_counts p
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(device_name, hostname, oui) AS device_name
+        FROM unifi_clients WHERE ip = p.src_ip
+        ORDER BY last_seen DESC NULLS LAST LIMIT 1
+    ) cs ON true
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(device_name, model) AS device_name
+        FROM unifi_devices WHERE ip = p.src_ip
+        ORDER BY updated_at DESC NULLS LAST LIMIT 1
+    ) ds ON true
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(device_name, hostname, oui) AS device_name
+        FROM unifi_clients WHERE ip = p.dst_ip
+        ORDER BY last_seen DESC NULLS LAST LIMIT 1
+    ) cd ON true
+    LEFT JOIN LATERAL (
+        SELECT COALESCE(device_name, model) AS device_name
+        FROM unifi_devices WHERE ip = p.dst_ip
+        ORDER BY updated_at DESC NULLS LAST LIMIT 1
+    ) dd ON true
+    ORDER BY p.total_count DESC
+    """
+    params.append(limit)
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(sql, params)
+            pairs = [dict(r) for r in cur.fetchall()]
+        conn.commit()
+        return {"pairs": pairs}
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching IP pairs")
         raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)

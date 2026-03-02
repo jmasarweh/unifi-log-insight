@@ -63,6 +63,44 @@ export function getExportUrl(params = {}) {
   return `${BASE}/export?${buildQS(params)}`
 }
 
+// ── Flow View API ───────────────────────────────────────────────────────────
+
+export async function fetchIPPairs(params = {}) {
+  const resp = await fetch(`${BASE}/stats/ip-pairs?${buildQS(params)}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function fetchFlowGraph(params = {}) {
+  const resp = await fetch(`${BASE}/flows/graph?${buildQS(params)}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function fetchZoneMatrix(params = {}) {
+  const resp = await fetch(`${BASE}/flows/zone-matrix?${buildQS(params)}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
+export async function fetchHostDetail(params = {}) {
+  const resp = await fetch(`${BASE}/flows/host-detail?${buildQS(params)}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.status}`)
+  }
+  return resp.json()
+}
+
 // ── Threat Map API ──────────────────────────────────────────────────────────
 
 export async function fetchLogsBatch(ids) {

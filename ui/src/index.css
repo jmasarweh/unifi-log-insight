@@ -17,6 +17,9 @@ body {
   box-sizing: border-box;
 }
 
+/* Clickable IP cells — teal hover on all child text */
+.ip-clickable:hover span { color: #2dd4bf; /* teal-400 */ }
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -176,6 +179,12 @@ body {
   --chase-color: #06b6d4;
   --chase-bg: rgba(6,182,212,.25);
   --chase-border: rgba(6,182,212,.35);
+}
+
+.border-chase-blue {
+  --chase-color: #3b82f6;
+  --chase-bg: rgba(59,130,246,.25);
+  --chase-border: rgba(59,130,246,.35);
 }
 
 /* Auto-show/hide horizontal scrollbar — dark theme */

@@ -8,6 +8,30 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+VALID_TIME_RANGES = {'1h', '6h', '24h', '7d', '30d', '60d', '90d', '180d', '365d'}
+
+
+def validate_time_params(time_range, time_from, time_to):
+    """Validate and sanitize time parameters."""
+    if time_range and time_range not in VALID_TIME_RANGES:
+        time_range = '24h'
+    if not time_range and not time_from:
+        time_range = '24h'
+    if time_from:
+        try:
+            datetime.fromisoformat(time_from.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            time_from = None
+    if time_to:
+        try:
+            datetime.fromisoformat(time_to.replace('Z', '+00:00'))
+        except (ValueError, AttributeError):
+            time_to = None
+    # Re-apply default: time_from may have been supplied but failed validation above
+    if not time_range and not time_from:
+        time_range = '24h'
+    return time_range, time_from, time_to
+
 
 def _parse_negation(value: str) -> tuple[bool, str]:
     """Check if a filter value is negated (prefixed with '!').

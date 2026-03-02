@@ -176,6 +176,10 @@ class Database:
             """INSERT INTO system_config (key, value, updated_at)
                VALUES ('abuse_hostname_fix_done', 'false', NOW())
                ON CONFLICT (key) DO NOTHING""",
+            # Flow aggregation index (Sankey + IP Pairs)
+            """CREATE INDEX IF NOT EXISTS idx_logs_flow_agg
+                ON logs (timestamp DESC, src_ip, dst_ip, dst_port, protocol)
+                WHERE log_type = 'firewall' AND src_ip IS NOT NULL AND dst_ip IS NOT NULL""",
             # Phase 2: Device name columns on logs
             "ALTER TABLE logs ADD COLUMN IF NOT EXISTS src_device_name TEXT",
             "ALTER TABLE logs ADD COLUMN IF NOT EXISTS dst_device_name TEXT",
@@ -211,6 +215,10 @@ class Database:
                 updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )""",
             "CREATE INDEX IF NOT EXISTS idx_unifi_devices_ip ON unifi_devices (ip)",
+            # Zone matrix aggregation (interface-to-interface traffic)
+            """CREATE INDEX IF NOT EXISTS idx_logs_zone_matrix
+                ON logs (timestamp DESC, interface_in, interface_out, rule_action)
+                WHERE log_type = 'firewall' AND interface_in IS NOT NULL AND interface_out IS NOT NULL""",
             # Parameterized retention cleanup function (replaces hardcoded 60/10 day version)
             """CREATE OR REPLACE FUNCTION cleanup_old_logs(
                 general_days INTEGER DEFAULT 60,

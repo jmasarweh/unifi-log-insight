@@ -58,6 +58,16 @@ CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE se
 CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_logs_action_time  ON logs (rule_action, timestamp DESC);
 
+-- Composite index for flow aggregation (Sankey + IP Pairs)
+CREATE INDEX IF NOT EXISTS idx_logs_flow_agg
+    ON logs (timestamp DESC, src_ip, dst_ip, dst_port, protocol)
+    WHERE log_type = 'firewall' AND src_ip IS NOT NULL AND dst_ip IS NOT NULL;
+
+-- Zone matrix aggregation (interface-to-interface traffic)
+CREATE INDEX IF NOT EXISTS idx_logs_zone_matrix
+    ON logs (timestamp DESC, interface_in, interface_out, rule_action)
+    WHERE log_type = 'firewall' AND interface_in IS NOT NULL AND interface_out IS NOT NULL;
+
 -- Indexes for newly exposed filters
 CREATE INDEX IF NOT EXISTS idx_logs_src_port     ON logs (src_port) WHERE src_port IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_logs_dst_port     ON logs (dst_port) WHERE dst_port IS NOT NULL;

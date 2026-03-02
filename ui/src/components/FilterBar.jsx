@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { fetchServices, fetchInterfaces, fetchProtocols } from '../api'
 import { getInterfaceName, DIRECTION_ICONS, DIRECTION_COLORS, LOG_TYPE_STYLES, ACTION_STYLES, timeRangeToDays, filterVisibleRanges } from '../utils'
 import DateRangePicker from './DateRangePicker'
@@ -57,6 +57,27 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
   const filtersRef = useRef(filters)
   useEffect(() => { filtersRef.current = filters }, [filters])
 
+  // Sync local input state when filters change externally (e.g. drill-to-logs).
+  // Use a ref guard so our own debounced onChange calls don't trigger a sync loop.
+  const isInternalChange = useRef(false)
+  const wrappedOnChange = useCallback((f) => {
+    isInternalChange.current = true
+    onChange(f)
+  }, [onChange])
+  useEffect(() => {
+    if (isInternalChange.current) { isInternalChange.current = false; return }
+    setIpSearch(filters.ip || '')
+    setRuleSearch(filters.rule_name || '')
+    setTextSearch(filters.search || '')
+    setCountrySearch(filters.country || '')
+    setAsnSearch(filters.asn || '')
+    setDstPortSearch(filters.dst_port ?? '')
+    setSrcPortSearch(filters.src_port ?? '')
+    setSelectedServices(filters.service ? filters.service.split(',') : [])
+    setSelectedInterfaces(filters.interface ? filters.interface.split(',') : [])
+    setSelectedProtocols(filters.protocol ? filters.protocol.split(',') : [])
+  }, [filters.ip, filters.rule_name, filters.search, filters.country, filters.asn, filters.dst_port, filters.src_port, filters.service, filters.interface, filters.protocol]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Load services for autocomplete
   useEffect(() => {
     fetchServices()
@@ -80,42 +101,42 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
 
   // Debounce text inputs
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, ip: ipSearch || null }), 400)
+    const t = setTimeout(() => wrappedOnChange({ ...filtersRef.current, ip: ipSearch || null }), 400)
     return () => clearTimeout(t)
   }, [ipSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     // Normalize: UI displays "] " (space after bracket) for readability but DB stores "]" (no space)
     const normalized = ruleSearch ? ruleSearch.replace(/\]\s+/g, ']') : null
-    const t = setTimeout(() => onChange({ ...filtersRef.current, rule_name: normalized }), 400)
+    const t = setTimeout(() => wrappedOnChange({ ...filtersRef.current, rule_name: normalized }), 400)
     return () => clearTimeout(t)
   }, [ruleSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, search: textSearch || null }), 400)
+    const t = setTimeout(() => wrappedOnChange({ ...filtersRef.current, search: textSearch || null }), 400)
     return () => clearTimeout(t)
   }, [textSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, country: countrySearch || null }), 400)
+    const t = setTimeout(() => wrappedOnChange({ ...filtersRef.current, country: countrySearch || null }), 400)
     return () => clearTimeout(t)
   }, [countrySearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const t = setTimeout(() => onChange({ ...filtersRef.current, asn: asnSearch || null }), 400)
+    const t = setTimeout(() => wrappedOnChange({ ...filtersRef.current, asn: asnSearch || null }), 400)
     return () => clearTimeout(t)
   }, [asnSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => {
-      onChange({ ...filtersRef.current, dst_port: parsePort(dstPortSearch) })
+      wrappedOnChange({ ...filtersRef.current, dst_port: parsePort(dstPortSearch) })
     }, 400)
     return () => clearTimeout(t)
   }, [dstPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const t = setTimeout(() => {
-      onChange({ ...filtersRef.current, src_port: parsePort(srcPortSearch) })
+      wrappedOnChange({ ...filtersRef.current, src_port: parsePort(srcPortSearch) })
     }, 400)
     return () => clearTimeout(t)
   }, [srcPortSearch]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -128,7 +149,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     if (visibleRanges.some(tr => tr.value === filters.time_range)) return
     const largest = visibleRanges.findLast(tr => timeRangeToDays(tr.value) >= 1) || visibleRanges[visibleRanges.length - 1]
     if (largest && largest.value !== filters.time_range) {
-      onChange({ ...filters, time_range: largest.value })
+      wrappedOnChange({ ...filters, time_range: largest.value })
     }
   }, [maxFilterDays]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -137,7 +158,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     const updated = current.includes(type)
       ? current.filter(t => t !== type)
       : [...current, type]
-    onChange({ ...filters, log_type: updated.length === LOG_TYPES.length ? null : updated.join(',') })
+    wrappedOnChange({ ...filters, log_type: updated.length === LOG_TYPES.length ? null : updated.join(',') })
   }
 
   const activeTypes = filters.log_type ? filters.log_type.split(',') : LOG_TYPES
@@ -172,7 +193,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     const updated = current.includes(action)
       ? current.filter(a => a !== action)
       : [...current, action]
-    onChange({ ...filters, rule_action: updated.length === ACTIONS.length ? null : updated.join(',') })
+    wrappedOnChange({ ...filters, rule_action: updated.length === ACTIONS.length ? null : updated.join(',') })
   }
 
   const toggleDirection = (dir) => {
@@ -180,7 +201,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
     const updated = current.includes(dir)
       ? current.filter(d => d !== dir)
       : [...current, dir]
-    onChange({ ...filters, direction: updated.length === DIRECTIONS.length ? null : updated.join(',') })
+    wrappedOnChange({ ...filters, direction: updated.length === DIRECTIONS.length ? null : updated.join(',') })
   }
 
   return (
@@ -255,7 +276,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
                     <span className={activeDirections.includes(dir) ? DIRECTION_COLORS[dir] : ''}>{DIRECTION_ICONS[dir]}</span> {dir}
                   </button>
                   <button
-                    onClick={() => onChange({
+                    onClick={() => wrappedOnChange({
                       ...filters,
                       vpn_only: filters.vpn_only ? null : true,
                       // When activating VPN, clear direction filter so all directions show
@@ -296,7 +317,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
           {visibleRanges.map(tr => (
             <button
               key={tr.value}
-              onClick={() => onChange({ ...filters, time_range: tr.value, time_from: null, time_to: null })}
+              onClick={() => wrappedOnChange({ ...filters, time_range: tr.value, time_from: null, time_to: null })}
               className={`px-2 py-1 rounded text-xs font-medium transition-all ${
                 filters.time_range === tr.value
                   ? 'bg-gray-700 text-white'
@@ -312,10 +333,10 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             timeTo={filters.time_to}
             maxFilterDays={maxFilterDays}
             onApply={({ time_from, time_to }) =>
-              onChange({ ...filters, time_range: null, time_from, time_to })
+              wrappedOnChange({ ...filters, time_range: null, time_from, time_to })
             }
             onClear={() =>
-              onChange({ ...filters, time_range: '24h', time_from: null, time_to: null })
+              wrappedOnChange({ ...filters, time_range: '24h', time_from: null, time_to: null })
             }
           />
         </div>
@@ -366,7 +387,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             <button
               onClick={() => {
                 setSelectedInterfaces([])
-                onChange({ ...filters, interface: null })
+                wrappedOnChange({ ...filters, interface: null })
               }}
               className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
             >✕</button>
@@ -394,7 +415,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
                               ? selectedInterfaces.filter(i => i !== iface.name)
                               : [...selectedInterfaces, iface.name]
                             setSelectedInterfaces(updated)
-                            onChange({ ...filters, interface: updated.length ? updated.join(',') : null })
+                            wrappedOnChange({ ...filters, interface: updated.length ? updated.join(',') : null })
                             setInterfaceSearch('')
                           }}
                           className={`px-3 py-1.5 cursor-pointer transition-colors ${
@@ -466,7 +487,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             <button
               onClick={() => {
                 setSelectedProtocols([])
-                onChange({ ...filters, protocol: null })
+                wrappedOnChange({ ...filters, protocol: null })
               }}
               className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
             >✕</button>
@@ -483,7 +504,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
                         ? selectedProtocols.filter(p => p !== protocol)
                         : [...selectedProtocols, protocol]
                       setSelectedProtocols(updated)
-                      onChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
+                      wrappedOnChange({ ...filters, protocol: updated.length ? updated.join(',') : null })
                       setProtocolSearch('')
                     }}
                     className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
@@ -518,7 +539,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             <button
               onClick={() => {
                 setSelectedServices([])
-                onChange({ ...filters, service: null })
+                wrappedOnChange({ ...filters, service: null })
               }}
               className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-200 text-xs"
             >✕</button>
@@ -536,7 +557,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
                         ? selectedServices.filter(s => s !== service)
                         : [...selectedServices, service]
                       setSelectedServices(updated)
-                      onChange({ ...filters, service: updated.length ? updated.join(',') : null })
+                      wrappedOnChange({ ...filters, service: updated.length ? updated.join(',') : null })
                       setServiceSearch('')
                     }}
                     className={`px-3 py-2 text-xs cursor-pointer transition-colors ${
@@ -608,7 +629,7 @@ export default function FilterBar({ filters, onChange, maxFilterDays }) {
             setSrcPortSearch('')
             setProtocolSearch('')
             setSelectedProtocols([])
-            onChange({ time_range: '24h', time_from: null, time_to: null, page: 1, per_page: 50, ip: null, rule_name: null, search: null, service: null, interface: null, protocol: null, dst_port: null, src_port: null, country: null, asn: null, log_type: null, rule_action: null, direction: null, vpn_only: null })
+            wrappedOnChange({ time_range: '24h', time_from: null, time_to: null, page: 1, per_page: 50, ip: null, rule_name: null, search: null, service: null, interface: null, protocol: null, dst_port: null, src_port: null, country: null, asn: null, log_type: null, rule_action: null, direction: null, vpn_only: null })
           }}
           className="text-xs text-gray-400 hover:text-gray-200 transition-colors"
         >

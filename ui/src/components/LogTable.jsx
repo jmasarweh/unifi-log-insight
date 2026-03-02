@@ -1,10 +1,11 @@
 import React from 'react'
 import {
-  formatTime, FlagIcon, isPrivateIP, getInterfaceName,
+  formatTime, FlagIcon, getInterfaceName, formatServiceName, resolveIpSublines,
   LOG_TYPE_STYLES, ACTION_STYLES,
   DIRECTION_ICONS, DIRECTION_COLORS, decodeThreatCategories,
 } from '../utils'
 import LogDetail from './LogDetail'
+import IPCell from './IPCell'
 
 function ThreatBadge({ score, categories }) {
   if (score === null || score === undefined) return <span className="text-gray-700">—</span>
@@ -21,45 +22,6 @@ function ThreatBadge({ score, categories }) {
     <span className="inline-flex items-center gap-1" title={catText || `Threat score: ${score}%`}>
       <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
       <span className="text-gray-300">{score}</span>
-    </span>
-  )
-}
-
-function IPCell({ ip, port, deviceName, vlan, networkLabel, subline }) {
-  if (!ip) return <span className="text-gray-700">—</span>
-
-  const badge = vlan != null ? (
-    <span className="text-[10px] px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
-      VLAN {vlan}
-    </span>
-  ) : networkLabel ? (
-    <span className="text-[10px] px-1 py-0 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">
-      {networkLabel}
-    </span>
-  ) : null
-
-  if (deviceName || badge || subline) {
-    return (
-      <div className="min-w-0 leading-tight">
-        {(deviceName || badge) && (
-          <div className="flex items-center gap-1">
-            {deviceName && <span className="text-gray-200 text-[12px] truncate" title={deviceName}>{deviceName}</span>}
-            {badge}
-          </div>
-        )}
-        <span className="inline-flex items-baseline gap-0.5 min-w-0">
-          <span className={`${deviceName || badge ? 'text-gray-500 text-[11px]' : 'text-gray-300 text-[13px]'} truncate`}>{ip}</span>
-          {port && <span className={`${deviceName || badge ? 'text-gray-600 text-[11px]' : 'text-gray-500'}`}>:{port}</span>}
-        </span>
-        {subline && <div className="text-[11px] text-gray-500 truncate" title={subline}>{subline}</div>}
-      </div>
-    )
-  }
-
-  return (
-    <span className="inline-flex items-baseline gap-0.5 min-w-0">
-      <span className="text-gray-300 truncate">{ip}</span>
-      {port && <span className="text-gray-500">:{port}</span>}
     </span>
   )
 }
@@ -103,10 +65,7 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
   const show = (key) => !hiddenColumns.has(key)
   const countryDisplay = uiSettings?.ui_country_display || 'flag_name'
   const ipSubline = uiSettings?.ui_ip_subline === 'asn_or_abuse'
-  const sublineText = ipSubline ? (log.asn_name || log.abuse_hostnames || null) : null
-  // ASN belongs to the enriched (remote) IP: inbound → source, otherwise → destination
-  const srcSubline = sublineText && log.direction === 'inbound' && !isPrivateIP(log.src_ip) ? sublineText : null
-  const dstSubline = sublineText && log.direction !== 'inbound' && log.dst_ip && !isPrivateIP(log.dst_ip) ? sublineText : null
+  const { srcSubline, dstSubline } = ipSubline ? resolveIpSublines(log) : { srcSubline: null, dstSubline: null }
 
   const highlightBlock = uiSettings?.ui_block_highlight !== 'off'
     && log.rule_action === 'block'
@@ -194,8 +153,8 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
         )}
 
         {/* Service */}
-        <td className="px-2 py-1.5 text-[12px] text-gray-400 uppercase">
-          {log.service_name || '—'}
+        <td className="px-2 py-1.5 text-[12px] text-gray-400">
+          {formatServiceName(log.service_name)}
         </td>
 
         {/* Rule / Info */}
