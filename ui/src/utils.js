@@ -101,14 +101,17 @@ export const DIRECTION_ICONS = {
 }
 
 // Interface name validation: letters then digits, with optional + for sfp+0 and optional .N VLAN tag (e.g., ppp0, eth4, eth4.10, sfp+0, enp3s0)
-export const IFACE_REGEX = /^[a-z][a-z0-9+]*\d+(\.\d+)?$/
+const IFACE_REGEX = /^[a-z][a-z0-9+]*\d+(\.\d+)?$/
 
-// Returns an error string if the VLAN tag portion is out of the 802.1Q range (1-4094), or null if valid.
-export function validateVlanId(iface) {
+// Returns an error string if the interface name is invalid, or null if valid.
+export function validateInterfaceName(iface) {
+  if (!IFACE_REGEX.test(iface))
+    return 'Interface name must start with letters followed by a number, with optional VLAN tag (e.g., ppp0, eth4, eth4.10, sfp+0).'
   const dot = iface.indexOf('.')
-  if (dot === -1) return null
-  const id = Number.parseInt(iface.slice(dot + 1), 10)
-  if (id < 1 || id > 4094) return 'VLAN ID must be between 1 and 4094.'
+  if (dot !== -1) {
+    const id = Number.parseInt(iface.slice(dot + 1), 10)
+    if (id < 1 || id > 4094) return 'VLAN ID must be between 1 and 4094.'
+  }
   return null
 }
 
