@@ -173,7 +173,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
             </svg>
             <span className="hidden sm:inline text-sm font-semibold text-gray-200">UniFi Log Insight</span>
           </div>
-          <span className="text-xs sm:text-sm text-gray-400 flex items-center">
+          <span className="text-sm text-gray-400 flex items-center">
             <span className="hidden md:inline">Settings</span>
             <span className="md:hidden text-gray-200">{sections.find(s => s.id === activeSection)?.label || 'Settings'}</span>
             {reconfigMode && (
@@ -235,11 +235,11 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
           {version && (
             <div className="mt-auto border-t border-gray-800 flex items-center justify-center h-[42px]">
               <div className="flex items-center gap-1.5">
-                <span className={`text-xs ${outdated ? 'text-amber-400' : 'text-gray-400'}`}>v{version}</span>
+                <span className={`text-sm ${outdated ? 'text-amber-400' : 'text-gray-400'}`}>v{version}</span>
                 {outdated ? (
                   <button
                     onClick={() => setShowNotes(true)}
-                    className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                    className="flex items-center gap-1 text-sm text-amber-400 hover:text-amber-300 transition-colors"
                     title={`Update available: ${latestRelease.tag}`}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
@@ -250,7 +250,7 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
                 ) : latestRelease?.body && (
                   <button
                     onClick={() => setShowNotes(true)}
-                    className="text-xs text-gray-500 hover:text-gray-200 transition-colors"
+                    className="text-sm text-gray-500 hover:text-gray-200 transition-colors"
                   >
                     - Release Notes
                   </button>
