@@ -397,7 +397,7 @@ def get_host_detail(
                 device = cur.fetchone()
             device = dict(device) if device else {"device_name": None, "network": None, "vlan": None, "mac": None}
 
-            # Identity annotation (gateway/WAN/VPN) — mirrors _lookup_ip_info precedence
+            # Identity annotation (gateway/WAN/VPN) — identity vlan takes precedence; DB network preserved if set
             cfg = load_identity_config(enricher_db)
             name, vlan, vpn_badge = annotate_ip(cfg, ip, device.get('device_name'))
             if name and not device.get('device_name'):
