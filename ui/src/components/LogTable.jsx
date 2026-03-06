@@ -1,9 +1,10 @@
 import React from 'react'
 import {
   formatTime, FlagIcon, getInterfaceName, formatServiceName, resolveIpSublines,
-  LOG_TYPE_STYLES, ACTION_STYLES,
+  normalizeRuleDesc, LOG_TYPE_STYLES, ACTION_STYLES,
   DIRECTION_ICONS, DIRECTION_COLORS, decodeThreatCategories,
 } from '../utils'
+import { getThreatLevel } from '../lib/threatPresentation'
 import LogDetail from './LogDetail'
 import IPCell from './IPCell'
 
@@ -47,19 +48,14 @@ const MOBILE_ACTION_LABELS = {
 }
 
 function ThreatBadge({ score, categories }) {
-  if (score === null || score === undefined) return <span className="text-gray-700">—</span>
-
-  let dotColor = 'bg-emerald-400'
-  if (score >= 75) { dotColor = 'bg-red-400' }
-  else if (score >= 50) { dotColor = 'bg-orange-400' }
-  else if (score >= 25) { dotColor = 'bg-yellow-400' }
-  else if (score > 0) { dotColor = 'bg-blue-400' }
+  const level = getThreatLevel(score)
+  if (!level) return <span className="text-gray-700">—</span>
 
   const catText = decodeThreatCategories(categories)
 
   return (
     <span className="inline-flex items-center gap-1" title={catText || `Threat score: ${score}%`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${level.dot}`} />
       <span className="text-gray-300">{score}</span>
     </span>
   )
@@ -81,12 +77,6 @@ function NetworkPath({ ifaceIn, ifaceOut }) {
   )
 }
 
-function formatRuleDesc(desc) {
-  if (!desc) return null
-  // Add space after ] if missing: "[WAN_LOCAL]Block" → "[WAN_LOCAL] Block"
-  return desc.replace(/\](?!\s)/, '] ')
-}
-
 function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCount, uiSettings }) {
   const actionStyle = ACTION_STYLES[log.rule_action || log.dhcp_event || log.wifi_event] || ''
   const typeStyle = LOG_TYPE_STYLES[log.log_type] || LOG_TYPE_STYLES.system
@@ -94,11 +84,11 @@ function LogRow({ log, isExpanded, detailedLog, onToggle, hiddenColumns, colCoun
   const dirColor = DIRECTION_COLORS[log.direction] || 'text-gray-500'
 
   const infoText = log.log_type === 'firewall'
-    ? (formatRuleDesc(log.rule_desc) || log.rule_name || '—')
+    ? (normalizeRuleDesc(log.rule_desc) || log.rule_name || '—')
     : (log.dns_query || log.hostname || log.wifi_event || '—')
 
   const infoTitle = log.log_type === 'firewall'
-    ? (formatRuleDesc(log.rule_desc) || log.rule_name || '')
+    ? (normalizeRuleDesc(log.rule_desc) || log.rule_name || '')
     : infoText
 
   const show = (key) => !hiddenColumns.has(key)

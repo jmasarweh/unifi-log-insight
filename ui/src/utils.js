@@ -33,6 +33,11 @@ export function formatServiceName(name) {
   return name.toUpperCase()
 }
 
+export function normalizeRuleDesc(desc) {
+  if (!desc) return null
+  return desc.replace(/\](?!\s)/g, '] ')
+}
+
 export function isPrivateIP(ip) {
   if (!ip) return true
   // IPv6 private/reserved ranges

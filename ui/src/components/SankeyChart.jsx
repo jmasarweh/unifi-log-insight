@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { sankey as d3Sankey, sankeyLinkHorizontal } from 'd3-sankey'
 import { fetchFlowGraph } from '../api'
 import { formatNumber, formatServiceName, getInterfaceName } from '../utils'
+import NetworkBadge from './NetworkBadge'
 import FullscreenToggle from './FullscreenToggle'
 import InfoTooltip from './InfoTooltip'
 import KebabMenu, { SaveLoadMenuItems } from './KebabMenu'
@@ -325,15 +326,7 @@ export default function SankeyChart({ filters, refreshKey, onNodeClick, activeFi
                       {deviceName}
                     </span>
                   )}
-                  {vlan != null ? (
-                    <span className="text-[10px] font-medium whitespace-nowrap px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
-                      VLAN {vlan}
-                    </span>
-                  ) : vpnBadge ? (
-                    <span className="text-[10px] font-medium whitespace-nowrap px-1 py-0 rounded bg-teal-500/15 text-teal-400 border border-teal-500/30 shrink-0">
-                      {vpnBadge}
-                    </span>
-                  ) : null}
+                  <NetworkBadge vlan={vlan} vpnBadge={vpnBadge} className="font-medium whitespace-nowrap" />
                 </div>
               )}
               <span className="text-[12px] font-mono text-gray-500 whitespace-nowrap">

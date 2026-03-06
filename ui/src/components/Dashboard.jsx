@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { fetchStats } from '../api'
 import { formatNumber, FlagIcon, decodeThreatCategories, LOG_TYPE_STYLES, formatServiceName } from '../utils'
+import { getThreatLevel } from '../lib/threatPresentation'
+import NetworkBadge from './NetworkBadge'
 import useTimeRange from '../hooks/useTimeRange'
 
 export function DashboardSkeleton() {
@@ -388,9 +390,7 @@ export default function Dashboard({ maxFilterDays }) {
                 </span>
                 <div className="flex items-center gap-2">
                   <span className="text-gray-400 text-xs">{formatNumber(item.count)}×</span>
-                  <span className={`font-medium ${
-                    item.threat_score >= 75 ? 'text-red-400' : item.threat_score >= 50 ? 'text-orange-400' : 'text-yellow-400'
-                  }`}>
+                  <span className={`font-medium ${getThreatLevel(item.threat_score)?.color ?? 'text-yellow-400'}`}>
                     {item.threat_score}%
                   </span>
                 </div>
@@ -445,11 +445,7 @@ export default function Dashboard({ maxFilterDays }) {
                   {item.device_name && (
                     <div className="flex items-center gap-1">
                       <span className="text-gray-200 text-[12px] truncate" title={item.device_name}>{item.device_name}</span>
-                      {item.vlan != null && (
-                        <span className="text-xs px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
-                          VLAN {item.vlan}
-                        </span>
-                      )}
+                      <NetworkBadge vlan={item.vlan} size="sm" />
                     </div>
                   )}
                   <span className={item.device_name ? 'text-gray-500 text-[11px]' : 'text-gray-300'}>{item.ip}</span>
@@ -471,11 +467,7 @@ export default function Dashboard({ maxFilterDays }) {
                   {item.device_name && (
                     <div className="flex items-center gap-1">
                       <span className="text-gray-200 text-[12px] truncate" title={item.device_name}>{item.device_name}</span>
-                      {item.vlan != null && (
-                        <span className="text-xs px-1 py-0 rounded bg-violet-500/15 text-violet-400 border border-violet-500/30 shrink-0">
-                          VLAN {item.vlan}
-                        </span>
-                      )}
+                      <NetworkBadge vlan={item.vlan} size="sm" />
                     </div>
                   )}
                   <span className={item.device_name ? 'text-gray-500 text-[11px]' : 'text-gray-300'}>{item.ip}</span>
