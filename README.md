@@ -30,7 +30,7 @@ Single Docker container. No external dependencies. Zero data collection.
 | Feature | Description |
 |---------|-------------|
 | **Live Log Stream** | Auto-refreshing table with expandable details, copy-to-clipboard, and intelligent pause/resume |
-| **AI Agent Integration** *(MCP)* | Connect Claude Desktop, Claude Code, or Gemini CLI via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data through natural conversation |
+| **AI Agent Integration** *(MCP)* | Connect Claude Desktop, Claude Code, Gemini CLI (or any http mcp client) via the [Model Context Protocol (MCP)](#-ai-agent-integration-mcp) to query your network data & setup through natural conversation |
 | **Threat Map** | Interactive world map showing where threats and blocked outbound traffic originate. Switch between heatmap and cluster views, filter by time range, and click any point to inspect individual logs |
 | **Dashboard** | Traffic breakdowns, top blocked/allowed countries and IPs, top threats with ASN/city/rDNS/categories, top devices, services, DNS queries |
 | **Filters** | Log type, time range, action, direction, VPN badge, interface, service, country, ASN, threat score, IP, rule name, text search |
