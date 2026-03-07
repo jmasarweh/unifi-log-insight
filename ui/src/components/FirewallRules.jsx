@@ -612,7 +612,7 @@ function BulkConfirmModal({ action, count, srcZone, dstZone, onConfirm, onCancel
             <div className="flex items-center justify-end gap-2 mt-2">
               <button
                 onClick={onCancel}
-                className="px-3.5 py-1.5 rounded text-[12px] font-medium text-[#cbced2] hover:text-[#f9fafa] border border-white/[0.07] hover:border-white/[0.15] transition-colors"
+                className="disable-logging-btn px-3.5 py-1.5 rounded text-[12px] font-medium text-[#cbced2] hover:text-[#f9fafa] border border-white/[0.07] hover:border-white/[0.15] transition-colors"
               >
                 Cancel
               </button>
