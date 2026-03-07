@@ -1,9 +1,5 @@
 # UniFi Log Insight
 
-<img width="425" height="437" alt="icon-512x512" src="https://github.com/user-attachments/assets/746ad8b9-9f45-4daf-9846-7b26ce4f12d4" />
-
-
-
 Real-time log analysis for UniFi routers and gateways - captures syslog over UDP, parses firewall, DHCP, Wi-Fi, and system events, enriches them with GeoIP, ASN, threat intelligence, and reverse DNS, then serves everything through a live Dashboard.
 
 Single Docker container. No external dependencies. Zero data collection.
