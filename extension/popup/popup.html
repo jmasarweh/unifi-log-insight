@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="../icons/icon-32.png" alt="" class="logo">
+      <h1>UniFi Log Insight</h1>
+      <button type="button" id="bell-btn" class="icon-btn" title="Notifications (coming soon)" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Setup View (shown when not configured) -->
+    <div id="setup-view" class="view" hidden>
+      <p class="subtitle">Enter your Log Insight server address:</p>
+      <div class="input-group">
+        <input type="url" id="url-input" placeholder="http://192.168.1.50:8090" spellcheck="false">
+        <button id="connect-btn">Connect</button>
+      </div>
+      <p id="setup-error" class="error" hidden></p>
+    </div>
+
+    <!-- Connected View (shown when configured) -->
+    <div id="connected-view" class="view" hidden>
+      <div class="status-row">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Checking...</span>
+        <span id="version-badge" class="badge"></span>
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-value" id="total-logs">-</span>
+          <span class="stat-label">Total Logs</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="blocked-today">-</span>
+          <span class="stat-label">Blocked Today</span>
+        </div>
+      </div>
+
+      <div class="links">
+        <a id="open-logs" class="link-btn" href="#" target="_blank">Log Stream</a>
+        <a id="open-threat-map" class="link-btn" href="#" target="_blank">Threat Map</a>
+        <a id="open-dashboard" class="link-btn" href="#" target="_blank">Dashboard</a>
+      </div>
+
+      <div class="toggles">
+        <label class="toggle">
+          <input type="checkbox" id="toggle-tab" checked aria-label="Inject Controller Tab">
+          <span>Inject Controller Tab</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-enrich" checked aria-label="Enrich Flow View">
+          <span>Enrich Flow View</span>
+        </label>
+      </div>
+
+      <div id="reload-bar" class="reload-bar" hidden>
+        <span>Reload controller page to apply</span>
+        <button id="reload-btn" class="reload-btn">Reload</button>
+      </div>
+
+      <button id="disconnect-btn" class="link-btn secondary">Change Server</button>
+    </div>
+
+    <!-- Permission Request -->
+    <div id="permission-view" class="view" hidden>
+      <p class="subtitle">Grant access to your UniFi Controller to enable injection features:</p>
+      <p id="permission-origin" class="mono"></p>
+      <button id="grant-btn">Grant Access</button>
+    </div>
+
+    <!-- Debug (for issue reports) -->
+    <details class="debug-details">
+      <summary class="debug-summary">Debug State</summary>
+      <pre id="debug-out" class="debug-out">Loading...</pre>
+    </details>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

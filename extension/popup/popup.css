@@ -1,0 +1,288 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+body {
+  width: 320px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  background: #1a1a2e;
+  color: #e0e0e0;
+  border-radius: 12px;
+}
+
+.container {
+  padding: 16px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.header h1 {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  flex: 1;
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: #6b7280;
+  padding: 4px;
+  cursor: not-allowed;
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+}
+
+.icon-btn:hover {
+  background: transparent;
+}
+
+.logo {
+  width: 24px;
+  height: 24px;
+}
+
+.subtitle {
+  color: #999;
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+/* Input group */
+.input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.input-group input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid #3a3a5a;
+  border-radius: 6px;
+  background: #0d0d1a;
+  color: #e0e0e0;
+  font-size: 13px;
+  outline: none;
+}
+
+.input-group input:focus {
+  border-color: #60a5fa;
+}
+
+button, .link-btn {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #3b82f6;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+  display: inline-block;
+  transition: background 0.15s;
+}
+
+button:hover, .link-btn:hover {
+  background: #2563eb;
+}
+
+button.secondary, .link-btn.secondary {
+  background: transparent;
+  border: 1px solid #3a3a5a;
+  color: #999;
+  font-size: 12px;
+}
+
+button.secondary:hover, .link-btn.secondary:hover {
+  border-color: #60a5fa;
+  color: #60a5fa;
+}
+
+/* Error */
+.error {
+  color: #f87171;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+/* Status */
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6b7280;
+  flex-shrink: 0;
+}
+
+.status-dot.connected { background: #34d399; }
+.status-dot.disconnected { background: #f87171; }
+
+.badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #1e3a5f;
+  color: #60a5fa;
+  margin-left: auto;
+}
+
+/* Stats */
+.stats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.stat {
+  flex: 1;
+  padding: 10px;
+  background: #0d0d1a;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.stat-value {
+  display: block;
+  font-size: 16px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.stat-label {
+  display: block;
+  font-size: 11px;
+  color: #6b7280;
+  margin-top: 2px;
+}
+
+/* Links */
+.links {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.links .link-btn {
+  flex: 1;
+  padding: 7px 6px;
+  font-size: 11px;
+  text-align: center;
+}
+
+/* Toggles */
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #999;
+}
+
+.toggle input[type="checkbox"] {
+  accent-color: #3b82f6;
+}
+
+/* Mono text */
+.mono {
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 12px;
+  padding: 8px;
+  background: #0d0d1a;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  word-break: break-all;
+}
+
+/* Reload bar */
+.reload-bar[hidden] {
+  display: none;
+}
+
+.reload-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: #1e3a5f;
+  border: 1px solid #2563eb44;
+  border-radius: 6px;
+  font-size: 11px;
+  color: #93c5fd;
+}
+
+.reload-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  background: #2563eb;
+  border-radius: 4px;
+}
+
+.reload-btn:hover {
+  background: #3b82f6;
+}
+
+/* Debug panel */
+.debug-details {
+  margin-top: 12px;
+  font-size: 10px;
+  color: #888;
+}
+
+.debug-summary {
+  cursor: pointer;
+}
+
+.debug-out {
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 9px;
+  background: #111;
+  color: #0f0;
+  padding: 6px;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+
+.view {
+  animation: fadeIn 0.15s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

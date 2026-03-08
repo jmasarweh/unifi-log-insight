@@ -3,9 +3,10 @@
 import ipaddress
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 from psycopg2.extras import RealDictCursor
 
 from deps import get_conn, put_conn
@@ -14,6 +15,100 @@ from query_helpers import parse_time_range
 logger = logging.getLogger('api.threats')
 
 router = APIRouter()
+
+
+class BatchThreatRequest(BaseModel):
+    ips: List[str]
+
+
+@router.post("/api/threats/batch")
+def batch_threat_lookup(req: BatchThreatRequest):
+    """Batch lookup threat + rDNS + ASN data for multiple IPs from local cache.
+
+    Queries ip_threats for AbuseIPDB data and logs for the latest rDNS/ASN
+    per IP. No external API calls are made — purely a cache lookup.
+    Max 50 IPs per request.
+    """
+    if len(req.ips) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 IPs per batch request")
+
+    # Validate all IPs
+    valid_ips = []
+    for ip in req.ips:
+        try:
+            ipaddress.ip_address(ip)
+            valid_ips.append(ip)
+        except ValueError:
+            pass  # skip invalid IPs silently
+
+    if not valid_ips:
+        return {'results': {}}
+
+    conn = get_conn()
+    try:
+        results = {}
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Threat data from ip_threats cache
+            placeholders = ','.join(['%s::inet'] * len(valid_ips))
+            cur.execute(
+                f"""SELECT host(ip) as ip, threat_score, threat_categories,
+                           abuse_usage_type, abuse_total_reports, abuse_is_tor
+                    FROM ip_threats
+                    WHERE ip IN ({placeholders})""",
+                valid_ips
+            )
+            for row in cur.fetchall():
+                item = dict(row)
+                results[item['ip']] = item
+
+            # 2. Latest rDNS + ASN from logs (DISTINCT ON picks most recent)
+            # Time-bound to last 90 days to avoid full table scan
+            rdns_cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+            cur.execute(
+                f"""SELECT DISTINCT ON (combined_ip) combined_ip, rdns, asn_name
+                    FROM (
+                        SELECT host(src_ip) AS combined_ip, rdns, asn_name, timestamp
+                        FROM logs
+                        WHERE src_ip IN ({placeholders})
+                          AND timestamp >= %s
+                          AND (rdns IS NOT NULL OR asn_name IS NOT NULL)
+                        UNION ALL
+                        SELECT host(dst_ip) AS combined_ip, rdns, asn_name, timestamp
+                        FROM logs
+                        WHERE dst_ip IN ({placeholders})
+                          AND timestamp >= %s
+                          AND (rdns IS NOT NULL OR asn_name IS NOT NULL)
+                    ) sub
+                    ORDER BY combined_ip, timestamp DESC""",
+                valid_ips + [rdns_cutoff] + valid_ips + [rdns_cutoff]
+            )
+            for row in cur.fetchall():
+                ip = row['combined_ip']
+                if ip in results:
+                    results[ip]['rdns'] = row['rdns']
+                    results[ip]['asn_name'] = row['asn_name']
+                else:
+                    # IP has log data but no threat cache entry
+                    results[ip] = {
+                        'ip': ip,
+                        'threat_score': None,
+                        'threat_categories': None,
+                        'rdns': row['rdns'],
+                        'asn_name': row['asn_name'],
+                    }
+
+        # Fill in nulls for requested IPs not found in any table
+        final = {}
+        for ip in valid_ips:
+            final[ip] = results.get(ip, None)
+
+        return {'results': final}
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error in batch threat lookup")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
 
 
 @router.get("/api/threats")
@@ -89,7 +184,6 @@ def list_threats(
                 item['abuse_last_reported'] = item['abuse_last_reported'].isoformat()
             threats.append(item)
 
-        conn.commit()
         return {'threats': threats, 'total': total}
     except Exception as e:
         conn.rollback()
@@ -167,7 +261,6 @@ def get_threats_geo(
                 },
             })
 
-        conn.commit()
         return {
             'type': 'FeatureCollection',
             'features': features,

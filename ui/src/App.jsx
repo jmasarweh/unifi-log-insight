@@ -57,7 +57,11 @@ function formatAbuseIPDB(abuseipdb) {
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('logs')
+  const [activeTab, setActiveTab] = useState(() => {
+    const hash = window.location.hash.replace('#', '').split('?')[0]
+    const valid = TABS.map(t => t.id)
+    return valid.includes(hash) ? hash : 'logs'
+  })
   const [health, setHealth] = useState(null)
   const [latestRelease, setLatestRelease] = useState(null)
   const [showWizard, setShowWizard] = useState(false)
@@ -80,7 +84,11 @@ export default function App() {
   const [unlabeledVpn, setUnlabeledVpn] = useState([])
   const [allInterfaces, setAllInterfaces] = useState(null)
   const [showWanToast, setShowWanToast] = useState(false)
-  const [theme, setTheme] = useState(() => localStorage.getItem('ui_theme') || 'dark')
+  const [theme, setTheme] = useState(() => {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme')
+    if (urlTheme === 'light' || urlTheme === 'dark') return urlTheme
+    return localStorage.getItem('ui_theme') || 'dark'
+  })
   const [showStatusTooltip, setShowStatusTooltip] = useState(false)
   const statusRef = useRef(null)
 
@@ -98,6 +106,26 @@ export default function App() {
   useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  // Listen for messages from parent window (when embedded in UniFi iframe)
+  useEffect(() => {
+    const handler = (e) => {
+      if (!e.data || !e.data.type) return
+      if (e.data.type === 'uli-theme' && (e.data.theme === 'dark' || e.data.theme === 'light')) {
+        setTheme(e.data.theme)
+      }
+      if (e.data.type === 'uli-navigate' && e.data.hash) {
+        const params = new URLSearchParams(e.data.hash.split('?')[1] || '')
+        const ip = params.get('ip')
+        if (ip) {
+          setLogsDrill({ src_ip: ip })
+          setActiveTab('logs')
+        }
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -242,6 +270,19 @@ export default function App() {
     }
     window.addEventListener('drillToLogs', handler)
     return () => window.removeEventListener('drillToLogs', handler)
+  }, [])
+
+  // Parse URL hash params (e.g. #logs?ip=1.2.3.4) for deep-linking from browser extension
+  useEffect(() => {
+    const hash = window.location.hash
+    if (!hash.includes('?')) return
+    const params = new URLSearchParams(hash.split('?')[1])
+    const ip = params.get('ip')
+    if (ip) {
+      setLogsDrill({ src_ip: ip })
+      setActiveTab('logs')
+      window.location.hash = '#logs'
+    }
   }, [])
 
   // Listen for "Return from drill" — navigate back to source tab
