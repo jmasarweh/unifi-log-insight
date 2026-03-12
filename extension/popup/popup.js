@@ -515,5 +515,5 @@ async function loadDebug() {
 
 // -- Start --
 
-init();
-loadDebug();
+init().catch(e => console.error('[ULI] init failed:', e));
+loadDebug().catch(e => console.error('[ULI] loadDebug failed:', e));

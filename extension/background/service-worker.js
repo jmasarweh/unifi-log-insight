@@ -164,9 +164,11 @@ async function registerContentScripts(controllerUrl, options = {}) {
 
   // Register content scripts for future page loads.
   const scripts = [
+    'content/shared-utils.js',
     'content/controller-detector.js',
     'content/tab-injector.js',
     'content/flow-enricher.js',
+    'content/panel-enricher.js',
   ];
   try {
     await chrome.scripting.registerContentScripts([{
@@ -269,7 +271,8 @@ async function handleMessage(msg) {
     }
 
     case 'BATCH_THREAT_LOOKUP': {
-      const results = await batchThreatLookup(msg.ips || []);
+      const ips = Array.isArray(msg.ips) ? msg.ips : [];
+      const results = await batchThreatLookup(ips);
       return { ok: true, data: results };
     }
 
@@ -298,6 +301,11 @@ async function handleMessage(msg) {
     }
 
     case 'SET_CONTROLLER_URL': {
+      // Save-only: does NOT call registerContentScripts or onConnected.
+      // Permission may not yet be granted. The popup's save-controller flow
+      // calls PERMISSION_GRANTED immediately after, which triggers
+      // registerContentScripts. On startup, onConnected (via SET_BASE_URL /
+      // discover) handles registration for existing controller URLs.
       if (typeof msg.url !== 'string' || !msg.url.trim()) {
         return { ok: false, error: 'Missing or invalid url' };
       }

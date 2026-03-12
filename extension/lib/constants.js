@@ -8,7 +8,7 @@ export const THREAT_COLORS = {
 };
 
 export function getThreatLevel(score) {
-  if (score === null || score === undefined || score <= 0) return 'none';
+  if (score === null || score === undefined || !Number.isFinite(score) || score <= 0) return 'none';
   if (score < 25) return 'low';
   if (score < 50) return 'medium';
   if (score < 75) return 'high';
@@ -33,3 +33,6 @@ export const CACHE_TTL = 3600000;
 
 // Max IPs per batch request
 export const BATCH_MAX = 50;
+
+// Max entries in the in-memory threat cache
+export const MAX_CACHE_SIZE = 500;

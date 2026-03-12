@@ -25,7 +25,10 @@
   let config;
   try {
     const resp = await chrome.runtime.sendMessage({ type: 'GET_CONFIG' });
-    if (!resp || !resp.ok) return;
+    if (!resp || !resp.ok) {
+      console.debug('[ULI] GET_CONFIG returned non-ok:', resp);
+      return;
+    }
     config = resp.data;
   } catch (e) {
     console.debug('GET_CONFIG failed:', e);

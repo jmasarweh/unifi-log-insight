@@ -1,4 +1,4 @@
-import { CACHE_TTL, BATCH_MAX } from './constants.js';
+import { CACHE_TTL, BATCH_MAX, MAX_CACHE_SIZE } from './constants.js';
 
 /**
  * API client for communicating with the Log Insight backend.
@@ -7,7 +7,6 @@ import { CACHE_TTL, BATCH_MAX } from './constants.js';
 
 let baseUrl = '';
 const threatCache = new Map(); // ip -> { data, timestamp }
-const MAX_CACHE_SIZE = 500;
 
 export function setBaseUrl(url) {
   baseUrl = url.replace(/\/+$/, '');
@@ -53,7 +52,7 @@ export async function fetchUniFiSettings() {
  * Uses POST /api/threats/batch endpoint.
  */
 export async function batchThreatLookup(ips) {
-  if (!baseUrl || !ips.length) return {};
+  if (!baseUrl || !ips?.length) return {};
 
   // Check in-memory cache first
   const uncached = [];
@@ -79,7 +78,10 @@ export async function batchThreatLookup(ips) {
         body: JSON.stringify({ ips: batch }),
         signal: AbortSignal.timeout(5000),
       });
-      if (!resp.ok) continue;
+      if (!resp.ok) {
+        console.debug('[ULI][API] batch threat lookup returned', resp.status, resp.statusText, resp.url);
+        continue;
+      }
       const data = await resp.json();
       for (const [ip, threat] of Object.entries(data.results || {})) {
         results[ip] = threat;

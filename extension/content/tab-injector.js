@@ -10,6 +10,8 @@ window.addEventListener('uli-ready', async function () {
   const config = window.__uliConfig;
   if (!config) return;
 
+  const detectUniFiTheme = window.__uliUtils.detectTheme;
+
   const onRuntimeMessage = (msg, _sender, sendResponse) => {
     if (!msg || msg.type !== 'ULI_GET_THEME') return;
     sendResponse({ ok: true, theme: detectUniFiTheme() });
@@ -51,6 +53,8 @@ window.addEventListener('uli-ready', async function () {
   let themeObs = null;
   let lastUrl = location.href;
   let lastTheme = detectUniFiTheme();
+  let iframeLoaded = false;       // true after iframe fires its first 'load' event
+  let pendingNavigate = null;     // queued hash for delivery after iframe loads
 
   // Wait for the tab container to render
   const tabContainer = await waitForTabContainer(15000);
@@ -69,7 +73,7 @@ window.addEventListener('uli-ready', async function () {
   headerObs.observe(document.body, { childList: true, subtree: true });
 
   // Watch for UniFi theme changes and re-sync tab styling + iframe theme
-  themeObs = observeThemeChanges(lastTheme);
+  themeObs = window.__uliUtils.onThemeChange(onThemeChanged);
 
   // Route-change safety net: if URL changes while embed is active, force deactivate.
   // Covers pushState, replaceState, popstate, and hashchange.
@@ -213,10 +217,10 @@ window.addEventListener('uli-ready', async function () {
 
       const img = document.createElement('img');
       img.src = inactiveIconUrl();
-      img.width = 24;
-      img.height = 24;
+      img.width = 22;
+      img.height = 22;
       img.alt = 'Log Insight';
-      img.style.borderRadius = '4px';
+      img.style.cssText = 'border-radius:4px;margin:3px 5px 3px 3px';
       iconContainer.insertBefore(img, iconContainer.firstChild);
 
       // Update the title text
@@ -343,48 +347,8 @@ window.addEventListener('uli-ready', async function () {
     }
   }
 
-  // ── Theme detection ─────────────────────────────────────────────────────
-
-  function detectUniFiTheme() {
-    // UniFi uses a dark header bg in dark mode, light in light mode
-    const header = document.querySelector('header[class*="unifi-portal"]');
-    if (!header) return 'dark';
-    const bg = getComputedStyle(header).backgroundColor;
-    return isColorDark(bg) ? 'dark' : 'light';
-  }
-
-  function isColorDark(color) {
-    // Parse rgb(r, g, b) or rgba(r, g, b, a)
-    const m = color.match(/(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-    if (!m) return true; // default to dark
-    const luminance = (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]);
-    return luminance < 128;
-  }
-
-  function observeThemeChanges(initialTheme) {
-    // UniFi toggles themes by re-rendering the entire React tree — the old
-    // header element gets replaced, so we must observe document.body with
-    // subtree:true to catch the new header appearing. Debounced to 200ms
-    // to avoid excessive checks.
-    let debounce = null;
-    let known = initialTheme;
-    const check = () => {
-      const current = detectUniFiTheme();
-      if (current !== known) {
-        known = current;
-        lastTheme = current;
-        onThemeChanged(current);
-      }
-    };
-    const observer = new MutationObserver(() => {
-      if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(check, 200);
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    return observer;
-  }
-
   function onThemeChanged(theme) {
+    lastTheme = theme;
     if (uliTab) {
       // UniFi re-rendered all tabs with new theme CSS classes.
       // Update our tab's className to match the current inactive tabs
@@ -431,9 +395,21 @@ window.addEventListener('uli-ready', async function () {
 
     const theme = detectUniFiTheme();
     iframe = document.createElement('iframe');
-    iframe.src = logInsightUrl + '?theme=' + theme + '&parentOrigin=' + encodeURIComponent(location.origin);
+    iframeLoaded = false;
+    const iframeSrc = new URL(logInsightUrl);
+    iframeSrc.searchParams.set('theme', theme);
+    iframeSrc.searchParams.set('parentOrigin', location.origin);
+    iframe.src = iframeSrc.href;
     iframe.sandbox = 'allow-scripts allow-same-origin allow-forms allow-popups';
     iframe.style.cssText = 'width:100%;height:100%;border:none;';
+
+    iframe.addEventListener('load', () => {
+      iframeLoaded = true;
+      if (pendingNavigate && iframe.contentWindow) {
+        iframe.contentWindow.postMessage({ type: 'uli-navigate', hash: pendingNavigate }, logInsightOrigin);
+        pendingNavigate = null;
+      }
+    });
 
     container.appendChild(iframe);
     return container;
@@ -455,17 +431,26 @@ window.addEventListener('uli-ready', async function () {
   // because content script capture listeners on document can miss events in some
   // browser/extension configurations.
 
-  // Listen for navigation requests from flow-enricher (pill/dot clicks)
+  // Listen for navigation requests from flow-enricher / panel-enricher clicks
   const onUliNavigate = (e) => {
-    const { ip } = e.detail || {};
+    const { ip, range, dir } = e.detail || {};
     if (!ip) return;
 
-    // Activate the embed if not already active
+    let hash = '#logs?ip=' + encodeURIComponent(ip);
+    if (range) hash += '&range=' + encodeURIComponent(range);
+    if (dir === 'src' || dir === 'dst') hash += '&dir=' + dir;
+
+    // Activate embed if hidden
     if (!isActive) activateEmbed();
 
-    // Navigate the iframe to logs filtered by IP
     if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({ type: 'uli-navigate', hash: '#logs?ip=' + encodeURIComponent(ip) }, logInsightOrigin);
+      if (iframeLoaded) {
+        // Iframe already loaded — deliver immediately
+        iframe.contentWindow.postMessage({ type: 'uli-navigate', hash }, logInsightOrigin);
+      } else {
+        // Iframe still loading — queue for delivery after 'load' event
+        pendingNavigate = hash;
+      }
     }
   };
   window.addEventListener('uli-navigate', onUliNavigate);

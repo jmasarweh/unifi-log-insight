@@ -13,7 +13,16 @@ import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dism
 import { loadInterfaceLabels } from './utils'
 import { isVpnInterface } from './vpnUtils'
 
-const IP_PATTERN = /^[\d.:a-fA-F]+$/
+/** Validate an IP-like string (IPv4 dotted-decimal or IPv6 hex+colon). */
+function isValidIpFormat(ip) {
+  if (!ip || ip.length > 45) return false
+  // IPv4: 1-3 digits separated by dots
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return true
+  // IPv6: hex groups with colons (including :: compressed and mixed v4-mapped)
+  if (/^[0-9a-fA-F:]+$/.test(ip) && ip.includes(':')) return true
+  return false
+}
+const VALID_RANGES = new Set(['1h','6h','24h','7d','30d','60d','90d','180d','365d'])
 
 const TABS = [
   { id: 'logs', label: 'Log Stream', shortLabel: 'Stream' },
@@ -93,6 +102,16 @@ export default function App() {
   })
   const [showStatusTooltip, setShowStatusTooltip] = useState(false)
   const statusRef = useRef(null)
+  const [logsPaused, setLogsPaused] = useState(false)
+  const onLogsPauseChange = useCallback((paused) => setLogsPaused(paused), [])
+
+  // Persist URL-derived theme to localStorage so Settings reads the correct value
+  useEffect(() => {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme')
+    if ((urlTheme === 'light' || urlTheme === 'dark') && localStorage.getItem('ui_theme') !== urlTheme) {
+      localStorage.setItem('ui_theme', urlTheme)
+    }
+  }, [])
 
   // Hydrate theme from API when localStorage is empty (e.g., cleared cache, new browser)
   useEffect(() => {
@@ -135,8 +154,13 @@ export default function App() {
       if (e.data.type === 'uli-navigate' && e.data.hash) {
         const params = new URLSearchParams(e.data.hash.split('?')[1] || '')
         const ip = params.get('ip')
-        if (ip && IP_PATTERN.test(ip)) {
-          setLogsDrill({ src_ip: ip })
+        if (ip && isValidIpFormat(ip)) {
+          const dir = params.get('dir')
+          const ipKey = dir === 'dst' ? 'dst_ip' : 'src_ip'
+          const drill = { [ipKey]: ip }
+          const range = params.get('range')
+          if (VALID_RANGES.has(range)) drill.time_range = range
+          setLogsDrill(drill)
           setActiveTab('logs')
         }
       }
@@ -296,8 +320,13 @@ export default function App() {
     if (!hash.includes('?')) return
     const params = new URLSearchParams(hash.split('?')[1])
     const ip = params.get('ip')
-    if (ip && IP_PATTERN.test(ip)) {
-      setLogsDrill({ src_ip: ip })
+    if (ip && isValidIpFormat(ip)) {
+      const dir = params.get('dir')
+      const ipKey = dir === 'dst' ? 'dst_ip' : 'src_ip'
+      const drill = { [ipKey]: ip }
+      const range = params.get('range')
+      if (VALID_RANGES.has(range)) drill.time_range = range
+      setLogsDrill(drill)
       setActiveTab('logs')
       history.replaceState(null, '', window.location.pathname + window.location.search + '#logs')
     }
@@ -360,7 +389,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-dvh flex flex-col bg-gray-950">
+    <div className={`h-dvh flex flex-col bg-gray-950${logsPaused && activeTab === 'logs' ? ' paused-glow' : ''}`}>
       {/* Upgrade modal */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -601,7 +630,7 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} drillFilters={logsDrill} onDrillConsumed={clearLogsDrill} interfaces={allInterfaces} />}
+        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} drillFilters={logsDrill} onDrillConsumed={clearLogsDrill} interfaces={allInterfaces} onPauseChange={onLogsPauseChange} />}
         <Suspense fallback={<DashboardSkeleton />}>
           {activeTab === 'dashboard' && <Dashboard maxFilterDays={maxFilterDays} />}
         </Suspense>

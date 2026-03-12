@@ -43,7 +43,7 @@ def batch_threat_lookup(req: BatchThreatRequest):
             valid_ips.append(ip)
             seen.add(ip)
         except ValueError:
-            pass  # skip invalid IPs silently
+            logger.debug("Skipping invalid IP in batch request: %s", ip)
 
     if not valid_ips:
         return {'results': {}}
@@ -105,9 +105,14 @@ def batch_threat_lookup(req: BatchThreatRequest):
                     }
 
         # Fill in nulls for requested IPs not found in any table
+        empty_result = {
+            'abuse_score': None, 'abuse_categories': None,
+            'abuse_usage_type': None, 'abuse_total_reports': None,
+            'abuse_is_tor': None, 'rdns': None, 'asn_name': None,
+        }
         final = {}
         for ip in valid_ips:
-            final[ip] = results.get(ip, None)
+            final[ip] = results.get(ip, empty_result)
 
         return {'results': final}
     except Exception as e:
