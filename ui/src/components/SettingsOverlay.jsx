@@ -167,11 +167,15 @@ export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn
             </svg>
           </button>
           <div className="flex items-center gap-2 shrink-0">
-            <svg viewBox="0 0 24 24" className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" aria-hidden="true">
-              <circle cx="12" cy="12" r="10.5" strokeWidth="1.5" strokeOpacity="0.4" />
-              <path d="M8.5 7.5v5.5a3.5 3.5 0 0 0 7 0V7.5" strokeWidth="2.2" strokeLinecap="round" />
+            <svg viewBox="0 0 100 116" className="w-6 h-7 shrink-0" fill="none" aria-hidden="true">
+              <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68 Z" fill="#14b8a6" fillOpacity="0.12"/>
+              <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68" stroke="#14b8a6" strokeWidth="5.2" strokeLinecap="round" fill="none"/>
+              <path d="M 28 34 A 18 18 0 0 1 44 22" stroke="#14b8a6" strokeWidth="4.8" strokeLinecap="round" fill="none" opacity="0.7"/>
+              <line x1="28" y1="75" x2="72" y2="75" stroke="#14b8a6" strokeWidth="5.2" strokeLinecap="round"/>
+              <line x1="36" y1="84" x2="64" y2="84" stroke="#14b8a6" strokeWidth="5.2" strokeLinecap="round"/>
+              <text x="50" y="110" textAnchor="middle" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif" fontWeight="800" fontSize="19" letterSpacing="0.16em" fill="#0d9488">PLUS</text>
             </svg>
-            <span className="hidden sm:inline text-sm font-semibold text-gray-200">UniFi Log Insight</span>
+            <span className="hidden sm:inline text-sm font-semibold text-gray-200">Insights Plus</span>
           </div>
           <span className="text-sm text-gray-400 flex items-center">
             <span className="hidden md:inline">Settings</span>

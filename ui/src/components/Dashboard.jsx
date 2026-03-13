@@ -147,8 +147,8 @@ function LogsOverTimeChart({ data, timeRange, loading }) {
       <AreaChart data={data}>
         <defs>
           <linearGradient id="logsGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.05} />
+            <stop offset="0%" stopColor="#14b8a6" stopOpacity={0.4} />
+            <stop offset="100%" stopColor="#14b8a6" stopOpacity={0.05} />
           </linearGradient>
         </defs>
         <XAxis dataKey="period" tickFormatter={(v) => formatXAxis(v, timeRange)}
@@ -157,8 +157,8 @@ function LogsOverTimeChart({ data, timeRange, loading }) {
         <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} axisLine={false} tickLine={false} width={40}
                tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
         <Tooltip content={<ChartTooltip timeRange={timeRange} />} />
-        <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2}
-              fill="url(#logsGrad)" dot={false} activeDot={{ r: 4, fill: '#3b82f6' }} />
+        <Area type="monotone" dataKey="count" stroke="#14b8a6" strokeWidth={2}
+              fill="url(#logsGrad)" dot={false} activeDot={{ r: 4, fill: '#14b8a6' }} />
       </AreaChart>
     </ResponsiveContainer>
   )

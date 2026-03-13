@@ -588,8 +588,10 @@ class Database:
 
     def insert_logs_batch(self, logs: list[dict]):
         """Insert multiple parsed log entries in a single transaction.
-        
+
         If batch insert fails, falls back to row-by-row to isolate bad data.
+        Sets a 30s statement timeout to prevent hung inserts from blocking the
+        UDP receive loop (which causes silent packet loss).
         """
         if not logs:
             return
@@ -602,6 +604,7 @@ class Database:
         try:
             with self.get_conn() as conn:
                 with conn.cursor() as cur:
+                    cur.execute("SET LOCAL statement_timeout = '30s'")
                     extras.execute_batch(cur, INSERT_SQL, rows, page_size=100)
             logger.debug("Batch inserted %d logs", len(logs))
         except Exception as batch_err:
@@ -613,6 +616,7 @@ class Database:
                 try:
                     with self.get_conn() as conn:
                         with conn.cursor() as cur:
+                            cur.execute("SET LOCAL statement_timeout = '10s'")
                             cur.execute(INSERT_SQL, row)
                     inserted += 1
                 except Exception as row_err:

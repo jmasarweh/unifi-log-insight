@@ -20,7 +20,7 @@ const DIMENSION_OPTIONS = [
 ]
 
 const COLUMN_COLORS = [
-  { node: '#3b82f6', link: 'rgba(59,130,246,0.45)' },  // blue
+  { node: '#14b8a6', link: 'rgba(20,184,166,0.45)' },  // teal
   { node: '#a855f7', link: 'rgba(168,85,247,0.45)' },   // purple
   { node: '#22c55e', link: 'rgba(34,197,94,0.45)' },    // green
 ]

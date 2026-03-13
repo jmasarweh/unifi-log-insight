@@ -48,6 +48,10 @@ def _apply_ip_filters(where, params, src_ip, dst_ip, interface_in, interface_out
     return where, params
 
 
+# TODO: Optimise /api/stats for dashboard load time.
+#   - Option 1: Parallelise the ~12 sequential SQL queries (e.g. asyncio.gather or threaded cursor)
+#   - Option 2: Have the dashboard call /api/stats/overview first to render summary cards instantly,
+#     then backfill the rest from /api/stats asynchronously (lazy-load sections)
 @router.get("/api/stats")
 def get_stats(
     time_range: str = Query("24h", description="1h,6h,24h,7d,30d,60d"),
@@ -321,6 +325,56 @@ def get_stats(
     except Exception as e:
         conn.rollback()
         logger.exception("Error fetching stats")
+        raise HTTPException(status_code=500, detail="Internal server error") from e
+    finally:
+        put_conn(conn)
+
+
+@router.get("/api/stats/overview")
+def get_stats_overview(
+    time_range: str = Query("24h", description="1h,6h,24h,7d,30d,60d"),
+):
+    """Lightweight traffic overview: total, allowed, blocked, threats, direction breakdown.
+
+    Single query — designed for the browser extension popup where latency matters.
+    """
+    cutoff = parse_time_range(time_range)
+    if not cutoff:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE log_type = 'firewall' AND rule_action = 'allow') AS allowed,
+                    COUNT(*) FILTER (WHERE rule_action = 'block') AS blocked,
+                    COUNT(*) FILTER (WHERE threat_score > 50) AS threats
+                FROM logs WHERE timestamp >= %s
+            """, [cutoff])
+            row = cur.fetchone()
+
+            cur.execute("""
+                SELECT direction, COUNT(*) AS count
+                FROM logs
+                WHERE timestamp >= %s AND direction IS NOT NULL
+                GROUP BY direction ORDER BY count DESC
+            """, [cutoff])
+            by_direction = {r['direction']: r['count'] for r in cur.fetchall()}
+
+        conn.commit()
+        return {
+            'time_range': time_range,
+            'total': row['total'],
+            'allowed': row['allowed'],
+            'blocked': row['blocked'],
+            'threats': row['threats'],
+            'by_direction': by_direction,
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Error fetching stats overview")
         raise HTTPException(status_code=500, detail="Internal server error") from e
     finally:
         put_conn(conn)

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="440" height="280" viewBox="0 0 440 280">
+  <!-- Background -->
+  <rect width="440" height="280" rx="0" fill="#000000"/>
+
+  <!-- Subtle radial glow behind icon -->
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="38%" r="35%">
+      <stop offset="0%" stop-color="#14B8A6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#14B8A6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="220" cy="105" rx="140" ry="100" fill="url(#glow)"/>
+
+  <!-- Logo (lightbulb) — scaled and centered -->
+  <g transform="translate(170, 30) scale(1.0)">
+    <!-- Bulb fill -->
+    <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68 Z" fill="#14B8A6" fill-opacity="0.15"/>
+    <!-- Bulb outline -->
+    <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68" stroke="#14B8A6" stroke-width="5.2" stroke-linecap="round" fill="none"/>
+    <!-- Highlight arc -->
+    <path d="M 28 34 A 18 18 0 0 1 44 22" stroke="#14B8A6" stroke-width="4.8" stroke-linecap="round" fill="none" opacity="0.7"/>
+    <!-- Base line 1 -->
+    <line x1="28" y1="75" x2="72" y2="75" stroke="#14B8A6" stroke-width="5.2" stroke-linecap="round"/>
+    <!-- Base line 2 -->
+    <line x1="36" y1="84" x2="64" y2="84" stroke="#14B8A6" stroke-width="5.2" stroke-linecap="round"/>
+    <!-- PLUS wordmark -->
+    <text x="50" y="110" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif" font-weight="800" font-size="19" letter-spacing="0.16em" fill="#0D9488">PLUS</text>
+  </g>
+
+  <!-- Extension name -->
+  <text x="220" y="185" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif" font-weight="700" font-size="22" fill="#e0e0e0" letter-spacing="0.02em">UniFi Insights Plus</text>
+
+  <!-- Tagline -->
+  <text x="220" y="212" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif" font-weight="400" font-size="16" fill="#14B8A6" opacity="0.85">Threat intelligence for your UniFi Controller</text>
+
+  <!-- Subtle bottom border accent -->
+  <rect x="170" y="238" width="100" height="2" rx="1" fill="#14B8A6" opacity="0.4"/>
+</svg>

@@ -725,15 +725,16 @@ export default function FirewallRules() {
     }
 
     result = result.filter(p => {
-      const isDerived = p.metadata?.origin === 'DERIVED'
+      const origin = p.metadata?.origin
+      const isBuiltIn = origin === 'SYSTEM_DEFINED' || origin === 'DERIVED'
       const isEnabled = p.enabled !== false
       const ipv = (p.ipProtocolScope?.ipVersion || p.ipVersion || 'IPv4').toLowerCase()
       const isV4 = ipv.includes('ipv4') || ipv.includes('v4')
       const isV6 = ipv.includes('ipv6') || ipv.includes('v6')
       const isBoth = isV4 && isV6
 
-      if (!filters.builtIn && isDerived) return false
-      if (!filters.custom && !isDerived) return false
+      if (!filters.builtIn && isBuiltIn) return false
+      if (!filters.custom && !isBuiltIn) return false
       if (!filters.inUse && isEnabled) return false
       if (!filters.paused && !isEnabled) return false
       if (!filters.ipv4 && !filters.ipv6) return false

@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "UniFi Insights Plus",
+  "version": "1.0.0",
+  "description": "Enrich your UniFi Controller with threat intelligence, GeoIP data, and an embedded Log Insight dashboard",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "UniFi Insights Plus",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  }
+}

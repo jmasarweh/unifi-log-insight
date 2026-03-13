@@ -1,0 +1,4 @@
+/* Minimal styles for content script injections.
+   Component-level styling is done via Shadow DOM to avoid
+   conflicts with the UniFi Controller's CSS.
+   Currently empty — all styling is inline or in Shadow DOM. */

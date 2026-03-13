@@ -13,6 +13,17 @@ import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dism
 import { loadInterfaceLabels } from './utils'
 import { isVpnInterface } from './vpnUtils'
 
+/** Validate an IP-like string (IPv4 dotted-decimal or IPv6 hex+colon). */
+function isValidIpFormat(ip) {
+  if (!ip || ip.length > 45) return false
+  // IPv4: 1-3 digits separated by dots
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) return true
+  // IPv6: hex groups with colons (including :: compressed and mixed v4-mapped)
+  if (/^[0-9a-fA-F:]+$/.test(ip) && ip.includes(':')) return true
+  return false
+}
+const VALID_RANGES = new Set(['1h','6h','24h','7d','30d','60d','90d','180d','365d'])
+
 const TABS = [
   { id: 'logs', label: 'Log Stream', shortLabel: 'Stream' },
   { id: 'flow-view', label: 'Flow View', shortLabel: 'Flow' },
@@ -56,8 +67,14 @@ function formatAbuseIPDB(abuseipdb) {
   return `${used.toLocaleString()}/${limit.toLocaleString()} \u00B7 Reset ${reset}`
 }
 
+const isEmbedded = window.parent !== window
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('logs')
+  const [activeTab, setActiveTab] = useState(() => {
+    const hash = window.location.hash.replace('#', '').split('?')[0]
+    const valid = TABS.map(t => t.id)
+    return valid.includes(hash) ? hash : 'logs'
+  })
   const [health, setHealth] = useState(null)
   const [latestRelease, setLatestRelease] = useState(null)
   const [showWizard, setShowWizard] = useState(false)
@@ -80,9 +97,23 @@ export default function App() {
   const [unlabeledVpn, setUnlabeledVpn] = useState([])
   const [allInterfaces, setAllInterfaces] = useState(null)
   const [showWanToast, setShowWanToast] = useState(false)
-  const [theme, setTheme] = useState(() => localStorage.getItem('ui_theme') || 'dark')
+  const [theme, setTheme] = useState(() => {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme')
+    if (urlTheme === 'light' || urlTheme === 'dark') return urlTheme
+    return localStorage.getItem('ui_theme') || 'dark'
+  })
   const [showStatusTooltip, setShowStatusTooltip] = useState(false)
   const statusRef = useRef(null)
+  const [logsPaused, setLogsPaused] = useState(false)
+  const onLogsPauseChange = useCallback((paused) => setLogsPaused(paused), [])
+
+  // Persist URL-derived theme to localStorage so Settings reads the correct value
+  useEffect(() => {
+    const urlTheme = new URLSearchParams(window.location.search).get('theme')
+    if ((urlTheme === 'light' || urlTheme === 'dark') && localStorage.getItem('ui_theme') !== urlTheme) {
+      localStorage.setItem('ui_theme', urlTheme)
+    }
+  }, [])
 
   // Hydrate theme from API when localStorage is empty (e.g., cleared cache, new browser)
   useEffect(() => {
@@ -98,6 +129,47 @@ export default function App() {
   useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
+
+  // Listen for messages from parent window (when embedded in UniFi iframe)
+  useEffect(() => {
+    if (window.parent === window) return () => {}
+
+    // Build optional origin allowlist from document.referrer.
+    // Referrer may be empty (HTTPS→HTTP downgrade strips it), so this is
+    // defense-in-depth — the primary security gate is e.source === window.parent
+    // (browser-guaranteed, not spoofable). Message types are harmless UI actions
+    // (theme toggle, navigation to validated IPs) so no data exfiltration risk.
+    const allowedOrigins = new Set()
+    if (document.referrer) {
+      try {
+        allowedOrigins.add(new URL(document.referrer).origin)
+      } catch { /* ignore malformed */ }
+    }
+
+    const handler = (e) => {
+      if (e.source !== window.parent) return
+      if (allowedOrigins.size > 0 && !allowedOrigins.has(e.origin)) return
+      if (!e.data || !e.data.type) return
+      if (e.data.type === 'uli-theme' && (e.data.theme === 'dark' || e.data.theme === 'light')) {
+        setTheme(e.data.theme)
+      }
+      if (e.data.type === 'uli-navigate' && e.data.hash) {
+        const params = new URLSearchParams(e.data.hash.split('?')[1] || '')
+        const ip = params.get('ip')
+        if (ip && isValidIpFormat(ip)) {
+          const dir = params.get('dir')
+          const ipKey = dir === 'dst' ? 'dst_ip' : 'src_ip'
+          const drill = { [ipKey]: ip }
+          const range = params.get('range')
+          if (VALID_RANGES.has(range)) drill.time_range = range
+          setLogsDrill(drill)
+          setActiveTab('logs')
+        }
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
 
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark'
@@ -244,6 +316,24 @@ export default function App() {
     return () => window.removeEventListener('drillToLogs', handler)
   }, [])
 
+  // Parse URL hash params (e.g. #logs?ip=1.2.3.4) for deep-linking from browser extension
+  useEffect(() => {
+    const hash = window.location.hash
+    if (!hash.includes('?')) return
+    const params = new URLSearchParams(hash.split('?')[1])
+    const ip = params.get('ip')
+    if (ip && isValidIpFormat(ip)) {
+      const dir = params.get('dir')
+      const ipKey = dir === 'dst' ? 'dst_ip' : 'src_ip'
+      const drill = { [ipKey]: ip }
+      const range = params.get('range')
+      if (VALID_RANGES.has(range)) drill.time_range = range
+      setLogsDrill(drill)
+      setActiveTab('logs')
+      history.replaceState(null, '', window.location.pathname + window.location.search + '#logs')
+    }
+  }, [])
+
   // Listen for "Return from drill" — navigate back to source tab
   useEffect(() => {
     const handler = () => {
@@ -301,7 +391,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-dvh flex flex-col bg-gray-950">
+    <div className={`h-dvh flex flex-col bg-gray-950${logsPaused && activeTab === 'logs' ? ' paused-glow' : ''}`}>
       {/* Upgrade modal */}
       {showUpgradeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
@@ -432,15 +522,21 @@ export default function App() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-gray-950 shrink-0">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
-          {/* Logo */}
-          <div className="flex items-center gap-2 shrink-0">
-            <svg viewBox="0 0 24 24" className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" role="img" aria-labelledby="app-logo-title">
-              <title id="app-logo-title">UniFi Log Insight</title>
-              <circle cx="12" cy="12" r="10.5" strokeWidth="1.5" strokeOpacity="0.4" />
-              <path d="M8.5 7.5v5.5a3.5 3.5 0 0 0 7 0V7.5" strokeWidth="2.2" strokeLinecap="round" />
-            </svg>
-            <span className="hidden sm:inline text-sm font-semibold text-gray-200">UniFi Log Insight</span>
-          </div>
+          {/* Logo — hidden when embedded in UniFi controller iframe (tab already shows it) */}
+          {!isEmbedded && (
+            <div className="flex items-center gap-2 shrink-0">
+              <svg viewBox="0 0 100 116" className="w-6 h-7 shrink-0" fill="none" role="img" aria-labelledby="app-logo-title">
+                <title id="app-logo-title">Insights Plus</title>
+                <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68 Z" fill="#14b8a6" fillOpacity="0.12"/>
+                <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68" stroke="#14b8a6" strokeWidth="5.2" strokeLinecap="round" fill="none"/>
+                <path d="M 28 34 A 18 18 0 0 1 44 22" stroke="#14b8a6" strokeWidth="4.8" strokeLinecap="round" fill="none" opacity="0.7"/>
+                <line x1="28" y1="75" x2="72" y2="75" stroke="#14b8a6" strokeWidth="5.2" strokeLinecap="round"/>
+                <line x1="36" y1="84" x2="64" y2="84" stroke="#14b8a6" strokeWidth="5.2" strokeLinecap="round"/>
+                <text x="50" y="110" textAnchor="middle" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Display',sans-serif" fontWeight="800" fontSize="19" letterSpacing="0.16em" fill="#0d9488">PLUS</text>
+              </svg>
+              <span className="hidden sm:inline text-sm font-semibold text-gray-200">Insights Plus</span>
+            </div>
+          )}
 
           {/* Tabs */}
           <nav className="flex items-center gap-0.5 ml-0 sm:ml-4">
@@ -542,7 +638,7 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} drillFilters={logsDrill} onDrillConsumed={clearLogsDrill} interfaces={allInterfaces} />}
+        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} drillFilters={logsDrill} onDrillConsumed={clearLogsDrill} interfaces={allInterfaces} onPauseChange={onLogsPauseChange} />}
         <Suspense fallback={<DashboardSkeleton />}>
           {activeTab === 'dashboard' && <Dashboard maxFilterDays={maxFilterDays} />}
         </Suspense>

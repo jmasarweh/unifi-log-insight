@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>UniFi Insights Plus</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="../icons/icon-32.png" alt="" class="logo">
+      <h1>UniFi Insights Plus</h1>
+    </div>
+
+    <!-- Setup View -->
+    <div id="setup-view" class="view" hidden>
+      <p class="hint">Log Insight server address</p>
+      <div class="server-row">
+        <input type="text" id="host-input" placeholder="192.168.1.50" spellcheck="false" autocomplete="off" aria-label="Log Insight server host">
+        <span class="port-sep">:</span>
+        <input type="text" id="port-input" value="8090" spellcheck="false" autocomplete="off" class="port-field" aria-label="Log Insight server port">
+      </div>
+      <button type="button" id="connect-btn" class="btn-primary full-width">Connect</button>
+      <p id="setup-error" class="error" hidden aria-live="polite"></p>
+    </div>
+
+    <!-- Connected View -->
+    <div id="connected-view" class="view" hidden>
+      <div class="status-row">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Checking...</span>
+      </div>
+
+      <div id="traffic-overview" class="traffic-overview" hidden>
+        <div class="to-header">
+          <span class="to-title">Traffic Overview</span>
+          <span class="to-period">Last 24h</span>
+        </div>
+        <div class="to-total-row">
+          <span class="to-total-value" id="total-logs">-</span>
+          <span class="to-total-label">total logs</span>
+        </div>
+        <div class="to-badges">
+          <span class="to-badge to-allowed" title="Allowed"><span id="stat-allowed">-</span></span>
+          <span class="to-badge to-blocked" title="Blocked"><span id="stat-blocked">-</span></span>
+          <span class="to-badge to-threats" title="Threats"><span id="stat-threats">-</span></span>
+        </div>
+        <div class="to-directions" id="to-directions"></div>
+      </div>
+
+      <div class="links">
+        <a id="open-logs" class="link-btn" href="#" target="_blank" rel="noopener noreferrer">Log Stream</a>
+        <a id="open-threat-map" class="link-btn" href="#" target="_blank" rel="noopener noreferrer">Threat Map</a>
+        <a id="open-dashboard" class="link-btn" href="#" target="_blank" rel="noopener noreferrer">Dashboard</a>
+      </div>
+
+      <!-- Controller Section -->
+      <div class="section-card">
+        <div class="section-header">
+          <span class="section-title">UniFi Controller</span>
+          <span id="controller-status" class="status-pill" hidden></span>
+        </div>
+
+        <!-- Display row: shown when we have a URL and not editing -->
+        <div id="controller-display" class="controller-display" hidden>
+          <img id="controller-img" class="controller-img" alt="" hidden>
+          <span id="controller-url" class="controller-url"></span>
+          <button type="button" id="edit-controller-btn" class="btn-icon" title="Edit">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+          </button>
+        </div>
+
+        <!-- Edit row: shown when editing or no URL set -->
+        <div id="controller-edit" hidden>
+          <div class="server-row compact">
+            <input type="text" id="controller-input" placeholder="10.10.10.1" spellcheck="false" autocomplete="off" aria-label="Unifi Controller Address">
+            <button type="button" id="save-controller-btn" class="btn-sm">Save</button>
+          </div>
+          <p class="hint small">IP or hostname of your UniFi controller</p>
+        </div>
+
+        <!-- Grant access banner -->
+        <div id="grant-banner" class="grant-banner" hidden>
+          <span>Browser access needed</span>
+          <button type="button" id="grant-btn" class="btn-sm">Grant Access</button>
+        </div>
+
+        <p id="controller-error" class="error" hidden aria-live="polite"></p>
+      </div>
+
+      <!-- Feature toggles -->
+      <div class="toggles">
+        <label class="toggle">
+          <input type="checkbox" id="toggle-tab" checked>
+          <span>Add Insights Plus tab to UniFi UI</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="toggle-enrich" checked>
+          <span>Enrich Unifi Insights flows records</span>
+        </label>
+      </div>
+
+      <div id="reload-bar" class="reload-bar" hidden>
+        <span>Reload UniFi page to apply</span>
+        <button type="button" id="reload-btn" class="btn-sm">Reload</button>
+      </div>
+
+      <button type="button" id="disconnect-btn" class="btn-reset">Reset Extension</button>
+
+      <div id="version-footer" class="version-footer" hidden></div>
+    </div>
+
+    <details class="debug-details">
+      <summary class="debug-summary">Debug</summary>
+      <pre id="debug-out" class="debug-out">Loading...</pre>
+    </details>
+  </div>
+
+  <script src="../lib/url-utils.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

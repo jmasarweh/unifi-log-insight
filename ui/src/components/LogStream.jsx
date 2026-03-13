@@ -43,7 +43,7 @@ const TOGGLEABLE_COLUMNS = [
   { key: 'categories', label: 'Categories' },
 ]
 
-export default function LogStream({ version, latestRelease, maxFilterDays, drillFilters, onDrillConsumed, interfaces: prefetchedInterfaces }) {
+export default function LogStream({ version, latestRelease, maxFilterDays, drillFilters, onDrillConsumed, interfaces: prefetchedInterfaces, onPauseChange }) {
   const [filters, setFilters] = useState(() => {
     const restored = { ...DEFAULT_FILTERS }
     try {
@@ -55,6 +55,22 @@ export default function LogStream({ version, latestRelease, maxFilterDays, drill
       const savedDirection = localStorage.getItem(DIRECTION_STORAGE_KEY)
       if (savedDirection) restored.direction = savedDirection
     } catch (e) { /* private browsing */ }
+    if (drillFilters) {
+      return {
+        ...DEFAULT_FILTERS,
+        time_range: drillFilters.time_range || restored.time_range,
+        ip: null,
+        src_ip: drillFilters.src_ip || null,
+        dst_ip: drillFilters.dst_ip || null,
+        dst_port: drillFilters.dst_port?.toString() || null,
+        service: drillFilters.service || null,
+        log_type: 'firewall',
+        page: 1,
+        per_page: restored.per_page,
+        sort: restored.sort,
+        order: restored.order,
+      }
+    }
     return restored
   })
   const [data, setData] = useState({ data: [], total: 0, page: 1, pages: 0 })
@@ -168,6 +184,9 @@ export default function LogStream({ version, latestRelease, maxFilterDays, drill
 
   // Effective auto-refresh: paused when a row is expanded
   const isRefreshing = autoRefresh && expandedId === null
+
+  // Notify parent of pause state changes
+  useEffect(() => { onPauseChange?.(!isRefreshing) }, [isRefreshing, onPauseChange])
 
   // When paused (manually or by expanding a row), silently check for new logs count
   useEffect(() => {
