@@ -112,6 +112,8 @@ def _require_scope(token_info: dict, required: list[str]) -> None:
     """Check that the token's effective scopes include all required scopes."""
     # Explicit None check: empty effective_scopes (set()) means *no* permissions
     # and must NOT fall through to raw scopes — that would be privilege escalation.
+    # effective_scopes is always a set (assigned by validate_token_with_effective_scopes
+    # via set intersection at auth.py:277-280). No string/invalid type possible.
     es = token_info.get('effective_scopes')
     granted = set(es) if es is not None else set(token_info.get('scopes') or [])
     if not set(required).issubset(granted):
@@ -136,14 +138,24 @@ _SENSITIVE_PARAM_KEYS = frozenset({
 
 
 def _sanitize_params(params: dict | None) -> dict:
-    """Redact sensitive keys from params before audit logging."""
+    """Redact sensitive keys from params before audit logging.
+
+    Uses substring matching: a key like 'user_password' or 'api_secret_key'
+    is redacted if any token in _SENSITIVE_PARAM_KEYS appears within it.
+    """
     if not params:
         return {}
-    return {k: ('***' if k.lower() in _SENSITIVE_PARAM_KEYS else v) for k, v in params.items()}
+    def _is_sensitive(key: str) -> bool:
+        kl = key.lower()
+        return any(tok in kl for tok in _SENSITIVE_PARAM_KEYS)
+    return {k: ('***' if _is_sensitive(k) else v) for k, v in params.items()}
 
 
 def _write_audit(token_info: dict, tool_name: str, scope: str, params: dict | None,
                  success: bool, error: str | None = None) -> None:
+    # Won't Fix: raw error logged intentionally — audit entries are admin-only
+    # and error messages from tool execution are needed for debugging. Params
+    # are already sanitized via _sanitize_params; error strings don't contain secrets.
     if not _audit_enabled():
         return
     token_id = token_info.get('token_id')
@@ -803,7 +815,7 @@ def list_mcp_audit(limit: int = 200, offset: int = 0):
             total = cur.fetchone()['count']
             cur.execute("""
                 SELECT a.id, a.token_id, t.name as token_name, t.token_prefix,
-                       a.action, a.detail, a.created_at
+                       a.detail, a.created_at
                 FROM audit_log a
                 LEFT JOIN api_tokens t ON t.id = a.token_id
                 WHERE a.action = 'api_call'

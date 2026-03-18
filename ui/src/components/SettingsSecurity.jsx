@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { fetchAuthStatus, fetchAuthMe, authChangePassword, authSetup, updateSessionTtl } from '../api'
 
 const INPUT_CLS = 'w-full px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-teal-500'
@@ -28,11 +28,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
   const [ttlSaving, setTtlSaving] = useState(false)
   const [ttlStatus, setTtlStatus] = useState(null) // 'saved' | 'error'
 
-  // Empty deps [] is correct: mount-once pattern. Adding reload would cause
-  // infinite loops since reload is redefined on each render (no useCallback).
-  useEffect(() => { reload() }, [])
-
-  async function reload() {
+  const reload = useCallback(async function reload() {
     setLoading(true)
     try {
       const [status, meResp] = await Promise.allSettled([
@@ -47,7 +43,9 @@ export default function SettingsSecurity({ onAuthEnabled }) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  useEffect(() => { reload() }, [reload])
 
   async function handleChangePassword(e) {
     e.preventDefault()
@@ -95,6 +93,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
     setTtlStatus(null)
     try {
       await updateSessionTtl(sessionTtl)
+      setAuthStatus(prev => ({ ...prev, session_ttl_hours: sessionTtl }))
       setTtlStatus('saved')
     } catch (err) {
       console.error('Failed to save session TTL:', err)

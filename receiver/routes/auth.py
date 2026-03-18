@@ -205,6 +205,8 @@ def _validate_session(token: str) -> dict | None:
                 WHERE s.token_hash = %s AND s.expires_at > NOW() AND u.is_active = true
             """, [token_hash])
             row = cur.fetchone()
+        # Won't Fix: commit() on read-only SELECT closes the transaction cleanly,
+        # preventing idle-in-transaction on long-lived connections from the pool.
         conn.commit()
         if row:
             return dict(row)
@@ -613,8 +615,8 @@ def auth_cleanup():
 
             retention = int(get_config(enricher_db, 'audit_log_retention_days', 90) or 90)
             cur.execute(
-                "DELETE FROM audit_log WHERE created_at < NOW() - (%s || ' days')::interval",
-                [str(retention)]
+                "DELETE FROM audit_log WHERE created_at < NOW() - make_interval(days => %s)",
+                [retention]
             )
             old_audit = cur.rowcount
         conn.commit()

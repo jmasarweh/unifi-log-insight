@@ -104,6 +104,7 @@ export default function App() {
     if (urlTheme === 'light' || urlTheme === 'dark') return urlTheme
     return localStorage.getItem('ui_theme') || 'dark'
   })
+  const initialThemeRef = useRef(theme)
   const [showStatusTooltip, setShowStatusTooltip] = useState(false)
   const statusRef = useRef(null)
   const [logsPaused, setLogsPaused] = useState(false)
@@ -125,7 +126,7 @@ export default function App() {
     if (authState === 'loading' || authState === 'login') return
     fetchUiSettings().then(data => {
       setUiSettings(data)
-      if (!localStorage.getItem('ui_theme') && data.ui_theme && data.ui_theme !== theme) {
+      if (!localStorage.getItem('ui_theme') && data.ui_theme && data.ui_theme !== initialThemeRef.current) {
         setTheme(data.ui_theme)
         localStorage.setItem('ui_theme', data.ui_theme)
       }

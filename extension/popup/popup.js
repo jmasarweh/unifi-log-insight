@@ -419,7 +419,9 @@ async function showConnected(settings) {
     || (trafficResp.ok && trafficResp.data);
   if (hasToken && !tokenResp.validated && tokenValidated) {
     // Token was unvalidated but traffic stats now succeeded — persist upgrade
-    try { await chrome.storage.local.set({ apiTokenValidated: true }); } catch {}
+    try { await chrome.storage.local.set({ apiTokenValidated: true }); } catch (err) {
+      popupWarn('failed to persist apiTokenValidated upgrade', { error: err?.message, tokenValidated, hasToken });
+    }
   }
 
   if (hasToken) {
@@ -538,7 +540,11 @@ saveControllerBtn.addEventListener('click', () => {
   // Save URL BEFORE permission dialog — popup may close during the dialog
   // and .then()/.catch() won't execute. Writing directly to storage ensures
   // the URL persists even if the popup is destroyed mid-dialog.
-  chrome.storage.sync.set({ controllerUrl: url });
+  chrome.storage.sync.set({ controllerUrl: url }, () => {
+    if (chrome.runtime.lastError) {
+      popupWarn('storage.sync.set controllerUrl failed', { url, error: chrome.runtime.lastError.message });
+    }
+  });
 
   // Now request permission (Firefox: must be first *permission* call from click handler)
   chrome.permissions.request({ origins: [origin] }).then(async (granted) => {

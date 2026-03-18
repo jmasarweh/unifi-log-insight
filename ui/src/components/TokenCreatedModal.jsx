@@ -20,10 +20,14 @@ export default function TokenCreatedModal({ token, title = 'Token Created', onCl
     previousFocusRef.current = document.activeElement
     dialogRef.current?.focus()
 
-    // Lock background scroll while modal is open
+    // Lock background scroll while modal is open.
+    // Simple save/restore is sufficient — no other component locks scroll.
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
+    // Document-level listener: stopPropagation/preventDefault unnecessary —
+    // nothing above document to propagate to, and Escape has no default action
+    // in this context (div-based modal, not <dialog> or fullscreen).
     const onKeyDown = (e) => {
       if (e.key === 'Escape') onCloseRef.current()
     }

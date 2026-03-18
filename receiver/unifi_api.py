@@ -1052,25 +1052,27 @@ class UniFiAPI:
                 except Exception as e:
                     logger.warning("Failed to extract network config: %s", e)
 
-            # Atomic swap under lock
+            # Atomic swap under lock — includes poll timestamp and error state
+            # so _get_poll_status() reads a consistent snapshot.
             with self._lock:
                 self._ip_to_name = ip_map
                 self._mac_to_name = mac_map
                 self._client_count = len(clients)
                 self._device_count = len(devices)
+                self._last_poll = datetime.now(timezone.utc)
+                self._last_poll_error = None
+                last_poll = self._last_poll
 
-            # Persist to DB
+            # Persist to DB (outside lock to avoid holding it during I/O)
             if clients:
                 self._db.upsert_unifi_clients(clients)
             if devices:
                 self._db.upsert_unifi_devices(devices)
 
-            self._last_poll = datetime.now(timezone.utc)
-            self._last_poll_error = None
             # Persist poll status so the API process can read it
             self._db.set_config('unifi_poll_status', {
                 'connected': True,
-                'last_poll': self._last_poll.isoformat(),
+                'last_poll': last_poll.isoformat(),
                 'last_error': None,
                 'client_count': len(clients),
                 'device_count': len(devices),
@@ -1080,15 +1082,19 @@ class UniFiAPI:
             return True
 
         except Exception as e:
-            self._last_poll_error = str(e)
-            try:
-                self._db.set_config('unifi_poll_status', {
+            # Acquire lock to update error state atomically with counts/timestamps
+            # so _get_poll_status() reads a consistent snapshot.
+            with self._lock:
+                self._last_poll_error = str(e)
+                poll_status = {
                     'connected': False,
                     'last_poll': self._last_poll.isoformat() if self._last_poll else None,
-                    'last_error': str(e),
+                    'last_error': self._last_poll_error,
                     'client_count': self._client_count,
                     'device_count': self._device_count,
-                })
+                }
+            try:
+                self._db.set_config('unifi_poll_status', poll_status)
             except Exception as db_err:
                 logger.error("Failed to persist poll error status: %s", db_err)
             logger.exception("UniFi poll failed")

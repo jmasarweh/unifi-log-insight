@@ -4,7 +4,7 @@ import SettingsWanNetworks from './SettingsWanNetworks'
 import SettingsFirewall from './SettingsFirewall'
 import SettingsDataBackups from './SettingsDataBackups'
 import SettingsUserInterface from './SettingsUserInterface'
-import SettingsMCP from './SettingsMcp'
+import SettingsMCP from './SettingsMCP'
 import SettingsSecurity from './SettingsSecurity'
 import SettingsAPI from './SettingsAPI'
 import SetupWizard from './SetupWizard'
@@ -82,8 +82,6 @@ const BASE_SECTIONS = [
   },
 ]
 
-// ~10 props is within reasonable range for a top-level settings container.
-// Grouping into a config object adds indirection without benefit.
 export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [], onVpnSaved: onVpnSavedApp, version, latestRelease, totalLogs, storage, onAuthEnabled }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)

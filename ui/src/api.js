@@ -27,6 +27,12 @@ async function apiFetch(url, options = {}) {
   return resp.json()
 }
 
+/**
+ * Low-level fetch wrapper: returns the raw Response object.
+ * Only handles 401 (calls onAuthExpired and throws). Does NOT check resp.ok —
+ * callers (e.g. bulkUpdateFirewallLoggingStream) must check resp.ok themselves
+ * and handle non-OK responses appropriately.
+ */
 async function apiFetchRaw(url, options = {}) {
   const resp = await fetch(url, { credentials: 'include', ...options })
   if (resp.status === 401 && onAuthExpired) {
@@ -414,8 +420,12 @@ export async function fetchAuthStatus() {
   // Direct fetch (not apiFetch): this is the bootstrap call that determines
   // whether auth is enabled. A 401 here is not a session expiry — it would
   // mean the public endpoint itself is broken. Must not trigger onAuthExpired.
+  // Error includes statusText intentionally — richer than status alone for debugging.
   const resp = await fetch(`${BASE}/auth/status`, { credentials: 'include' })
-  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.statusText || resp.status}`)
+  }
   return resp.json()
 }
 
@@ -455,9 +465,14 @@ export async function authLogout() {
   return resp.json().catch(() => ({}))
 }
 
+// Error includes statusText intentionally — richer than status alone for debugging.
+// body.detail covers all FastAPI error payloads; body.error is not used by this API.
 export async function fetchAuthMe() {
   const resp = await fetch(`${BASE}/auth/me`, { credentials: 'include' })
-  if (!resp.ok) throw new Error(`API error: ${resp.status}`)
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `API error: ${resp.statusText || resp.status}`)
+  }
   return resp.json()
 }
 

@@ -30,7 +30,11 @@ from routes.flows import router as flows_router
 from routes.mcp import router as mcp_router
 from routes.views import router as views_router
 from routes.migration import router as migration_router
-from routes.auth import router as auth_router, require_auth, get_forwarded_proto, get_real_client_ip, _auth_enabled, TRUSTED_NETWORKS, AUTH_SESSION_PATHS, PUBLIC_PATHS, PUBLIC_PREFIXES
+from routes.auth import (
+    router as auth_router, require_auth,
+    get_forwarded_proto, get_real_client_ip, _auth_enabled,
+    TRUSTED_NETWORKS, AUTH_SESSION_PATHS, PUBLIC_PATHS, PUBLIC_PREFIXES,
+)
 from routes.tokens import router as tokens_router
 
 # ── Logging ──────────────────────────────────────────────────────────────────

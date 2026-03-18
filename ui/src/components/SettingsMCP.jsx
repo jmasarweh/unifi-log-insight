@@ -43,6 +43,7 @@ export default function SettingsMCP() {
   const [showTokenModal, setShowTokenModal] = useState(false)
 
   const [lastCreatedToken, setLastCreatedToken] = useState(null)
+  const [revoking, setRevoking] = useState(null) // token ID being revoked
 
   const mcpUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/mcp`
@@ -102,7 +103,7 @@ export default function SettingsMCP() {
       setDraft(settingsData)
       setOriginsText((settingsData.allowed_origins || []).join('\n'))
       setScopes(scopesData.scopes || [])
-      if (tokenErr) setServerStatus({ type: 'error', text: tokenErr })
+      if (tokenErr) setTokenStatus({ type: 'error', text: tokenErr })
     } catch (e) {
       setServerStatus({ type: 'error', text: e.message })
     }
@@ -181,8 +182,6 @@ export default function SettingsMCP() {
       setCreating(false)
     }
   }
-
-  const [revoking, setRevoking] = useState(null) // token ID being revoked
 
   async function handleRevoke(tokenId) {
     if (!tokenId) return

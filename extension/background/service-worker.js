@@ -404,6 +404,8 @@ async function handleMessage(msg) {
       };
     }
 
+    // Won't Fix: SET_API_TOKEN race condition — popup disables the save button during
+    // in-flight requests and chrome.runtime.sendMessage serializes from each sender.
     case 'SET_API_TOKEN': {
       const token = typeof msg.token === 'string' ? msg.token.trim() : '';
       if (!token) {

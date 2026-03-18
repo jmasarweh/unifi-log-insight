@@ -149,6 +149,7 @@ export async function fetchTrafficStats(timeRange = '24h') {
   try {
     const resp = await _authFetch(
       `${baseUrl}/api/stats/overview?time_range=${encodeURIComponent(timeRange)}`,
+      // 8s timeout: intentionally longer than health/settings (5s) — stats aggregates across time ranges.
       { signal: AbortSignal.timeout(8000) },
     );
     // 401 is already handled globally by _authFetch (calls onAuthError).
