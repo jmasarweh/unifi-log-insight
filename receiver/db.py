@@ -483,7 +483,7 @@ class Database:
                     INSERT INTO audit_log (token_id, action, detail, created_at)
                     SELECT token_id, 'api_call', jsonb_build_object('tool_name', tool_name, 'scope', scope, 'success', success, 'error', error, 'params', params), created_at
                     FROM mcp_audit
-                    WHERE NOT EXISTS (SELECT 1 FROM audit_log WHERE audit_log.created_at = mcp_audit.created_at AND audit_log.token_id = mcp_audit.token_id);
+                    WHERE NOT EXISTS (SELECT 1 FROM audit_log WHERE audit_log.created_at = mcp_audit.created_at AND audit_log.token_id IS NOT DISTINCT FROM mcp_audit.token_id);
                 END IF;
             END $$""",
             # Auth: rename old mcp_tokens to backup
@@ -501,7 +501,7 @@ class Database:
                 END IF;
             END $$""",
             # Auth: migration version marker
-            """INSERT INTO system_config (key, value, updated_at) VALUES ('mcp_migration_version', '"1"', NOW()) ON CONFLICT (key) DO NOTHING""",
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('mcp_migration_version', '1'::jsonb, NOW()) ON CONFLICT (key) DO NOTHING""",
         ]
         # Fix function ownership BEFORE migrations so CREATE OR REPLACE
         # succeeds on the first boot after upgrade (not just the second).

@@ -28,6 +28,8 @@ export default function SettingsSecurity({ onAuthEnabled }) {
   const [ttlSaving, setTtlSaving] = useState(false)
   const [ttlStatus, setTtlStatus] = useState(null) // 'saved' | 'error'
 
+  // Empty deps [] is correct: mount-once pattern. Adding reload would cause
+  // infinite loops since reload is redefined on each render (no useCallback).
   useEffect(() => { reload() }, [])
 
   async function reload() {
@@ -94,7 +96,8 @@ export default function SettingsSecurity({ onAuthEnabled }) {
     try {
       await updateSessionTtl(sessionTtl)
       setTtlStatus('saved')
-    } catch {
+    } catch (err) {
+      console.error('Failed to save session TTL:', err)
       setTtlStatus('error')
     } finally {
       setTtlSaving(false)
@@ -136,6 +139,11 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                 {authEnabled ? 'Authentication enabled' : 'Authentication disabled (open access)'}
               </span>
             </div>
+            {!authEnabled && (
+              <p className="mt-3 text-sm text-gray-500">
+                Set <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-xs">AUTH_ENABLED=true</code> in your <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-xs">.env</code> or <code className="px-1 py-0.5 bg-gray-800 rounded text-gray-400 text-xs">docker-compose.yml</code> and restart the container to enable authentication.
+              </p>
+            )}
           </div>
 
           {!authEnabled && !authStatus?.has_users && (
@@ -308,7 +316,7 @@ export default function SettingsSecurity({ onAuthEnabled }) {
                 {ttlStatus === 'saved' && <span className="text-sm text-emerald-400">Session duration updated</span>}
                 {ttlStatus === 'error' && <span className="text-sm text-red-400">Failed to save</span>}
               </div>
-              <div />
+              <div /> {/* flex spacer — pushes status text left in justify-between layout */}
             </div>
           </div>
         </section>

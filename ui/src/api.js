@@ -9,6 +9,8 @@ function buildQS(params) {
 }
 
 // ── Auth: global 401 handling ───────────────────────────────────────────────
+// Single handler is sufficient — SPA has one App mount point. An array of
+// handlers would add complexity with no benefit for this architecture.
 let onAuthExpired = null
 export function setAuthExpiredHandler(handler) { onAuthExpired = handler }
 
@@ -409,6 +411,9 @@ export async function fetchAllReleases() {
 // ── Auth API ────────────────────────────────────────────────────────────────
 
 export async function fetchAuthStatus() {
+  // Direct fetch (not apiFetch): this is the bootstrap call that determines
+  // whether auth is enabled. A 401 here is not a session expiry — it would
+  // mean the public endpoint itself is broken. Must not trigger onAuthExpired.
   const resp = await fetch(`${BASE}/auth/status`, { credentials: 'include' })
   if (!resp.ok) throw new Error(`API error: ${resp.status}`)
   return resp.json()
@@ -438,7 +443,16 @@ export async function authSetup(username, password) {
 }
 
 export async function authLogout() {
-  return apiFetch(`${BASE}/auth/logout`, { method: 'POST' })
+  // Direct fetch (not apiFetch): if the session is already expired, apiFetch
+  // would trigger onAuthExpired and throw before the logout completes.
+  // Logout should always succeed so the client can clear local state.
+  const resp = await fetch(`${BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
+  // 401 means session already expired — treat as successful logout
+  if (!resp.ok && resp.status !== 401) {
+    const body = await resp.json().catch(() => ({}))
+    throw new Error(body.detail || `Logout failed (${resp.status})`)
+  }
+  return resp.json().catch(() => ({}))
 }
 
 export async function fetchAuthMe() {

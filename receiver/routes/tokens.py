@@ -41,8 +41,6 @@ def _format_token_timestamps(item: dict) -> dict:
 def hash_token(token: str, salt: str) -> str:
     return hmac.new(salt.encode(), token.encode(), 'sha256').hexdigest()
 
-_hash_token = hash_token  # internal alias
-
 
 def list_tokens_by_type(client_type: str) -> dict:
     """List API tokens filtered by client_type. Shared helper for MCP and token endpoints."""
@@ -156,7 +154,10 @@ def _require_session_admin(request: Request) -> dict:
 
 @router.get("/api/tokens")
 def list_tokens(request: Request, client_type: str | None = None):
-    """List API tokens. Requires session-authenticated admin."""
+    """List API tokens. Requires session-authenticated admin.
+
+    No pagination: token lists are small (<20 in practice) for this
+    single-container self-hosted deployment model."""
     _require_session_admin(request)
 
     if client_type:

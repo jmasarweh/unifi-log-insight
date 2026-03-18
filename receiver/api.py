@@ -12,10 +12,11 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request as StarletteRequest
+from starlette.responses import Response as StarletteResponse
 
 from deps import APP_VERSION
 from routes.logs import router as logs_router
@@ -29,7 +30,7 @@ from routes.flows import router as flows_router
 from routes.mcp import router as mcp_router
 from routes.views import router as views_router
 from routes.migration import router as migration_router
-from routes.auth import router as auth_router, require_auth, get_forwarded_proto, get_real_client_ip, _auth_enabled, TRUSTED_NETWORKS
+from routes.auth import router as auth_router, require_auth, get_forwarded_proto, get_real_client_ip, _auth_enabled, TRUSTED_NETWORKS, AUTH_SESSION_PATHS, PUBLIC_PATHS, PUBLIC_PREFIXES
 from routes.tokens import router as tokens_router
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -69,7 +70,6 @@ class DualCORSMiddleware(BaseHTTPMiddleware):
         return origin.rstrip('/') == expected.rstrip('/')
 
     async def dispatch(self, request: StarletteRequest, call_next):
-        from routes.auth import _PUBLIC_PATHS, _PUBLIC_PREFIXES
         origin = request.headers.get('origin', '')
         is_preflight = request.method == 'OPTIONS'
         path = request.url.path
@@ -81,7 +81,7 @@ class DualCORSMiddleware(BaseHTTPMiddleware):
             has_auth = 'authorization' in acr_headers
 
         # Public paths are accessible without auth — allow any origin
-        is_public = path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES)
+        is_public = path in PUBLIC_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIXES)
 
         if is_preflight:
             headers = {
@@ -99,7 +99,6 @@ class DualCORSMiddleware(BaseHTTPMiddleware):
                 # Cookie security is handled by SameSite=lax — browsers won't send
                 # cookies cross-origin via fetch/XHR.
                 headers['access-control-allow-origin'] = origin or '*'
-            from starlette.responses import Response as StarletteResponse
             return StarletteResponse(status_code=204, headers=headers)
 
         response = await call_next(request)
@@ -122,7 +121,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     # Path prefix → (read_scope, write_scope | None)
     # write_scope=None means writes are allowed with just the read scope.
-    # IMPORTANT: Every /api/ route must be covered here, in _PUBLIC_PATHS,
+    # IMPORTANT: Every /api/ route must be covered here, in PUBLIC_PATHS,
     # or in _TOKEN_EXEMPT_PREFIXES. Unmatched routes are DENIED for token auth.
     _SCOPE_MAP = [
         # Order matters: more specific prefixes first
@@ -171,7 +170,6 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return "Access denied: route not authorized for token authentication"
 
     async def dispatch(self, request: StarletteRequest, call_next):
-        from fastapi.responses import JSONResponse
         path = request.url.path
 
         # Initialise auth_info so route handlers can always read it
@@ -271,30 +269,20 @@ app.include_router(migration_router)
 
 # ── Startup: verify all /api/ routes are covered by auth policy ─────────────
 
-from routes.auth import _PUBLIC_PATHS
-
 @app.on_event("startup")
 def _verify_auth_route_coverage():
     """Fail-closed assertion: every /api/ route must be in the public allowlist,
     the auth-session-only set, or matched by the scope map.
     Uncovered routes would be denied at runtime, so catch misconfigurations early."""
     scope_prefixes = [prefix for prefix, _, _ in AuthMiddleware._SCOPE_MAP]
-    # Public paths that bypass auth entirely
-    public_paths = set(_PUBLIC_PATHS)
-    # Auth routes that require session auth but don't need scope map coverage
-    # (handled by require_auth middleware, not token scopes)
-    auth_session_paths = {
-        '/api/auth/me',
-        '/api/auth/session-ttl',
-        '/api/auth/change-password',
-    }
+    public_paths = set(PUBLIC_PATHS)
 
     uncovered = []
     for route in app.routes:
         path = getattr(route, 'path', None)
         if not path or not path.startswith('/api/'):
             continue
-        if path in public_paths or path in auth_session_paths:
+        if path in public_paths or path in AUTH_SESSION_PATHS:
             continue
         if not any(path.startswith(prefix) for prefix in scope_prefixes):
             uncovered.append(path)

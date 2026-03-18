@@ -1,7 +1,9 @@
 /**
  * Shared active-token list used by SettingsAPI and SettingsMCP.
  */
-export default function TokenList({ tokens = [], onRevoke, formatPrefix }) {
+// PropTypes not used in this project. Date values come from own API (Python
+// isoformat) — defensive validation against own server is unnecessary.
+export default function TokenList({ tokens = [], onRevoke, formatPrefix, revokingId }) {
   return (
     <div className="space-y-2">
       {tokens.length === 0 && (
@@ -14,8 +16,13 @@ export default function TokenList({ tokens = [], onRevoke, formatPrefix }) {
         >
           <div className="min-w-0">
             <p className="text-base text-gray-200 font-medium truncate">{t.name}</p>
+            {/* IIFE keeps prefix/scopes computation local to where it's rendered */}
             <p className="text-xs text-gray-500 font-mono truncate">
-              {formatPrefix ? formatPrefix(t) : `${t.token_prefix ?? ''}…`} · {t.client_type} · {t.scopes?.join(', ') || 'no scopes'}
+              {(() => {
+                const prefix = formatPrefix ? formatPrefix(t) : (t.token_prefix ? `${t.token_prefix}…` : t.client_type)
+                const scopes = t.scopes?.length ? t.scopes.join(', ') : 'no scopes'
+                return `${prefix} · ${scopes}`
+              })()}
             </p>
             <p className="text-xs text-gray-600">
               Created {t.created_at ? new Date(t.created_at).toLocaleString() : 'unknown'}
@@ -31,10 +38,11 @@ export default function TokenList({ tokens = [], onRevoke, formatPrefix }) {
             {!t.disabled && onRevoke && (
               <button
                 onClick={() => onRevoke(t.id, t.name)}
+                disabled={revokingId === t.id}
                 aria-label={`Revoke ${t.name || t.id}`}
-                className="px-2 py-1 text-sm font-semibold rounded bg-teal-600 hover:bg-teal-500 text-white transition-colors"
+                className="px-2 py-1 text-sm font-semibold rounded bg-teal-600 hover:bg-teal-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Revoke
+                {revokingId === t.id ? 'Revoking...' : 'Revoke'}
               </button>
             )}
           </div>

@@ -736,7 +736,7 @@ export default function App() {
           </button>
           {authState === 'authenticated' && (
             <button
-              onClick={() => { authLogout().catch(() => {}); setAuthState('login') }}
+              onClick={() => { authLogout().catch(() => { /* intentional: always proceed to login screen even if server unreachable */ }); setAuthState('login') }}
               className="p-1.5 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
               title="Sign Out"
             >

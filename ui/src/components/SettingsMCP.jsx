@@ -32,7 +32,7 @@ export default function SettingsMCP() {
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   // Per-card inline status
-  const [serverStatus, setServerStatus] = useState(null) // 'saved' | 'error' | { type, text }
+  const [serverStatus, setServerStatus] = useState(null) // { type: 'saved'|'error', text }
   const [tokenStatus, setTokenStatus] = useState(null)   // { type: 'saved'|'error', text }
   const [auditStatus, setAuditStatus] = useState(null)   // { type: 'error', text }
 
@@ -93,15 +93,16 @@ export default function SettingsMCP() {
 
   async function reloadAll() {
     try {
-      const [settingsData, scopesData] = await Promise.all([
+      const [settingsData, scopesData, tokenErr] = await Promise.all([
         fetchMcpSettings(),
         fetchMcpScopes(),
+        reloadTokens(),
       ])
-      await reloadTokens()
       setSettings(settingsData)
       setDraft(settingsData)
       setOriginsText((settingsData.allowed_origins || []).join('\n'))
       setScopes(scopesData.scopes || [])
+      if (tokenErr) setServerStatus({ type: 'error', text: tokenErr })
     } catch (e) {
       setServerStatus({ type: 'error', text: e.message })
     }
@@ -120,7 +121,7 @@ export default function SettingsMCP() {
       await updateMcpSettings(payload)
       setSettings(payload)
       setDraft(payload)
-      setServerStatus('saved')
+      setServerStatus({ type: 'saved', text: 'Settings saved' })
     } catch (e) {
       setServerStatus({ type: 'error', text: e.message })
     } finally {
@@ -135,7 +136,7 @@ export default function SettingsMCP() {
       await updateMcpSettings(partial)
       setSettings(prev => ({ ...prev, ...partial }))
       setDraft(prev => ({ ...prev, ...partial }))
-      setServerStatus('saved')
+      setServerStatus({ type: 'saved', text: 'Settings saved' })
     } catch (e) {
       setServerStatus({ type: 'error', text: e.message })
       throw e
@@ -161,6 +162,8 @@ export default function SettingsMCP() {
     setCreating(true)
     setTokenStatus(null)
     try {
+      // client_type is required in the create payload — useApiTokens('mcp') only
+      // filters the list query, it does not inject client_type into creates.
       const result = await createToken({
         name: tokenName.trim() || 'MCP Token',
         scopes: Array.from(tokenScopes),
@@ -179,15 +182,22 @@ export default function SettingsMCP() {
     }
   }
 
+  const [revoking, setRevoking] = useState(null) // token ID being revoked
+
   async function handleRevoke(tokenId) {
     if (!tokenId) return
-    if (!confirm('Revoke this token? This cannot be undone.')) return
+    // Native confirm() is appropriate here — project has no ConfirmModal component,
+    // and this is a destructive settings action behind admin auth.
+    if (!window.confirm('Revoke this token? This cannot be undone.')) return
     setTokenStatus(null)
+    setRevoking(tokenId)
     try {
       await revokeToken(tokenId)
       setTokenStatus({ type: 'saved', text: 'Token revoked' })
     } catch (e) {
       setTokenStatus({ type: 'error', text: e.message })
+    } finally {
+      setRevoking(null)
     }
   }
 
@@ -326,7 +336,7 @@ export default function SettingsMCP() {
           <div className="px-5 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <p className="text-xs text-gray-500">MCP endpoint: /api/mcp</p>
-              {serverStatus === 'saved' && <span className="text-sm text-emerald-400">Settings saved</span>}
+              {serverStatus?.type === 'saved' && <span className="text-sm text-emerald-400">{serverStatus.text}</span>}
               {serverStatus?.type === 'error' && <span className="text-sm text-red-400">{serverStatus.text}</span>}
             </div>
             <button
@@ -404,8 +414,12 @@ export default function SettingsMCP() {
             </div>
             <TokenList
               tokens={tokens}
-              onRevoke={(id) => handleRevoke(id)}
-              formatPrefix={t => `${t.token_prefix?.startsWith('uli-mcp') ? '' : 'uli-mcp_'}${t.token_prefix}…`}
+              onRevoke={(id) => handleRevoke(id)} // wrapper intentionally drops 2nd arg (name) from TokenList callback
+              revokingId={revoking}
+              formatPrefix={t => {
+                if (!t.token_prefix) return t.client_type || 'mcp'
+                return `${t.token_prefix.startsWith('uli-mcp') ? '' : 'uli-mcp_'}${t.token_prefix}…`
+              }}
             />
           </div>
         </div>

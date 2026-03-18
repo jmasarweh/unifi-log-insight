@@ -40,6 +40,7 @@ export default function SettingsAPI() {
 
   // Token list status (revoke feedback)
   const [listStatus, setListStatus] = useState(null) // { type: 'saved'|'error', text }
+  const [revoking, setRevoking] = useState(null) // token ID being revoked
 
   const visibleScopes = API_SCOPES.filter(s => s.clients.includes(tokenClientType))
 
@@ -70,13 +71,18 @@ export default function SettingsAPI() {
   }
 
   async function handleRevoke(id, name) {
-    if (!confirm(`Revoke token "${name}"? This cannot be undone.`)) return
+    // Native confirm() is appropriate here — project has no ConfirmModal component,
+    // and this is a destructive settings action behind admin auth.
+    if (!window.confirm(`Revoke token "${name}"? This cannot be undone.`)) return
     setListStatus(null)
+    setRevoking(id)
     try {
       await revoke(id)
       setListStatus({ type: 'saved', text: 'Token revoked' })
     } catch (err) {
       setListStatus({ type: 'error', text: err.message || 'Failed to revoke token' })
+    } finally {
+      setRevoking(null)
     }
   }
 
@@ -202,7 +208,7 @@ export default function SettingsAPI() {
                 </span>
               )}
             </div>
-            <TokenList tokens={tokens} onRevoke={handleRevoke} />
+            <TokenList tokens={tokens} onRevoke={handleRevoke} revokingId={revoking} />
           </div>
         </div>
       </section>

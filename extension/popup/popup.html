@@ -42,6 +42,8 @@
             <input type="password" id="auth-gate-token-input" placeholder="Paste API token" spellcheck="false" autocomplete="off" aria-label="API Token">
             <button type="button" id="auth-gate-save-btn" class="btn-sm">Save</button>
           </div>
+          <!-- Hint text duplicated in connected-view token-edit — intentional: these
+               are separate HTML views (auth-gate vs connected), not a DRY violation. -->
           <p class="hint small">Create your API token from Settings &gt; API<br>Client Type: Extension</p>
         </div>
         <p id="auth-gate-error" class="error" hidden aria-live="polite"></p>

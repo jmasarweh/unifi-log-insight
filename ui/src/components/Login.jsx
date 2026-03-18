@@ -3,6 +3,10 @@ import { authLogin } from '../api'
 
 const INPUT_CLS = 'w-full px-3 py-2 rounded bg-gray-900 border border-gray-700 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-teal-500'
 
+// Login only renders after authStatus resolves (authState === 'login'),
+// so isHttps is always true or false, never undefined. No guard needed.
+// Post-unmount state updates are harmless in React 18 (no warning).
+// PropTypes not used in this project.
 export default function Login({ onSuccess, isHttps }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -31,7 +35,7 @@ export default function Login({ onSuccess, isHttps }) {
       <div className="w-full max-w-sm mx-4">
         <div className="rounded-lg border border-gray-700 bg-gray-950 p-6 shadow-2xl">
           <div className="flex items-center justify-center mb-6">
-            <svg viewBox="0 0 100 116" className="w-8 h-9" fill="none">
+            <svg viewBox="0 0 100 116" className="w-8 h-9" fill="none" role="img" aria-label="Insights Plus logo">
               <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68 Z" fill="#14b8a6" fillOpacity="0.12"/>
               <path d="M 29 68 C 22 62, 16 53, 16 41 A 34 34 0 1 1 84 41 C 84 53, 78 62, 71 68" stroke="#14b8a6" strokeWidth="5.2" strokeLinecap="round" fill="none"/>
               <path d="M 28 34 A 18 18 0 0 1 44 22" stroke="#14b8a6" strokeWidth="4.8" strokeLinecap="round" fill="none" opacity="0.7"/>
@@ -58,6 +62,7 @@ export default function Login({ onSuccess, isHttps }) {
                 placeholder="Username"
                 aria-label="Username"
                 disabled={!isHttps || loading}
+                autoFocus={isHttps}
                 autoComplete="username"
                 className={`${INPUT_CLS} disabled:opacity-50`}
               />
@@ -74,7 +79,7 @@ export default function Login({ onSuccess, isHttps }) {
             </div>
 
             {error && (
-              <p className="mt-3 text-xs text-red-400">{error}</p>
+              <p className="mt-3 text-xs text-red-400" role="alert">{error}</p>
             )}
 
             <button

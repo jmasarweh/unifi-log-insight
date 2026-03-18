@@ -66,8 +66,10 @@ export async function getApiTokenValidated() {
 export async function clearApiToken() {
   try {
     await chrome.storage.local.remove(['apiToken', 'apiTokenValidated']);
+    return true;
   } catch (err) {
     console.error('clearApiToken failed:', err);
+    return false;
   }
 }
 

@@ -1,27 +1,39 @@
 import { createPortal } from 'react-dom'
-import { useCallback, useEffect, useId, useRef } from 'react'
+import { useCallback, useEffect, useId, useLayoutEffect, useRef } from 'react'
 import CopyButton from './CopyButton'
 
 export default function TokenCreatedModal({ token, title = 'Token Created', onClose }) {
   const titleId = useId()
+  const descId = useId()
   const dialogRef = useRef(null)
   const previousFocusRef = useRef(null)
 
-  // Document-level Escape listener + focus management
+  // Stabilize onClose to prevent effect re-runs from identity changes.
+  // useLayoutEffect (not bare assignment) avoids ref mutation during render,
+  // which can cause tearing in React concurrent mode.
+  const onCloseRef = useRef(onClose)
+  useLayoutEffect(() => { onCloseRef.current = onClose }, [onClose])
+
+  // Document-level Escape listener + focus management + scroll lock
   useEffect(() => {
     if (!token) return
     previousFocusRef.current = document.activeElement
     dialogRef.current?.focus()
 
+    // Lock background scroll while modal is open
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onCloseRef.current()
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      document.body.style.overflow = prevOverflow
       previousFocusRef.current?.focus()
     }
-  }, [token, onClose])
+  }, [token]) // onClose accessed via ref to avoid identity-change re-runs (#43)
 
   // Focus trap: cycle Tab within the dialog
   const handleKeyDown = useCallback((e) => {
@@ -35,13 +47,21 @@ export default function TokenCreatedModal({ token, title = 'Token Created', onCl
     const first = focusable[0]
     const last = focusable[focusable.length - 1]
     if (e.shiftKey) {
-      if (document.activeElement === first) { e.preventDefault(); last.focus() }
+      if (document.activeElement === first || document.activeElement === dialog) {
+        e.preventDefault()
+        last.focus()
+      }
     } else {
-      if (document.activeElement === last) { e.preventDefault(); first.focus() }
+      if (document.activeElement === last || document.activeElement === dialog) {
+        e.preventDefault()
+        first.focus()
+      }
     }
   }, [])
 
   if (!token) return null
+  // onClick handlers use onClose directly (always fresh from props on each render).
+  // onCloseRef is only needed inside the useEffect which doesn't re-run on identity changes.
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
@@ -50,6 +70,7 @@ export default function TokenCreatedModal({ token, title = 'Token Created', onCl
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={descId}
         className="bg-gray-950 border border-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4 outline-none"
         onClick={e => e.stopPropagation()}
         onKeyDown={handleKeyDown}
@@ -61,7 +82,7 @@ export default function TokenCreatedModal({ token, title = 'Token Created', onCl
           </button>
         </div>
         <div className="px-4 py-4 space-y-3">
-          <p className="text-sm text-gray-400">
+          <p id={descId} className="text-sm text-gray-400">
             This token is shown only once. Copy it now and store it securely.
           </p>
           <div className="flex items-center gap-2">

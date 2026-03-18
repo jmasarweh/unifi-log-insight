@@ -4,7 +4,7 @@ import SettingsWanNetworks from './SettingsWanNetworks'
 import SettingsFirewall from './SettingsFirewall'
 import SettingsDataBackups from './SettingsDataBackups'
 import SettingsUserInterface from './SettingsUserInterface'
-import SettingsMCP from './SettingsMCP'
+import SettingsMCP from './SettingsMcp'
 import SettingsSecurity from './SettingsSecurity'
 import SettingsAPI from './SettingsAPI'
 import SetupWizard from './SetupWizard'
@@ -30,8 +30,8 @@ const BASE_SECTIONS = [
     id: 'firewall',
     label: 'Firewall',
     icon: (
-      <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" clipRule="evenodd" d="M6.667 4.167h3.333v1.666H6.667V4.167Zm4.166 1.666V4.167h3.334v1.666h-3.334Zm4.167 0h1.667V4.167H15v1.666ZM5.833 4.167H3.333v1.666h2.5V4.167ZM3.333 6.667h.834v1.666h-.834V6.667Zm1.667 1.666V6.667h3.333v1.666H5Zm4.167 0h3.333V6.667h-3.333v1.666Zm4.166 0V6.667h3.334v1.666h-3.334ZM2.5 5.833v10a.833.833 0 0 0 .833.834h13.334a.833.833 0 0 0 .833-.834V4.167a.833.833 0 0 0-.833-.834H3.333a.833.833 0 0 0-.833.834v1.666Zm4.167 5v-1.666h3.333v1.666H6.667Zm4.166 0v-1.666h3.334v1.666h-3.334Zm4.167 0v-1.666h1.667v1.666H15ZM5.833 9.167H3.333v1.666h2.5V9.167Zm-2.5 6.666V14.167h2.5v1.666h-2.5Zm3.334 0V14.167h3.333v1.666H6.667Zm8.333 0h1.667V14.167H15v1.666Zm-.833 0V14.167h-3.334v1.666h3.334ZM16.667 12.5v1.667h-3.334V12.5h3.334Zm-4.167 0v1.667H9.167V12.5H12.5Zm-4.167 0v1.667H5V12.5h3.333Zm-4.166 0v1.667H3.333V12.5h.834Z" />
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        <path fillRule="evenodd" clipRule="evenodd" d="M8 5h4v2H8V5Zm5 2V5h4v2h-4Zm5 0h2V5h-2v2ZM7 5H4v2h3V5ZM4 8h1v2H4V8Zm2 2V8h4v2H6Zm5 0h4V8h-4v2Zm5 0V8h4v2h-4ZM3 7v12a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v2Zm5 6v-2h4v2H8Zm5 0v-2h4v2h-4Zm5 0v-2h2v2h-2ZM7 11H4v2h3v-2Zm-3 8v-2h3v2H4Zm4 0v-2h4v2H8Zm10 0h2v-2h-2v2Zm-1 0v-2h-4v2h4Zm3-5v2h-4v-2h4Zm-5 0v2h-4v-2h4Zm-5 0v2H6v-2h4Zm-5 0v2H4v-2h1Z" />
       </svg>
     ),
   },
@@ -60,7 +60,7 @@ const BASE_SECTIONS = [
     label: 'Security',
     icon: (
       <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-        <path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.351-.166-2A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clipRule="evenodd" />
+        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
       </svg>
     ),
   },
@@ -82,6 +82,8 @@ const BASE_SECTIONS = [
   },
 ]
 
+// ~10 props is within reasonable range for a top-level settings container.
+// Grouping into a config object adds indirection without benefit.
 export default function SettingsOverlay({ onClose, startInReconfig, unlabeledVpn = [], onVpnSaved: onVpnSavedApp, version, latestRelease, totalLogs, storage, onAuthEnabled }) {
   const [config, setConfig] = useState(null)
   const [unifiSettings, setUnifiSettings] = useState(null)

@@ -152,7 +152,9 @@ export async function fetchTrafficStats(timeRange = '24h') {
       { signal: AbortSignal.timeout(8000) },
     );
     // 401 is already handled globally by _authFetch (calls onAuthError).
-    // Return a sentinel so callers can show auth UI without duplicate signaling.
+    // Sentinel return lets callers distinguish auth failures from network errors.
+    // Both signals are needed: onAuthError is a side-effect (clear token, set badge);
+    // the sentinel is a return value so callers can branch on the failure type.
     if (!resp.ok) return resp.status === 401 ? { _authRequired: true } : null;
     const data = await resp.json();
     return {

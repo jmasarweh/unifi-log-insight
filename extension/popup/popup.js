@@ -64,6 +64,13 @@ const POPUP_LOG_PREFIX = '[ULI][Popup]';
 // Loaded by url-utils.js <script> in popup.html — always available.
 const toOriginPattern = globalThis.ULI_URL_UTILS.toOriginPattern;
 
+// Safe: ULI tokens are 50+ chars (prefix + 43 random). substring(0,16) shows
+// the known "uli-extension_" prefix + 2 random chars — less than the 8-char
+// token_prefix already visible to admins in the token list.
+function formatTokenPreview(token) {
+  return token.substring(0, 16) + '...';
+}
+
 function popupLog(...args) {
   console.log(POPUP_LOG_PREFIX, ...args);
 }
@@ -416,7 +423,7 @@ async function showConnected(settings) {
   }
 
   if (hasToken) {
-    tokenPreview.textContent = tokenResp.token.substring(0, 16) + '...';
+    tokenPreview.textContent = formatTokenPreview(tokenResp.token);
     tokenDisplay.hidden = false;
     tokenEdit.hidden = true;
     if (!tokenValidated) {
@@ -665,7 +672,7 @@ saveTokenBtn.addEventListener('click', async () => {
   try {
     const resp = await chrome.runtime.sendMessage({ type: 'SET_API_TOKEN', token });
     if (resp.ok) {
-      tokenPreview.textContent = token.substring(0, 16) + '...';
+      tokenPreview.textContent = formatTokenPreview(token);
       tokenDisplay.hidden = false;
       tokenEdit.hidden = true;
       tokenInput.value = '';

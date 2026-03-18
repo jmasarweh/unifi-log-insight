@@ -265,6 +265,7 @@ def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: Blacklist
     schedule.every(STATS_INTERVAL_MINUTES).minutes.do(refresh_wan_ip)
     schedule.every().day.at(RETENTION_HOUR).do(retention_cleanup)
     schedule.every().day.at("04:00").do(pull_blacklist)
+    # auth_cleanup has its own internal try/except — no wrapper needed here.
     schedule.every().day.at("03:30").do(auth_cleanup)
 
     logger.info("Scheduler started — stats every %dm, retention daily at %s, blacklist daily at 04:00, auth cleanup daily at 03:30",

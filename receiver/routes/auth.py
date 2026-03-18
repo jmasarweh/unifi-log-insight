@@ -37,7 +37,7 @@ for cidr in _TRUSTED_PROXIES_RAW.split(','):
         except ValueError:
             logger.warning("Invalid TRUSTED_PROXIES CIDR: %s", cidr)
 
-AUTH_DISABLED = os.environ.get('AUTH_DISABLED', 'false').lower() in ('true', '1', 'yes')
+AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() in ('true', '1', 'yes')
 
 
 def _is_trusted_proxy(ip_str: str) -> bool:
@@ -80,7 +80,7 @@ def _require_https(request: Request):
 
 
 def _auth_enabled() -> bool:
-    if AUTH_DISABLED:
+    if not AUTH_ENABLED:
         return False
     return bool(get_config(enricher_db, 'auth_enabled', False))
 
@@ -103,12 +103,24 @@ def _has_users() -> bool:
 _login_attempts = {}  # ip -> [timestamps]
 _LOGIN_RATE_LIMIT = 5
 _LOGIN_RATE_WINDOW = 60  # seconds
+_login_check_count = 0
+_LOGIN_PRUNE_EVERY = 100  # full GC sweep every N checks
 
 
 def _check_rate_limit(ip: str):
+    global _login_check_count
     now = datetime.now(timezone.utc).timestamp()
+
+    # Periodic full sweep to prevent unbounded memory growth from stale IPs
+    _login_check_count += 1
+    if _login_check_count >= _LOGIN_PRUNE_EVERY:
+        _login_check_count = 0
+        stale = [k for k, v in _login_attempts.items() if not v or now - v[-1] >= _LOGIN_RATE_WINDOW]
+        for k in stale:
+            del _login_attempts[k]
+
     attempts = _login_attempts.get(ip, [])
-    # Prune old entries
+    # Prune old entries for this IP
     attempts = [t for t in attempts if now - t < _LOGIN_RATE_WINDOW]
     _login_attempts[ip] = attempts
     if len(attempts) >= _LOGIN_RATE_LIMIT:
@@ -270,7 +282,7 @@ def validate_token_with_effective_scopes(token: str) -> dict | None:
 # ── Auth dependency ──────────────────────────────────────────────────────────
 
 # Paths that never require auth
-_PUBLIC_PATHS = {
+PUBLIC_PATHS = {
     '/api/health',
     '/api/auth/status',
     '/api/auth/login',
@@ -279,9 +291,18 @@ _PUBLIC_PATHS = {
     '/api/setup/status',
 }
 
-_PUBLIC_PREFIXES = (
+PUBLIC_PREFIXES = (
     '/assets/',
 )
+
+# Auth routes that require session auth but don't need scope map coverage
+# (handled by require_auth middleware, not token scopes).
+# Defined here as single source of truth — also used by api.py startup verification.
+AUTH_SESSION_PATHS = {
+    '/api/auth/me',
+    '/api/auth/session-ttl',
+    '/api/auth/change-password',
+}
 
 
 def require_auth(request: Request) -> dict | None:
@@ -291,7 +312,7 @@ def require_auth(request: Request) -> dict | None:
         return None
 
     path = request.url.path
-    if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+    if path in PUBLIC_PATHS or any(path.startswith(p) for p in PUBLIC_PREFIXES):
         return None
 
     # Check Bearer token first
