@@ -6,6 +6,8 @@ import { CACHE_TTL, BATCH_MAX, MAX_CACHE_SIZE } from './constants.js';
  */
 
 let baseUrl = '';
+let authToken = '';
+let onAuthError = null;
 const threatCache = new Map(); // ip -> { data, timestamp }
 
 export function setBaseUrl(url) {
@@ -16,6 +18,36 @@ export function getBaseUrl() {
   return baseUrl;
 }
 
+export function setAuthToken(token) {
+  authToken = token || '';
+}
+
+export function getAuthToken() {
+  return authToken;
+}
+
+export function setAuthErrorHandler(handler) {
+  onAuthError = handler;
+}
+
+function _authHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  return headers;
+}
+
+async function _authFetch(url, options = {}) {
+  const { headers: extraHeaders, ...rest } = options;
+  const headers = _authHeaders(extraHeaders || {});
+  const resp = await fetch(url, { ...rest, headers });
+  if ((resp.status === 401 || resp.status === 403) && onAuthError) {
+    onAuthError();
+  }
+  return resp;
+}
+
 /**
  * Check if the Log Insight server is reachable and return health data.
  */
@@ -23,7 +55,7 @@ export async function checkHealth(url) {
   const target = url || baseUrl;
   if (!target) return null;
   try {
-    const resp = await fetch(`${target}/api/health`, { signal: AbortSignal.timeout(5000) });
+    const resp = await _authFetch(`${target}/api/health`, { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) return null;
     return await resp.json();
   } catch (err) {
@@ -38,7 +70,7 @@ export async function checkHealth(url) {
 export async function fetchUniFiSettings() {
   if (!baseUrl) return null;
   try {
-    const resp = await fetch(`${baseUrl}/api/settings/unifi`, { signal: AbortSignal.timeout(5000) });
+    const resp = await _authFetch(`${baseUrl}/api/settings/unifi`, { signal: AbortSignal.timeout(5000) });
     if (!resp.ok) return null;
     return await resp.json();
   } catch (err) {
@@ -52,7 +84,7 @@ export async function fetchUniFiSettings() {
  * Uses POST /api/threats/batch endpoint.
  */
 export async function batchThreatLookup(ips) {
-  if (!baseUrl || !ips?.length) return {};
+  if (!baseUrl || !ips?.length) return { results: {}, error: null };
 
   // Check in-memory cache first
   const uncached = [];
@@ -66,20 +98,23 @@ export async function batchThreatLookup(ips) {
     }
   }
 
-  if (uncached.length === 0) return results;
+  if (uncached.length === 0) return { results, error: null };
 
   // Batch fetch uncached IPs (respect max batch size)
+  let lastError = null;
   for (let i = 0; i < uncached.length; i += BATCH_MAX) {
     const batch = uncached.slice(i, i + BATCH_MAX);
     try {
-      const resp = await fetch(`${baseUrl}/api/threats/batch`, {
+      const resp = await _authFetch(`${baseUrl}/api/threats/batch`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ips: batch }),
         signal: AbortSignal.timeout(5000),
       });
       if (!resp.ok) {
-        console.debug('[ULI][API] batch threat lookup returned', resp.status, resp.statusText, resp.url);
+        const detail = await resp.text().catch(() => '');
+        lastError = `HTTP ${resp.status}: ${detail || resp.statusText}`;
+        console.warn('[ULI][API] batch threat lookup returned', resp.status, resp.statusText, detail);
         continue;
       }
       const data = await resp.json();
@@ -95,11 +130,12 @@ export async function batchThreatLookup(ips) {
         threatCache.set(ip, { data: threat, timestamp: Date.now() });
       }
     } catch (err) {
+      lastError = err?.message || 'Network error';
       console.warn('[ULI][API] batch threat lookup failed:', err?.message);
     }
   }
 
-  return results;
+  return { results, error: lastError };
 }
 
 /**
@@ -109,10 +145,11 @@ export async function batchThreatLookup(ips) {
 export async function fetchTrafficStats(timeRange = '24h') {
   if (!baseUrl) return null;
   try {
-    const resp = await fetch(
+    const resp = await _authFetch(
       `${baseUrl}/api/stats/overview?time_range=${encodeURIComponent(timeRange)}`,
       { signal: AbortSignal.timeout(8000) },
     );
+    if (resp.status === 401) return { _authRequired: true };
     if (!resp.ok) return null;
     const data = await resp.json();
     return {

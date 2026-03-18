@@ -56,6 +56,16 @@ Single Docker container. No external dependencies. Zero data collection.
 
 These are baseline estimates for a small home network. Higher log volume or longer retention will require more disk.
 
+### Authentication (Optional)
+
+ULI supports optional built-in authentication with session cookies and API tokens. When enabled, authentication requires **HTTPS** — the login and setup endpoints will reject requests over plain HTTP to protect credentials in transit.
+
+**Production:** Place ULI behind a reverse proxy (nginx, Caddy, Traefik) that terminates TLS and sets `X-Forwarded-Proto: https`. ULI reads this header to determine the effective protocol.
+
+**Local development:** The Vite dev server proxies API requests to `http://localhost:8000` without TLS. To develop with auth enabled, either:
+- Use a local reverse proxy (e.g. `mkcert` + nginx) in front of the API, or
+- Set `AUTH_DISABLED=true` to bypass auth during development (auth is off by default until enabled via the Settings UI).
+
 ## 📸 App Screenshots
 
 #### Desktop

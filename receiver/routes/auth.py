@@ -1,0 +1,601 @@
+"""Authentication endpoints."""
+
+import hashlib
+import ipaddress
+import json
+import logging
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+
+import bcrypt
+from fastapi import APIRouter, HTTPException, Request, Response
+from psycopg2.extras import RealDictCursor
+
+from db import get_config, set_config
+from deps import get_conn, put_conn, enricher_db
+
+logger = logging.getLogger('api.auth')
+router = APIRouter()
+
+# ── Proxy Trust ──────────────────────────────────────────────────────────────
+
+# Default: trust loopback + Docker internal networks (172.16.0.0/12).
+# This covers Docker bridge, overlay, and macvlan networks out of the box.
+# Override with TRUSTED_PROXIES env var if your proxy uses a different range.
+_TRUSTED_PROXIES_RAW = os.environ.get(
+    'TRUSTED_PROXIES',
+    '127.0.0.0/8,::1/128,172.16.0.0/12'
+)
+TRUSTED_NETWORKS = []
+for cidr in _TRUSTED_PROXIES_RAW.split(','):
+    cidr = cidr.strip()
+    if cidr:
+        try:
+            TRUSTED_NETWORKS.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            logger.warning("Invalid TRUSTED_PROXIES CIDR: %s", cidr)
+
+AUTH_DISABLED = os.environ.get('AUTH_DISABLED', 'false').lower() in ('true', '1', 'yes')
+
+
+def _is_trusted_proxy(ip_str: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip_str)
+        return any(addr in net for net in TRUSTED_NETWORKS)
+    except ValueError:
+        return False
+
+
+def get_real_client_ip(request: Request) -> str:
+    """Resolve client IP from X-Forwarded-For if from trusted proxy."""
+    client_ip = request.client.host if request.client else '127.0.0.1'
+    if not _is_trusted_proxy(client_ip):
+        return client_ip
+    xff = request.headers.get('x-forwarded-for', '')
+    if not xff:
+        return client_ip
+    # Walk backwards, find last non-trusted IP
+    parts = [p.strip() for p in xff.split(',')]
+    for ip in reversed(parts):
+        if not _is_trusted_proxy(ip):
+            return ip
+    return client_ip
+
+
+def get_forwarded_proto(request: Request) -> str:
+    """Get protocol, trusting X-Forwarded-Proto only from trusted proxies."""
+    client_ip = request.client.host if request.client else '127.0.0.1'
+    if _is_trusted_proxy(client_ip):
+        proto = request.headers.get('x-forwarded-proto', '').lower()
+        if proto in ('http', 'https'):
+            return proto
+    return str(request.url.scheme)
+
+
+def _require_https(request: Request):
+    if get_forwarded_proto(request) != 'https':
+        raise HTTPException(403, "Authentication requires HTTPS. Please access the app through a reverse proxy with TLS enabled.")
+
+
+def _auth_enabled() -> bool:
+    if AUTH_DISABLED:
+        return False
+    return bool(get_config(enricher_db, 'auth_enabled', False))
+
+
+def _has_users() -> bool:
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT EXISTS(SELECT 1 FROM users WHERE is_active = true)")
+            return cur.fetchone()[0]
+    finally:
+        put_conn(conn)
+
+
+# ── Rate Limiting ────────────────────────────────────────────────────────────
+
+_login_attempts = {}  # ip -> [timestamps]
+_LOGIN_RATE_LIMIT = 5
+_LOGIN_RATE_WINDOW = 60  # seconds
+
+
+def _check_rate_limit(ip: str):
+    now = datetime.now(timezone.utc).timestamp()
+    attempts = _login_attempts.get(ip, [])
+    # Prune old entries
+    attempts = [t for t in attempts if now - t < _LOGIN_RATE_WINDOW]
+    _login_attempts[ip] = attempts
+    if len(attempts) >= _LOGIN_RATE_LIMIT:
+        raise HTTPException(429, "Too many login attempts. Please try again later.")
+
+
+def _record_attempt(ip: str):
+    now = datetime.now(timezone.utc).timestamp()
+    if ip not in _login_attempts:
+        _login_attempts[ip] = []
+    _login_attempts[ip].append(now)
+
+
+def _clear_attempts(ip: str):
+    _login_attempts.pop(ip, None)
+
+
+# ── Audit helper ─────────────────────────────────────────────────────────────
+
+def _write_audit(user_id, token_id, action, detail, ip, user_agent):
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO audit_log (user_id, token_id, action, detail, ip_address, user_agent)
+                   VALUES (%s, %s, %s, %s, %s::inet, %s)""",
+                [user_id, token_id, action,
+                 json.dumps(detail) if detail else None,
+                 ip, user_agent]
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        logger.exception("Failed to write audit log")
+    finally:
+        put_conn(conn)
+
+
+# ── Session helpers ──────────────────────────────────────────────────────────
+
+def _create_session(user_id: int, request: Request) -> str:
+    """Create a new session and return the raw token."""
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    ttl_hours = int(get_config(enricher_db, 'auth_session_ttl_hours', 168) or 168)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+    ip = get_real_client_ip(request)
+    ua = request.headers.get('user-agent', '')[:500]
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO sessions (user_id, token_hash, expires_at, ip_address, user_agent)
+                   VALUES (%s, %s, %s, %s::inet, %s)""",
+                [user_id, token_hash, expires_at, ip, ua]
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        put_conn(conn)
+
+    return token
+
+
+def _validate_session(token: str) -> dict | None:
+    """Validate session token. Returns user dict or None."""
+    if not token:
+        return None
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT s.user_id, s.expires_at, u.username, u.role_id, u.is_active,
+                       r.name as role_name, r.permissions
+                FROM sessions s
+                JOIN users u ON u.id = s.user_id
+                JOIN roles r ON r.id = u.role_id
+                WHERE s.token_hash = %s AND s.expires_at > NOW() AND u.is_active = true
+            """, [token_hash])
+            row = cur.fetchone()
+        conn.commit()
+        if row:
+            return dict(row)
+        return None
+    except Exception:
+        conn.rollback()
+        return None
+    finally:
+        put_conn(conn)
+
+
+# ── API Token validation ────────────────────────────────────────────────────
+
+def _validate_api_token(token: str) -> dict | None:
+    """Validate Bearer API token. Returns token+user dict or None."""
+    if not token:
+        return None
+    import hmac as _hmac
+    prefix = token[8:16] if len(token) > 16 else token[:8]
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT t.id as token_id, t.token_hash, t.token_salt, t.scopes, t.client_type,
+                       t.owner_user_id, u.username, u.role_id, u.is_active,
+                       r.name as role_name, r.permissions as user_permissions
+                FROM api_tokens t
+                LEFT JOIN users u ON u.id = t.owner_user_id
+                LEFT JOIN roles r ON r.id = u.role_id
+                WHERE t.token_prefix = %s AND t.disabled = false
+                  AND (t.owner_user_id IS NULL OR u.is_active = true)
+            """, [prefix])
+            rows = cur.fetchall()
+            for row in rows:
+                expected = row.get('token_hash') or ''
+                salt = row.get('token_salt') or ''
+                if expected and salt:
+                    computed = _hmac.new(salt.encode(), token.encode(), 'sha256').hexdigest()
+                    if _hmac.compare_digest(computed, expected):
+                        # Update last_used_at
+                        cur.execute("UPDATE api_tokens SET last_used_at = NOW() WHERE id = %s", [row['token_id']])
+                        conn.commit()
+                        return dict(row)
+        conn.commit()
+        return None
+    except Exception:
+        conn.rollback()
+        return None
+    finally:
+        put_conn(conn)
+
+
+def validate_token_with_effective_scopes(token: str) -> dict | None:
+    """Validate an API token and return context with effective scopes.
+
+    Effective scopes = token scopes ∩ owner's role permissions.
+    Ownerless tokens or admin wildcard use token scopes alone.
+    Returns dict with: token_id, owner_user_id, username, role_name,
+    scopes (raw), effective_scopes, client_type. Or None if invalid.
+    """
+    info = _validate_api_token(token)
+    if not info:
+        return None
+    token_scopes = set(info.get('scopes') or [])
+    owner_perms = set(info.get('user_permissions') or [])
+    if info.get('owner_user_id') and owner_perms and '*' not in owner_perms:
+        effective = token_scopes & owner_perms
+    else:
+        effective = token_scopes
+    info['effective_scopes'] = effective
+    return info
+
+
+# ── Auth dependency ──────────────────────────────────────────────────────────
+
+# Paths that never require auth
+_PUBLIC_PATHS = {
+    '/api/health',
+    '/api/auth/status',
+    '/api/auth/login',
+    '/api/auth/logout',
+    '/api/auth/setup',
+    '/api/setup/status',
+}
+
+_PUBLIC_PREFIXES = (
+    '/assets/',
+)
+
+
+def require_auth(request: Request) -> dict | None:
+    """Auth dependency. Returns user/token info or None if auth disabled.
+    Raises 401 if auth enabled and no valid credentials."""
+    if not _auth_enabled():
+        return None
+
+    path = request.url.path
+    if path in _PUBLIC_PATHS or any(path.startswith(p) for p in _PUBLIC_PREFIXES):
+        return None
+
+    # Check Bearer token first
+    auth_header = request.headers.get('authorization', '')
+    if auth_header.lower().startswith('bearer '):
+        token = auth_header[7:].strip()
+        info = validate_token_with_effective_scopes(token)
+        if info:
+            return info
+        raise HTTPException(401, "Invalid or expired API token")
+
+    # Check session cookie
+    session_token = request.cookies.get('uli_session')
+    if session_token:
+        info = _validate_session(session_token)
+        if info:
+            return info
+
+    raise HTTPException(401, "Authentication required")
+
+
+# ── Routes ───────────────────────────────────────────────────────────────────
+
+@router.get("/api/auth/status")
+def auth_status(request: Request):
+    """Public bootstrap endpoint for SPA."""
+    from routes.setup import setup_status as get_setup_status
+    setup_result = get_setup_status()
+    return {
+        "auth_enabled_effective": _auth_enabled(),
+        "has_users": _has_users(),
+        "is_https": get_forwarded_proto(request) == 'https',
+        "setup_complete": setup_result.get('setup_complete', False),
+        "session_ttl_hours": int(get_config(enricher_db, 'auth_session_ttl_hours', 168) or 168),
+    }
+
+
+@router.post("/api/auth/setup")
+def auth_setup(request: Request, body: dict):
+    """Create first user. Only works when no users exist."""
+    _require_https(request)
+
+    if _has_users():
+        raise HTTPException(400, "Setup already completed. Users already exist.")
+
+    username = (body.get('username') or '').strip()
+    password = body.get('password') or ''
+
+    if not username or len(username) < 2:
+        raise HTTPException(400, "Username must be at least 2 characters")
+    if len(password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    if len(password.encode('utf-8')) > 72:
+        raise HTTPException(400, "Password must not exceed 72 bytes")
+
+    password_hash = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
+
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            # Get admin role id
+            cur.execute("SELECT id FROM roles WHERE name = 'admin'")
+            role_row = cur.fetchone()
+            if not role_row:
+                raise HTTPException(500, "Admin role not found. Database migration may be incomplete.")
+            role_id = role_row[0]
+
+            cur.execute(
+                """INSERT INTO users (username, password_hash, role_id)
+                   VALUES (%s, %s, %s) RETURNING id""",
+                [username, password_hash, role_id]
+            )
+            user_id = cur.fetchone()[0]
+        conn.commit()
+
+        # Enable auth
+        set_config(enricher_db, 'auth_enabled', True)
+
+        # Audit
+        _write_audit(user_id, None, 'auth_enabled', {'method': 'first_user_setup'}, get_real_client_ip(request), request.headers.get('user-agent', '')[:500])
+
+        # Create session
+        token = _create_session(user_id, request)
+        response = Response(
+            content=json.dumps({"success": True, "username": username}),
+            media_type="application/json"
+        )
+        ttl_hours = int(get_config(enricher_db, 'auth_session_ttl_hours', 168) or 168)
+        response.set_cookie(
+            key='uli_session',
+            value=token,
+            httponly=True,
+            secure=True,
+            samesite='lax',
+            max_age=ttl_hours * 3600,
+            path='/',
+        )
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        conn.rollback()
+        logger.exception("Auth setup failed")
+        raise HTTPException(500, "Setup failed") from None
+    finally:
+        put_conn(conn)
+
+
+@router.post("/api/auth/login")
+def auth_login(request: Request, body: dict):
+    """Login with username/password."""
+    _require_https(request)
+
+    client_ip = get_real_client_ip(request)
+    _check_rate_limit(client_ip)
+
+    username = (body.get('username') or '').strip()
+    password = body.get('password') or ''
+
+    if not username or not password:
+        raise HTTPException(400, "Username and password required")
+    if len(password.encode('utf-8')) > 72:
+        raise HTTPException(401, "Invalid username or password")
+
+    conn = get_conn()
+    try:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT id, username, password_hash, is_active FROM users WHERE username = %s",
+                [username]
+            )
+            user = cur.fetchone()
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        put_conn(conn)
+
+    ua = request.headers.get('user-agent', '')[:500]
+
+    if not user or not user['is_active']:
+        _record_attempt(client_ip)
+        _write_audit(None, None, 'login_failed', {'username': username, 'reason': 'user_not_found'}, client_ip, ua)
+        raise HTTPException(401, "Invalid username or password")
+
+    if not bcrypt.checkpw(password.encode('utf-8'), user['password_hash'].encode('utf-8')):
+        _record_attempt(client_ip)
+        _write_audit(user['id'], None, 'login_failed', {'reason': 'wrong_password'}, client_ip, ua)
+        raise HTTPException(401, "Invalid username or password")
+
+    _clear_attempts(client_ip)
+
+    token = _create_session(user['id'], request)
+    _write_audit(user['id'], None, 'login', None, client_ip, ua)
+
+    # Update last_login_at
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET last_login_at = NOW() WHERE id = %s", [user['id']])
+        conn.commit()
+    except Exception:
+        conn.rollback()
+    finally:
+        put_conn(conn)
+
+    response = Response(
+        content=json.dumps({"success": True, "username": user['username']}),
+        media_type="application/json"
+    )
+    ttl_hours = int(get_config(enricher_db, 'auth_session_ttl_hours', 168) or 168)
+    response.set_cookie(
+        key='uli_session',
+        value=token,
+        httponly=True,
+        secure=True,
+        samesite='lax',
+        max_age=ttl_hours * 3600,
+        path='/',
+    )
+    return response
+
+
+@router.post("/api/auth/logout")
+def auth_logout(request: Request):
+    """Invalidate current session."""
+    session_token = request.cookies.get('uli_session')
+    if session_token:
+        token_hash = hashlib.sha256(session_token.encode()).hexdigest()
+        conn = get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM sessions WHERE token_hash = %s", [token_hash])
+            conn.commit()
+        except Exception:
+            conn.rollback()
+        finally:
+            put_conn(conn)
+
+    response = Response(
+        content=json.dumps({"success": True}),
+        media_type="application/json"
+    )
+    response.delete_cookie('uli_session', path='/')
+    return response
+
+
+@router.put("/api/auth/session-ttl")
+def update_session_ttl(request: Request, body: dict):
+    """Update session duration. Requires auth (enforced by middleware)."""
+    hours = body.get('hours')
+    if not isinstance(hours, int) or hours < 1 or hours > 8760:
+        raise HTTPException(400, "Session duration must be between 1 and 8760 hours")
+    set_config(enricher_db, 'auth_session_ttl_hours', hours)
+    return {"success": True, "session_ttl_hours": hours}
+
+
+@router.get("/api/auth/me")
+def auth_me(request: Request):
+    """Return current user info. Auth enforced by middleware."""
+    info = getattr(request.state, 'auth_info', None)
+    if info is None:
+        # Auth disabled
+        return {"authenticated": False, "auth_enabled": False}
+
+    return {
+        "authenticated": True,
+        "user_id": info.get('user_id'),
+        "username": info.get('username'),
+        "role": info.get('role_name'),
+    }
+
+
+@router.post("/api/auth/change-password")
+def auth_change_password(request: Request, body: dict):
+    """Change password. Auth enforced by middleware; requires HTTPS."""
+    _require_https(request)
+    info = getattr(request.state, 'auth_info', None)
+    if not info or not info.get('user_id'):
+        raise HTTPException(401, "Authentication required")
+
+    current_password = body.get('current_password') or ''
+    new_password = body.get('new_password') or ''
+
+    if len(new_password) < 8:
+        raise HTTPException(400, "New password must be at least 8 characters")
+    if len(new_password.encode('utf-8')) > 72:
+        raise HTTPException(400, "New password must not exceed 72 bytes")
+
+    user_id = info['user_id']
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT password_hash FROM users WHERE id = %s", [user_id])
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(404, "User not found")
+
+            if not bcrypt.checkpw(current_password.encode('utf-8'), row[0].encode('utf-8')):
+                raise HTTPException(401, "Current password is incorrect")
+
+            new_hash = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt(rounds=12)).decode('utf-8')
+            cur.execute("UPDATE users SET password_hash = %s, updated_at = NOW() WHERE id = %s", [new_hash, user_id])
+
+            # Invalidate all sessions except current
+            session_token = request.cookies.get('uli_session')
+            if session_token:
+                current_hash = hashlib.sha256(session_token.encode()).hexdigest()
+                cur.execute("DELETE FROM sessions WHERE user_id = %s AND token_hash != %s", [user_id, current_hash])
+            else:
+                cur.execute("DELETE FROM sessions WHERE user_id = %s", [user_id])
+
+        conn.commit()
+    except HTTPException:
+        raise
+    except Exception:
+        conn.rollback()
+        logger.exception("Password change failed")
+        raise HTTPException(500, "Password change failed") from None
+    finally:
+        put_conn(conn)
+
+    _write_audit(user_id, None, 'password_changed', None, get_real_client_ip(request), request.headers.get('user-agent', '')[:500])
+    return {"success": True}
+
+
+# ── Cleanup (called by scheduler) ───────────────────────────────────────────
+
+def auth_cleanup():
+    """Delete expired sessions and old audit log entries."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM sessions WHERE expires_at < NOW()")
+            expired_sessions = cur.rowcount
+
+            retention = int(get_config(enricher_db, 'audit_log_retention_days', 90) or 90)
+            cur.execute(
+                "DELETE FROM audit_log WHERE created_at < NOW() - (%s || ' days')::interval",
+                [str(retention)]
+            )
+            old_audit = cur.rowcount
+        conn.commit()
+        if expired_sessions or old_audit:
+            logger.info("Auth cleanup: %d expired sessions, %d old audit entries removed", expired_sessions, old_audit)
+    except Exception:
+        conn.rollback()
+        logger.exception("Auth cleanup failed")
+    finally:
+        put_conn(conn)

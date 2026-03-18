@@ -120,10 +120,11 @@ window.addEventListener('uli-ready', async function () {
         type: 'BATCH_THREAT_LOOKUP',
         ips: uniqueIPs,
       });
-      if (!resp || !resp.ok || !resp.data) {
-        console.debug('[ULI][Panel] BATCH_THREAT_LOOKUP returned non-ok:', resp);
-        return;
+      if (!resp) return;
+      if (resp.error) {
+        console.warn('[ULI][Panel] BATCH_THREAT_LOOKUP error:', resp.error);
       }
+      if (!resp.data || Object.keys(resp.data).length === 0) return;
       threatData = resp.data;
     } catch (e) {
       if (e?.message?.includes('Extension context invalidated')) {

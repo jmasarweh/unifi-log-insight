@@ -269,32 +269,42 @@ class Database:
                 value JSONB NOT NULL,
                 updated_at TIMESTAMPTZ DEFAULT NOW()
             )""",
-            # MCP tokens and audit trail
-            """CREATE TABLE IF NOT EXISTS mcp_tokens (
-                id UUID PRIMARY KEY,
-                name TEXT NOT NULL,
-                token_prefix TEXT NOT NULL,
-                token_hash TEXT NOT NULL,
-                token_salt TEXT NOT NULL,
-                scopes TEXT[] NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                last_used_at TIMESTAMPTZ,
-                disabled BOOLEAN NOT NULL DEFAULT FALSE
-            )""",
-            "CREATE INDEX IF NOT EXISTS idx_mcp_tokens_prefix ON mcp_tokens (token_prefix)",
-            "CREATE INDEX IF NOT EXISTS idx_mcp_tokens_active ON mcp_tokens (disabled) WHERE disabled = false",
-            """CREATE TABLE IF NOT EXISTS mcp_audit (
-                id BIGSERIAL PRIMARY KEY,
-                token_id UUID,
-                tool_name TEXT NOT NULL,
-                scope TEXT,
-                success BOOLEAN NOT NULL,
-                error TEXT,
-                params JSONB,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )""",
-            "CREATE INDEX IF NOT EXISTS idx_mcp_audit_created_at ON mcp_audit (created_at)",
-            "CREATE INDEX IF NOT EXISTS idx_mcp_audit_token_id ON mcp_audit (token_id)",
+            # Legacy MCP tables — only create if not already migrated to api_tokens
+            """DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_mcp_tokens_backup' AND table_schema = 'public')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'api_tokens' AND table_schema = 'public') THEN
+                    CREATE TABLE IF NOT EXISTS mcp_tokens (
+                        id UUID PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        token_prefix TEXT NOT NULL,
+                        token_hash TEXT NOT NULL,
+                        token_salt TEXT NOT NULL,
+                        scopes TEXT[] NOT NULL,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        last_used_at TIMESTAMPTZ,
+                        disabled BOOLEAN NOT NULL DEFAULT FALSE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mcp_tokens_prefix ON mcp_tokens (token_prefix);
+                    CREATE INDEX IF NOT EXISTS idx_mcp_tokens_active ON mcp_tokens (disabled) WHERE disabled = false;
+                END IF;
+            END $$""",
+            """DO $$ BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_mcp_audit_backup' AND table_schema = 'public')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'audit_log' AND table_schema = 'public') THEN
+                    CREATE TABLE IF NOT EXISTS mcp_audit (
+                        id BIGSERIAL PRIMARY KEY,
+                        token_id UUID,
+                        tool_name TEXT NOT NULL,
+                        scope TEXT,
+                        success BOOLEAN NOT NULL,
+                        error TEXT,
+                        params JSONB,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_mcp_audit_created_at ON mcp_audit (created_at);
+                    CREATE INDEX IF NOT EXISTS idx_mcp_audit_token_id ON mcp_audit (token_id);
+                END IF;
+            END $$""",
             # One-time flag: re-enrich logs that were enriched on WAN IP instead of remote IP
             """INSERT INTO system_config (key, value, updated_at)
                VALUES ('enrichment_wan_fix_pending', 'true', NOW())
@@ -380,6 +390,114 @@ class Database:
                         OR addr << 'fe80::/10'
                     )
             $$ LANGUAGE sql IMMUTABLE""",
+            # Auth: roles table
+            """CREATE TABLE IF NOT EXISTS roles (
+                id              SERIAL PRIMARY KEY,
+                name            VARCHAR(50) UNIQUE NOT NULL,
+                permissions     JSONB NOT NULL DEFAULT '[]',
+                is_system       BOOLEAN DEFAULT FALSE,
+                description     TEXT,
+                created_at      TIMESTAMPTZ DEFAULT NOW()
+            )""",
+            # Auth: seed default roles
+            """INSERT INTO roles (name, permissions, is_system, description) VALUES
+                ('admin', '["*"]', TRUE, 'Full access to all features'),
+                ('viewer', '["logs.read", "stats.read", "flows.read", "threats.read", "dashboard.read"]', TRUE, 'Read-only access to logs and dashboards')
+            ON CONFLICT (name) DO NOTHING""",
+            # Auth: users table
+            """CREATE TABLE IF NOT EXISTS users (
+                id              SERIAL PRIMARY KEY,
+                username        VARCHAR(100) UNIQUE NOT NULL,
+                password_hash   TEXT NOT NULL,
+                role_id         INTEGER NOT NULL REFERENCES roles(id),
+                is_active       BOOLEAN DEFAULT TRUE,
+                created_at      TIMESTAMPTZ DEFAULT NOW(),
+                updated_at      TIMESTAMPTZ DEFAULT NOW(),
+                last_login_at   TIMESTAMPTZ
+            )""",
+            # Auth: sessions table
+            "CREATE EXTENSION IF NOT EXISTS pgcrypto",
+            """CREATE TABLE IF NOT EXISTS sessions (
+                id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                token_hash      TEXT NOT NULL,
+                expires_at      TIMESTAMPTZ NOT NULL,
+                created_at      TIMESTAMPTZ DEFAULT NOW(),
+                ip_address      INET,
+                user_agent      TEXT
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
+            # Auth: api_tokens table (replaces mcp_tokens)
+            """CREATE TABLE IF NOT EXISTS api_tokens (
+                id              UUID PRIMARY KEY,
+                name            TEXT NOT NULL,
+                token_prefix    TEXT NOT NULL,
+                token_hash      TEXT NOT NULL,
+                token_salt      TEXT NOT NULL,
+                scopes          TEXT[] NOT NULL,
+                client_type     VARCHAR(20) NOT NULL,
+                owner_user_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_used_at    TIMESTAMPTZ,
+                disabled        BOOLEAN NOT NULL DEFAULT FALSE
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_api_tokens_prefix ON api_tokens(token_prefix)",
+            "CREATE INDEX IF NOT EXISTS idx_api_tokens_active ON api_tokens(disabled) WHERE disabled = false",
+            "CREATE INDEX IF NOT EXISTS idx_api_tokens_owner ON api_tokens(owner_user_id)",
+            # Auth: audit_log table (replaces mcp_audit)
+            """CREATE TABLE IF NOT EXISTS audit_log (
+                id              BIGSERIAL PRIMARY KEY,
+                user_id         INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                token_id        UUID REFERENCES api_tokens(id) ON DELETE SET NULL,
+                action          VARCHAR(50) NOT NULL,
+                detail          JSONB,
+                ip_address      INET,
+                user_agent      TEXT,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_user_id ON audit_log(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_token_id ON audit_log(token_id)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_action ON audit_log(action)",
+            "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
+            # Auth: system_config seed entries
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('auth_enabled', 'false', NOW()) ON CONFLICT (key) DO NOTHING""",
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('auth_session_ttl_hours', '168', NOW()) ON CONFLICT (key) DO NOTHING""",
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('audit_log_retention_days', '90', NOW()) ON CONFLICT (key) DO NOTHING""",
+            # Auth: migrate mcp_tokens data into api_tokens (guarded — table may not exist)
+            """DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mcp_tokens' AND table_schema = 'public') THEN
+                    INSERT INTO api_tokens (id, name, token_prefix, token_hash, token_salt, scopes, client_type, owner_user_id, created_at, last_used_at, disabled)
+                    SELECT id, name, token_prefix, token_hash, token_salt, scopes, 'mcp', NULL, created_at, last_used_at, disabled
+                    FROM mcp_tokens
+                    WHERE NOT EXISTS (SELECT 1 FROM api_tokens WHERE api_tokens.id = mcp_tokens.id);
+                END IF;
+            END $$""",
+            # Auth: migrate mcp_audit data into audit_log (guarded — table may not exist)
+            """DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mcp_audit' AND table_schema = 'public') THEN
+                    INSERT INTO audit_log (token_id, action, detail, created_at)
+                    SELECT token_id, 'api_call', jsonb_build_object('tool_name', tool_name, 'scope', scope, 'success', success, 'error', error, 'params', params), created_at
+                    FROM mcp_audit
+                    WHERE NOT EXISTS (SELECT 1 FROM audit_log WHERE audit_log.created_at = mcp_audit.created_at AND audit_log.token_id = mcp_audit.token_id);
+                END IF;
+            END $$""",
+            # Auth: rename old mcp_tokens to backup
+            """DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mcp_tokens' AND table_schema = 'public')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_mcp_tokens_backup' AND table_schema = 'public') THEN
+                    ALTER TABLE mcp_tokens RENAME TO _mcp_tokens_backup;
+                END IF;
+            END $$""",
+            # Auth: rename old mcp_audit to backup
+            """DO $$ BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'mcp_audit' AND table_schema = 'public')
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = '_mcp_audit_backup' AND table_schema = 'public') THEN
+                    ALTER TABLE mcp_audit RENAME TO _mcp_audit_backup;
+                END IF;
+            END $$""",
+            # Auth: migration version marker
+            """INSERT INTO system_config (key, value, updated_at) VALUES ('mcp_migration_version', '"1"', NOW()) ON CONFLICT (key) DO NOTHING""",
         ]
         # Fix function ownership BEFORE migrations so CREATE OR REPLACE
         # succeeds on the first boot after upgrade (not just the second).

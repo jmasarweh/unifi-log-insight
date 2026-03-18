@@ -165,6 +165,8 @@ body::-webkit-scrollbar {
 .btn-icon:hover { color: #2dd4bf; }
 .btn-icon:focus-visible { outline: 2px solid #2dd4bf; outline-offset: 1px; }
 
+#clear-token-btn { margin-left: 4px; }
+
 .btn-reset {
   display: block;
   width: 100%;
@@ -212,6 +214,10 @@ body::-webkit-scrollbar {
   color: #f87171;
   font-size: 11px;
   margin-top: 6px;
+}
+
+.error.auth-hint {
+  color: #fbbf24;
 }
 
 /* Status row */
@@ -624,6 +630,10 @@ body[data-theme="light"] .port-sep {
 
 body[data-theme="light"] .error {
   color: #dc2626;
+}
+
+body[data-theme="light"] .error.auth-hint {
+  color: #92400e;
 }
 
 body[data-theme="light"] .debug-details {

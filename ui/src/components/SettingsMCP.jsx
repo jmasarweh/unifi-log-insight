@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   fetchMcpSettings, updateMcpSettings,
-  fetchMcpScopes, fetchMcpTokens, fetchMcpAudit,
-  createMcpToken, revokeMcpToken
+  fetchMcpScopes, fetchMcpAudit,
 } from '../api'
+import useApiTokens from '../hooks/useApiTokens'
 import CopyButton from './CopyButton'
+import TokenCreatedModal from './TokenCreatedModal'
+import TokenList from './TokenList'
 
 const TEAL = 'text-teal-500 hover:text-teal-400'
 
@@ -17,11 +19,11 @@ const GeminiIcon = () => (
 )
 
 export default function SettingsMCP() {
+  const { tokens, reload: reloadTokens, create: createToken, revoke: revokeToken } = useApiTokens('mcp')
   const [settings, setSettings] = useState(null)
   const [draft, setDraft] = useState(null)
   const [originsText, setOriginsText] = useState('')
   const [scopes, setScopes] = useState([])
-  const [tokens, setTokens] = useState([])
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
   const [auditEntries, setAuditEntries] = useState([])
@@ -87,16 +89,15 @@ export default function SettingsMCP() {
 
   async function reloadAll() {
     try {
-      const [settingsData, scopesData, tokensData] = await Promise.all([
+      const [settingsData, scopesData] = await Promise.all([
         fetchMcpSettings(),
         fetchMcpScopes(),
-        fetchMcpTokens()
       ])
+      await reloadTokens()
       setSettings(settingsData)
       setDraft(settingsData)
       setOriginsText((settingsData.allowed_origins || []).join('\n'))
       setScopes(scopesData.scopes || [])
-      setTokens(tokensData.tokens || [])
     } catch (e) {
       setMessage({ type: 'error', text: e.message })
     }
@@ -158,17 +159,16 @@ export default function SettingsMCP() {
     setCreating(true)
     setMessage(null)
     try {
-      const result = await createMcpToken({
+      const result = await createToken({
         name: tokenName.trim() || 'MCP Token',
         scopes: Array.from(tokenScopes),
+        client_type: 'mcp',
       })
       setCreatedToken(result.token)
       setLastCreatedToken(result.token)
       setShowTokenModal(true)
       setTokenName('')
       setTokenScopes(new Set())
-      const refreshed = await fetchMcpTokens()
-      setTokens(refreshed.tokens || [])
       setMessage({ type: 'success', text: 'Token created' })
       setTimeout(() => setMessage(null), 3000)
     } catch (e) {
@@ -183,9 +183,7 @@ export default function SettingsMCP() {
     if (!confirm('Revoke this token? This cannot be undone.')) return
     setMessage(null)
     try {
-      await revokeMcpToken(tokenId)
-      const refreshed = await fetchMcpTokens()
-      setTokens(refreshed.tokens || [])
+      await revokeToken(tokenId)
       setMessage({ type: 'success', text: 'Token revoked' })
       setTimeout(() => setMessage(null), 3000)
     } catch (e) {
@@ -402,43 +400,11 @@ export default function SettingsMCP() {
 
           <div className="p-5">
             <p className="text-sm font-medium text-gray-200 mb-3">Active tokens</p>
-            <div className="space-y-2">
-              {tokens.length === 0 && (
-                <p className="text-sm text-gray-600">No tokens yet.</p>
-              )}
-              {tokens.map(token => (
-                <div
-                  key={token.id}
-                  className="flex items-center justify-between gap-3 px-3 py-2 rounded border border-gray-800 bg-gray-900/60"
-                >
-                  <div className="min-w-0">
-                    <p className="text-base text-gray-200 font-medium truncate">{token.name}</p>
-                    <p className="text-xs text-gray-500 font-mono truncate">
-                      {token.token_prefix?.startsWith('uli-mcp') ? '' : 'uli-mcp_'}{token.token_prefix}… · {token.scopes?.join(', ') || 'no scopes'}
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      Created {token.created_at ? new Date(token.created_at).toLocaleString() : 'unknown'}
-                      {token.last_used_at && ` · Last used ${new Date(token.last_used_at).toLocaleString()}`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs uppercase font-semibold px-2 py-0.5 rounded ${
-                      token.disabled ? 'bg-gray-700 text-gray-300' : 'bg-green-500/10 text-green-300'
-                    }`}>
-                      {token.disabled ? 'Disabled' : 'Active'}
-                    </span>
-                    {!token.disabled && (
-                      <button
-                        onClick={() => handleRevoke(token.id)}
-                        className="px-2 py-1 text-sm font-semibold rounded bg-teal-600 hover:bg-teal-500 text-white transition-colors"
-                      >
-                        Revoke
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <TokenList
+              tokens={tokens}
+              onRevoke={(id) => handleRevoke(id)}
+              formatPrefix={t => `${t.token_prefix?.startsWith('uli-mcp') ? '' : 'uli-mcp_'}${t.token_prefix}…`}
+            />
           </div>
         </div>
       </section>
@@ -662,47 +628,12 @@ export default function SettingsMCP() {
         </div>
       </section>
 
-      {showTokenModal && createdToken && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={closeTokenModal}>
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="mcp-token-title"
-            className="bg-gray-950 border border-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-              <span id="mcp-token-title" className="text-sm font-semibold text-gray-200">
-                MCP Token Created
-              </span>
-              <button onClick={closeTokenModal} className="text-gray-400 hover:text-gray-200 text-lg leading-none">
-                &times;
-              </button>
-            </div>
-            <div className="px-4 py-4 space-y-3">
-              <p className="text-sm text-gray-400">
-                This token is shown only once. Copy it now and store it securely.
-              </p>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={createdToken}
-                  className="flex-1 px-3 py-2 rounded bg-gray-900 border border-gray-700 text-sm text-gray-200 font-mono"
-                />
-                <CopyButton text={createdToken} color={TEAL} />
-              </div>
-            </div>
-            <div className="px-4 py-3 border-t border-gray-700 flex justify-end">
-              <button
-                onClick={closeTokenModal}
-                className="px-3 py-1.5 rounded text-sm font-medium bg-teal-600 hover:bg-teal-500 text-white transition-colors"
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
+      {showTokenModal && (
+        <TokenCreatedModal
+          token={createdToken}
+          title="MCP Token Created"
+          onClose={closeTokenModal}
+        />
       )}
     </div>
   )

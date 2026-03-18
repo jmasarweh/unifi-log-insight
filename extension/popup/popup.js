@@ -2,6 +2,13 @@
 
 const setupView = document.getElementById('setup-view');
 const connectedView = document.getElementById('connected-view');
+const authGateView = document.getElementById('auth-gate-view');
+
+const authGateTokenInput = document.getElementById('auth-gate-token-input');
+const authGateSaveBtn = document.getElementById('auth-gate-save-btn');
+const authGateError = document.getElementById('auth-gate-error');
+const authGateDisconnectBtn = document.getElementById('auth-gate-disconnect-btn');
+const authGateVersion = document.getElementById('auth-gate-version');
 
 const hostInput = document.getElementById('host-input');
 const portInput = document.getElementById('port-input');
@@ -39,6 +46,16 @@ const toggleEnrich = document.getElementById('toggle-enrich');
 const reloadBar = document.getElementById('reload-bar');
 const reloadBtn = document.getElementById('reload-btn');
 const disconnectBtn = document.getElementById('disconnect-btn');
+
+const tokenStatus = document.getElementById('token-status');
+const tokenDisplay = document.getElementById('token-display');
+const tokenPreview = document.getElementById('token-preview');
+const editTokenBtn = document.getElementById('edit-token-btn');
+const clearTokenBtn = document.getElementById('clear-token-btn');
+const tokenEdit = document.getElementById('token-edit');
+const tokenInput = document.getElementById('token-input');
+const saveTokenBtn = document.getElementById('save-token-btn');
+const tokenError = document.getElementById('token-error');
 
 let initialTabInjection = true;
 let initialFlowEnrichment = true;
@@ -214,6 +231,7 @@ async function init() {
 function showSetup() {
   setupView.hidden = false;
   connectedView.hidden = true;
+  authGateView.hidden = true;
 }
 
 connectBtn.addEventListener('click', async () => {
@@ -224,7 +242,9 @@ connectBtn.addEventListener('click', async () => {
     return;
   }
 
-  const url = normalizeUrl(`${host}:${port}`, 'http');
+  // HTTPS full URLs use as-is (standard port 443); bare IPs/hostnames get port appended
+  const isHttps = /^https:\/\//i.test(host);
+  const url = isHttps ? host.replace(/\/+$/, '') : normalizeUrl(`${host}:${port}`, 'http');
 
   try {
     new URL(url);
@@ -275,8 +295,35 @@ function showSetupError(msg) {
 async function showConnected(settings) {
   setupView.hidden = true;
   connectedView.hidden = true;
+  authGateView.hidden = true;
 
   const baseUrl = settings.logInsightUrl;
+  const extVersion = chrome.runtime.getManifest().version;
+
+  // Check if auth is required and no token is configured
+  let healthResp = {}, trafficResp = {}, tokenResp = {};
+  try {
+    [healthResp, trafficResp, tokenResp] = await Promise.all([
+      chrome.runtime.sendMessage({ type: 'HEALTH_CHECK' }),
+      chrome.runtime.sendMessage({ type: 'TRAFFIC_STATS' }),
+      chrome.runtime.sendMessage({ type: 'GET_API_TOKEN' }),
+    ]);
+  } catch (err) {
+    popupWarn('showConnected fetch failed:', err?.message);
+  }
+
+  const serverReachable = healthResp.ok && healthResp.data;
+  const authRequired = trafficResp.authRequired;
+  const hasToken = tokenResp.ok && tokenResp.token;
+
+  // Auth gate: server reachable, requires auth, but no token set
+  if (serverReachable && authRequired && !hasToken) {
+    authGateVersion.textContent = `App: ${healthResp.data.version}  |  Extension: ${extVersion}`;
+    authGateVersion.hidden = false;
+    authGateTokenInput.focus();
+    authGateView.hidden = false;
+    return;
+  }
 
   // Quick links
   openDashboard.href = baseUrl;
@@ -299,12 +346,10 @@ async function showConnected(settings) {
   const ctrlUrl = settings.controllerUrl;
 
   if (ctrlUrl) {
-    // We have a controller URL — show it
     controllerUrl.textContent = stripProto(ctrlUrl);
     controllerUrl.title = ctrlUrl;
     controllerDisplay.hidden = false;
 
-    // Check permission
     const origin = toOriginPattern(ctrlUrl);
     let hasPermission = false;
     if (origin) {
@@ -312,59 +357,58 @@ async function showConnected(settings) {
       try {
         const pending = await chrome.storage.local.get('pendingOrigin');
         popupLog('showConnected controller state', {
-          controllerUrl: ctrlUrl,
-          origin,
-          hasPermission,
+          controllerUrl: ctrlUrl, origin, hasPermission,
           pendingOrigin: pending.pendingOrigin || null,
         });
       } catch (err) {
         popupWarn('failed to read pendingOrigin', { error: err?.message });
       }
     }
-
     setControllerPermissionState(hasPermission);
   } else {
-    // No controller URL — show edit form
     controllerEdit.hidden = false;
     controllerStatus.textContent = 'Not Set';
     controllerStatus.className = 'status-pill pending';
     controllerStatus.hidden = false;
   }
 
-  // Health check + traffic stats (parallel)
-  const extVersion = chrome.runtime.getManifest().version;
-  try {
-    const [healthResp, trafficResp] = await Promise.all([
-      chrome.runtime.sendMessage({ type: 'HEALTH_CHECK' }),
-      chrome.runtime.sendMessage({ type: 'TRAFFIC_STATS' }),
-    ]);
-
-    if (healthResp.ok && healthResp.data) {
-      statusDot.className = 'status-dot connected';
-      statusText.textContent = 'Connected';
-      versionFooter.textContent = `App: ${healthResp.data.version}  |  Extension: ${extVersion}`;
-      versionFooter.hidden = false;
-    } else {
-      statusDot.className = 'status-dot disconnected';
-      statusText.textContent = 'Unreachable';
-      versionFooter.textContent = `Extension: ${extVersion}`;
-      versionFooter.hidden = false;
-    }
-
-    if (trafficResp.ok && trafficResp.data) {
-      const t = trafficResp.data;
-      totalLogs.textContent = formatNumber(t.total);
-      statAllowed.textContent = formatNumber(t.allowed);
-      statBlocked.textContent = formatNumber(t.blocked);
-      statThreats.textContent = formatNumber(t.threats);
-      renderDirections(t.by_direction || {});
-      trafficOverview.hidden = false;
-    }
-  } catch {
+  // Status + traffic
+  if (serverReachable) {
+    statusDot.className = 'status-dot connected';
+    statusText.textContent = 'Connected';
+    versionFooter.textContent = `App: ${healthResp.data.version}  |  Extension: ${extVersion}`;
+    versionFooter.hidden = false;
+  } else {
     statusDot.className = 'status-dot disconnected';
     statusText.textContent = 'Unreachable';
     versionFooter.textContent = `Extension: ${extVersion}`;
     versionFooter.hidden = false;
+  }
+
+  if (trafficResp.ok && trafficResp.data) {
+    const t = trafficResp.data;
+    totalLogs.textContent = formatNumber(t.total);
+    statAllowed.textContent = formatNumber(t.allowed);
+    statBlocked.textContent = formatNumber(t.blocked);
+    statThreats.textContent = formatNumber(t.threats);
+    renderDirections(t.by_direction || {});
+    trafficOverview.hidden = false;
+  }
+
+  // API Token section
+  if (hasToken) {
+    tokenPreview.textContent = tokenResp.token.substring(0, 16) + '...';
+    tokenDisplay.hidden = false;
+    tokenEdit.hidden = true;
+    tokenStatus.textContent = 'Configured';
+    tokenStatus.className = 'status-pill active';
+    tokenStatus.hidden = false;
+  } else {
+    tokenDisplay.hidden = true;
+    tokenEdit.hidden = false;
+    tokenStatus.textContent = 'Not Set';
+    tokenStatus.className = 'status-pill pending';
+    tokenStatus.hidden = false;
   }
 
   connectedView.hidden = false;
@@ -400,7 +444,9 @@ grantBtn.addEventListener('click', () => {
       popupLog('PERMISSION_GRANTED response', resp);
       const hasPermission = await hasPermissionWithRetry(origin);
       setControllerPermissionState(hasPermission);
-      if (!hasPermission) {
+      if (hasPermission) {
+        reloadBar.hidden = false;
+      } else {
         controllerError.textContent = 'Permission propagation delayed. Reopen popup in a moment.';
         controllerError.hidden = false;
       }
@@ -458,11 +504,14 @@ saveControllerBtn.addEventListener('click', () => {
   saveControllerBtn.textContent = 'Saving...';
   popupLog('requesting permission for controller save', { origin, url });
 
-  // Request permission first (Firefox: must be first async call from click handler)
+  // Save URL BEFORE permission dialog — popup may close during the dialog
+  // and .then()/.catch() won't execute. Writing directly to storage ensures
+  // the URL persists even if the popup is destroyed mid-dialog.
+  chrome.storage.sync.set({ controllerUrl: url });
+
+  // Now request permission (Firefox: must be first *permission* call from click handler)
   chrome.permissions.request({ origins: [origin] }).then(async (granted) => {
     popupLog('save controller permission resolved', { origin, granted, url });
-    // Save URL regardless of permission outcome
-    await chrome.runtime.sendMessage({ type: 'SET_CONTROLLER_URL', url });
 
     if (granted) {
       await chrome.storage.local.remove('pendingOrigin');
@@ -477,17 +526,12 @@ saveControllerBtn.addEventListener('click', () => {
     saveControllerBtn.disabled = false;
     saveControllerBtn.textContent = 'Save';
 
-    // Refresh to show new state
-    init();
+    // Refresh to show new state, then prompt reload if permission was granted
+    await init();
+    if (granted) reloadBar.hidden = false;
   }).catch(async (err) => {
-    // Firefox popup might close. Save the URL anyway so next open picks it up.
+    // Popup may have closed during dialog — URL already saved above.
     popupWarn('save controller permission request rejected/aborted', { origin, url, error: err?.message });
-    try {
-      await chrome.runtime.sendMessage({ type: 'SET_CONTROLLER_URL', url });
-    } catch (innerErr) {
-      popupWarn('SET_CONTROLLER_URL on popup close:', innerErr?.message);
-    }
-
     saveControllerBtn.disabled = false;
     saveControllerBtn.textContent = 'Save';
   });
@@ -549,6 +593,114 @@ disconnectBtn.addEventListener('click', async () => {
     popupWarn('disconnect permission cleanup failed:', err?.message);
   }
 
+  await chrome.storage.sync.set({ logInsightUrl: '', controllerUrl: '', configured: false });
+  await chrome.storage.local.remove(['pendingOrigin', 'health']);
+  await chrome.runtime.sendMessage({ type: 'DISCONNECT' });
+  showSetup();
+});
+
+// -- API Token --
+
+editTokenBtn.addEventListener('click', () => {
+  tokenDisplay.hidden = true;
+  tokenEdit.hidden = false;
+  tokenError.hidden = true;
+  tokenInput.value = '';
+  tokenInput.focus();
+});
+
+clearTokenBtn.addEventListener('click', async () => {
+  try {
+    await chrome.runtime.sendMessage({ type: 'CLEAR_API_TOKEN' });
+    tokenDisplay.hidden = true;
+    tokenEdit.hidden = false;
+    tokenStatus.textContent = 'Not Set';
+    tokenStatus.className = 'status-pill pending';
+    tokenError.hidden = true;
+  } catch (err) {
+    tokenError.textContent = err.message || 'Failed to clear token';
+    tokenError.hidden = false;
+  }
+});
+
+saveTokenBtn.addEventListener('click', async () => {
+  const token = tokenInput.value.trim();
+  if (!token) {
+    tokenError.textContent = 'Please enter a token';
+    tokenError.hidden = false;
+    return;
+  }
+
+  saveTokenBtn.disabled = true;
+  saveTokenBtn.textContent = 'Saving...';
+  tokenError.hidden = true;
+  tokenError.classList.remove('auth-hint');
+
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: 'SET_API_TOKEN', token });
+    if (resp.ok) {
+      tokenPreview.textContent = token.substring(0, 16) + '...';
+      tokenDisplay.hidden = false;
+      tokenEdit.hidden = true;
+      tokenStatus.textContent = 'Configured';
+      tokenStatus.className = 'status-pill active';
+      tokenInput.value = '';
+      statusDot.className = 'status-dot connected';
+      statusText.textContent = 'Connected';
+    } else {
+      tokenError.textContent = resp.error || 'Failed to save token';
+      tokenError.hidden = false;
+    }
+  } catch (err) {
+    tokenError.textContent = err.message || 'Failed to save token';
+    tokenError.hidden = false;
+  } finally {
+    saveTokenBtn.disabled = false;
+    saveTokenBtn.textContent = 'Save';
+  }
+});
+
+tokenInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') saveTokenBtn.click();
+});
+
+// -- Auth Gate --
+
+authGateSaveBtn.addEventListener('click', async () => {
+  const token = authGateTokenInput.value.trim();
+  if (!token) {
+    authGateError.textContent = 'Please enter a token';
+    authGateError.hidden = false;
+    return;
+  }
+
+  authGateSaveBtn.disabled = true;
+  authGateSaveBtn.textContent = 'Saving...';
+  authGateError.hidden = true;
+
+  try {
+    const resp = await chrome.runtime.sendMessage({ type: 'SET_API_TOKEN', token });
+    if (resp.ok) {
+      authGateTokenInput.value = '';
+      await init(); // re-init — will now show connected view
+    } else {
+      authGateError.textContent = resp.error || 'Failed to save token';
+      authGateError.hidden = false;
+    }
+  } catch (err) {
+    authGateError.textContent = err.message || 'Failed to save token';
+    authGateError.hidden = false;
+  } finally {
+    authGateSaveBtn.disabled = false;
+    authGateSaveBtn.textContent = 'Save';
+  }
+});
+
+authGateTokenInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') authGateSaveBtn.click();
+});
+
+authGateDisconnectBtn.addEventListener('click', async () => {
   await chrome.storage.sync.set({ logInsightUrl: '', controllerUrl: '', configured: false });
   await chrome.storage.local.remove(['pendingOrigin', 'health']);
   await chrome.runtime.sendMessage({ type: 'DISCONNECT' });

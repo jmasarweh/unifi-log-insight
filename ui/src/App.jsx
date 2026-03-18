@@ -9,7 +9,8 @@ import FlowViewSkeleton from './components/FlowViewSkeleton'
 const Dashboard = React.lazy(() => import('./components/Dashboard'))
 const ThreatMap = React.lazy(() => import('./components/ThreatMap'))
 const FlowView = React.lazy(() => import('./components/FlowView'))
-import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dismissVpnToast, fetchInterfaces, fetchUiSettings, updateUiSettings, fetchUniFiSettings } from './api'
+import Login from './components/Login'
+import { fetchHealth, fetchConfig, fetchLatestRelease, dismissUpgradeModal, dismissVpnToast, fetchInterfaces, fetchUiSettings, updateUiSettings, fetchUniFiSettings, fetchAuthStatus, fetchAuthMe, authLogout, setAuthExpiredHandler } from './api'
 import { loadInterfaceLabels } from './utils'
 import { isVpnInterface } from './vpnUtils'
 
@@ -107,6 +108,9 @@ export default function App() {
   const statusRef = useRef(null)
   const [logsPaused, setLogsPaused] = useState(false)
   const onLogsPauseChange = useCallback((paused) => setLogsPaused(paused), [])
+  const [uiSettings, setUiSettings] = useState(null)
+  const [authState, setAuthState] = useState('loading') // 'loading', 'login', 'authenticated', 'none'
+  const [authStatus, setAuthStatus] = useState(null) // response from /api/auth/status
 
   // Persist URL-derived theme to localStorage so Settings reads the correct value
   useEffect(() => {
@@ -116,16 +120,17 @@ export default function App() {
     }
   }, [])
 
-  // Hydrate theme from API when localStorage is empty (e.g., cleared cache, new browser)
+  // Fetch UI settings after auth resolves (avoids 401 when auth is enabled)
   useEffect(() => {
-    if (localStorage.getItem('ui_theme')) return
+    if (authState === 'loading' || authState === 'login') return
     fetchUiSettings().then(data => {
-      if (data.ui_theme && data.ui_theme !== theme) {
+      setUiSettings(data)
+      if (!localStorage.getItem('ui_theme') && data.ui_theme && data.ui_theme !== theme) {
         setTheme(data.ui_theme)
         localStorage.setItem('ui_theme', data.ui_theme)
       }
     }).catch(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [authState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -192,8 +197,64 @@ export default function App() {
     })
   }
 
-  // Load config + interface labels in a single fetch
+  // Auth bootstrap — ref so onAuthEnabled() can also arm the 401 handler
+  const bootstrapDoneRef = useRef(false)
+
   useEffect(() => {
+    let mounted = true
+    bootstrapDoneRef.current = false
+
+    // Only activate the expired handler after bootstrap confirms auth is active.
+    // Otherwise, early 401s from parallel API calls (fetchConfig, fetchHealth, etc.)
+    // would prematurely flip to the login screen before authStatus is set.
+    setAuthExpiredHandler(() => {
+      if (mounted && bootstrapDoneRef.current) setAuthState('login')
+    })
+
+    fetchAuthStatus()
+      .then(async (status) => {
+        if (!mounted) return
+        setAuthStatus(status)
+
+        // Setup wizard takes priority
+        if (status.setup_complete === false) {
+          setAuthState('none')
+          return
+        }
+
+        if (!status.auth_enabled_effective) {
+          setAuthState('none')
+          return
+        }
+
+        // Auth enabled, has users — check session
+        try {
+          const me = await fetchAuthMe()
+          if (me.authenticated) {
+            bootstrapDoneRef.current = true
+            setAuthState('authenticated')
+          } else {
+            bootstrapDoneRef.current = true
+            setAuthState('login')
+          }
+        } catch {
+          bootstrapDoneRef.current = true
+          setAuthState('login')
+        }
+      })
+      .catch(() => {
+        if (mounted) setAuthState('none') // Can't reach server, proceed without auth
+      })
+
+    return () => {
+      mounted = false
+      setAuthExpiredHandler(null)
+    }
+  }, [])
+
+  // Load config + interface labels after auth resolves
+  useEffect(() => {
+    if (authState === 'loading' || authState === 'login') return
     let mounted = true
     fetchConfig()
       .then(cfg => {
@@ -225,7 +286,7 @@ export default function App() {
         if (mounted) setConfigLoaded(true)
       })
     return () => { mounted = false }
-  }, [])
+  }, [authState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchHealth().then(setHealth).catch(() => {})
@@ -249,6 +310,7 @@ export default function App() {
 
   // Detect unlabeled VPN interfaces and show toast
   useEffect(() => {
+    if (authState === 'loading' || authState === 'login') return
     if (!config || !configLoaded) return
     const vpnNets = config.vpn_networks || {}
     const wanSet = new Set(config.wan_interfaces || [])
@@ -266,10 +328,11 @@ export default function App() {
       if (config.vpn_toast_dismissed) return
       setShowVpnToast(true)
     }).catch(() => {})
-  }, [config, configLoaded])
+  }, [authState, config, configLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Check UniFi controller connection status and show toast if disconnected
   useEffect(() => {
+    if (authState === 'loading' || authState === 'login') return
     if (!config || !configLoaded) return
     if (!config.unifi_enabled) return
     const dismissed = sessionStorage.getItem('unifi_toast_dismissed')
@@ -279,7 +342,7 @@ export default function App() {
         setShowUnifiToast(true)
       }
     }).catch(() => {})
-  }, [config, configLoaded])
+  }, [authState, config, configLoaded]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Prompt multi-WAN users to reconfigure when WAN IP mapping is missing
   useEffect(() => {
@@ -369,6 +432,19 @@ export default function App() {
     return health.retention_days || 60
   }, [health])
 
+  // Auth gates
+  if (authState === 'loading') {
+    return (
+      <div className="flex items-center justify-center h-dvh bg-gray-950 text-gray-300 text-sm">
+        Loading...
+      </div>
+    )
+  }
+
+  if (authState === 'login') {
+    return <Login isHttps={authStatus?.is_https} onSuccess={() => setAuthState('authenticated')} />
+  }
+
   if (!configLoaded) {
     return (
       <div className="flex items-center justify-center h-dvh bg-gray-950 text-gray-300 text-sm">
@@ -401,6 +477,7 @@ export default function App() {
       latestRelease={latestRelease}
       totalLogs={health?.total_logs}
       storage={health?.storage}
+      onAuthEnabled={() => { bootstrapDoneRef.current = true; setAuthState('authenticated') }}
     />
   }
 
@@ -657,6 +734,17 @@ export default function App() {
               </svg>
             )}
           </button>
+          {authState === 'authenticated' && (
+            <button
+              onClick={() => { authLogout().catch(() => {}); setAuthState('login') }}
+              className="p-1.5 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
+              title="Sign Out"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={() => setShowSettings(true)}
             className="p-1.5 rounded hover:bg-gray-800 text-gray-400 hover:text-gray-200 transition-colors"
@@ -676,7 +764,7 @@ export default function App() {
 
       {/* Content */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} drillFilters={logsDrill} onDrillConsumed={clearLogsDrill} interfaces={allInterfaces} onPauseChange={onLogsPauseChange} />}
+        {activeTab === 'logs' && <LogStream version={health?.version} latestRelease={latestRelease} maxFilterDays={maxFilterDays} drillFilters={logsDrill} onDrillConsumed={clearLogsDrill} interfaces={allInterfaces} onPauseChange={onLogsPauseChange} uiSettings={uiSettings} />}
         <Suspense fallback={<DashboardSkeleton />}>
           {activeTab === 'dashboard' && <Dashboard maxFilterDays={maxFilterDays} />}
         </Suspense>

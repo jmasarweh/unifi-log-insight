@@ -149,7 +149,8 @@ const BRIDGE_COLOR_MAP = {
 
 export async function loadInterfaceLabels(prefetchedConfig) {
   try {
-    const config = prefetchedConfig || await (await fetch('/api/config')).json()
+    const { fetchConfig } = await import('./api')
+    const config = prefetchedConfig || await fetchConfig()
     INTERFACE_LABELS = config.interface_labels || {}
     WAN_INTERFACES = new Set(config.wan_interfaces || [])
   } catch (err) {

@@ -743,6 +743,34 @@ class UniFiAPI:
 
         return results
 
+    def _get_poll_status(self) -> dict:
+        """Return poll status, preferring in-memory state (receiver process)
+        but falling back to DB-persisted state (API process)."""
+        if self._last_poll is not None:
+            # Receiver process — has live state
+            return {
+                'connected': self._last_poll_error is None,
+                'last_poll': self._last_poll.isoformat(),
+                'last_error': self._last_poll_error,
+                'client_count': self._client_count,
+                'device_count': self._device_count,
+                'polling_paused': False,
+            }
+        # API process — read from DB (written by receiver)
+        db_status = self._db.get_config('unifi_poll_status', None)
+        if db_status and isinstance(db_status, dict):
+            db_status['polling_paused'] = False
+            return db_status
+        # No poll data yet
+        return {
+            'connected': False,
+            'last_poll': None,
+            'last_error': None,
+            'client_count': 0,
+            'device_count': 0,
+            'polling_paused': False,
+        }
+
     def get_settings_info(self) -> dict:
         """Return current config with source indicators for Settings UI."""
         return {
@@ -762,14 +790,7 @@ class UniFiAPI:
             'supports_firewall': self._controller_type != 'self_hosted',
             'auth_mode': 'cookie' if self._controller_type == 'self_hosted' else 'api_key',
             'username_set': bool(self._username),
-            'status': {
-                'connected': self._last_poll is not None and self._last_poll_error is None,
-                'last_poll': self._last_poll.isoformat() if self._last_poll else None,
-                'last_error': self._last_poll_error,
-                'client_count': self._client_count,
-                'device_count': self._device_count,
-                'polling_paused': False,  # Polling is always active when enabled
-            },
+            'status': self._get_poll_status(),
         }
 
     # ── Phase 1: Firewall Management ─────────────────────────────────────────
@@ -1042,12 +1063,27 @@ class UniFiAPI:
 
             self._last_poll = datetime.now(timezone.utc)
             self._last_poll_error = None
+            # Persist poll status so the API process can read it
+            self._db.set_config('unifi_poll_status', {
+                'connected': True,
+                'last_poll': self._last_poll.isoformat(),
+                'last_error': None,
+                'client_count': len(clients),
+                'device_count': len(devices),
+            })
             logger.info("UniFi poll: %d clients, %d devices synced",
                         len(clients), len(devices))
             return True
 
         except Exception as e:
             self._last_poll_error = str(e)
+            self._db.set_config('unifi_poll_status', {
+                'connected': False,
+                'last_poll': self._last_poll.isoformat() if self._last_poll else None,
+                'last_error': str(e),
+                'client_count': self._client_count,
+                'device_count': self._device_count,
+            })
             logger.exception("UniFi poll failed")
             return False
 

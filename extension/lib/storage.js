@@ -4,6 +4,7 @@
  * and chrome.storage.local for cache data.
  */
 
+// Sensitive values (apiToken) are stored in chrome.storage.local only.
 const DEFAULTS = {
   logInsightUrl: '',
   controllerUrl: '',
@@ -28,6 +29,33 @@ export async function saveSettings(settings) {
   } catch (err) {
     console.error('saveSettings failed:', err);
     return false;
+  }
+}
+
+export async function getApiToken() {
+  try {
+    const result = await chrome.storage.local.get('apiToken');
+    return result.apiToken || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function saveApiToken(token) {
+  try {
+    await chrome.storage.local.set({ apiToken: token });
+    return true;
+  } catch (err) {
+    console.error('saveApiToken failed:', err);
+    return false;
+  }
+}
+
+export async function clearApiToken() {
+  try {
+    await chrome.storage.local.remove('apiToken');
+  } catch (err) {
+    console.error('clearApiToken failed:', err);
   }
 }
 
