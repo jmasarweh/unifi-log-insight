@@ -18,7 +18,7 @@ from routes import setup as setup_routes
 from routes import unifi as unifi_routes
 from routes import health as health_routes
 from routes import threats as threats_routes
-from routes.auth import validate_token_with_effective_scopes
+from routes.auth import get_forwarded_proto, validate_token_with_effective_scopes
 
 logger = logging.getLogger('api.mcp')
 
@@ -65,7 +65,7 @@ def _as_int(val: Any, default: int | None = None) -> int | None:
 
 def _default_allowed_origins(request: Request) -> list[str]:
     host = request.headers.get('host', '')
-    scheme = request.headers.get('x-forwarded-proto') or request.url.scheme
+    scheme = get_forwarded_proto(request)
     if not host:
         return []
     return [f"{scheme}://{host}"]

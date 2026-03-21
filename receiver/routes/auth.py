@@ -2,7 +2,6 @@
 
 import hashlib
 import hmac as _hmac
-import ipaddress
 import json
 import logging
 import os
@@ -19,55 +18,73 @@ from deps import get_conn, put_conn, enricher_db
 logger = logging.getLogger('api.auth')
 router = APIRouter()
 
-# ── Proxy Trust ──────────────────────────────────────────────────────────────
+# ── Proxy Trust (shared-secret header) ────────────────────────────────────────
+#
+# Trust of X-Forwarded-Proto / X-Forwarded-For is gated by a shared secret.
+# The app derives a deterministic token from SECRET_KEY, POSTGRES_PASSWORD,
+# or DB_PASSWORD (first non-empty wins).
+# The reverse proxy must send this token in the X-ULI-Proxy-Auth header.
+# No IP/subnet configuration needed.
 
-# Default: trust loopback + Docker internal networks (172.16.0.0/12).
-# This covers Docker bridge, overlay, and macvlan networks out of the box.
-# Override with TRUSTED_PROXIES env var if your proxy uses a different range.
-_TRUSTED_PROXIES_RAW = os.environ.get(
-    'TRUSTED_PROXIES',
-    '127.0.0.0/8,::1/128,172.16.0.0/12'
-)
-TRUSTED_NETWORKS = []
-for cidr in _TRUSTED_PROXIES_RAW.split(','):
-    cidr = cidr.strip()
-    if cidr:
-        try:
-            TRUSTED_NETWORKS.append(ipaddress.ip_network(cidr, strict=False))
-        except ValueError:
-            logger.warning("Invalid TRUSTED_PROXIES CIDR: %s", cidr)
+def _derive_proxy_token() -> str:
+    """Derive a deterministic proxy-auth token from the app secret."""
+    # @coderabbit: Fallback chain is intentional — SECRET_KEY is preferred, but
+    # internal-DB users have POSTGRES_PASSWORD and external-DB users have DB_PASSWORD.
+    # HMAC domain separation ('proxy-auth') prevents reuse as a DB credential.
+    # Empty-string fallback is safe: POSTGRES_PASSWORD is always set (required by
+    # PostgreSQL) for internal-DB, and DB_PASSWORD is required for external-DB.
+    # The only scenario where all three are unset is a broken deployment that
+    # can't connect to any database anyway — no HTTP traffic to protect.
+    secret = (os.environ.get('SECRET_KEY')
+              or os.environ.get('POSTGRES_PASSWORD')
+              or os.environ.get('DB_PASSWORD', ''))
+    return _hmac.new(secret.encode(), b'proxy-auth', hashlib.sha256).hexdigest()
+
+PROXY_AUTH_TOKEN = _derive_proxy_token()
+
+
+def log_proxy_token() -> None:
+    """Log the proxy auth token.  Must be called after logging.basicConfig()."""
+    logger.info(
+        "Proxy auth token (X-ULI-Proxy-Auth): %s  — configure your reverse proxy with this value",
+        PROXY_AUTH_TOKEN,
+    )
+
+
+def _is_trusted_proxy(request: Request) -> bool:
+    """Check if the request carries a valid X-ULI-Proxy-Auth header."""
+    header = request.headers.get('x-uli-proxy-auth')
+    if not header:
+        return False
+    return _hmac.compare_digest(PROXY_AUTH_TOKEN, header)
+
 
 AUTH_ENABLED = os.environ.get('AUTH_ENABLED', 'false').lower() in ('true', '1', 'yes')
-
-
-def _is_trusted_proxy(ip_str: str) -> bool:
-    try:
-        addr = ipaddress.ip_address(ip_str)
-        return any(addr in net for net in TRUSTED_NETWORKS)
-    except ValueError:
-        return False
 
 
 def get_real_client_ip(request: Request) -> str:
     """Resolve client IP from X-Forwarded-For if from trusted proxy."""
     client_ip = request.client.host if request.client else '127.0.0.1'
-    if not _is_trusted_proxy(client_ip):
+    if not _is_trusted_proxy(request):
         return client_ip
     xff = request.headers.get('x-forwarded-for', '')
     if not xff:
         return client_ip
-    # Walk backwards, find last non-trusted IP
     parts = [p.strip() for p in xff.split(',')]
+    # @coderabbit: Rightmost iteration is correct for our single-trusted-proxy model.
+    # The nginx/Caddy/Traefik snippets we provide use $remote_addr (not
+    # $proxy_add_x_forwarded_for), so XFF contains exactly one entry: the real client IP.
+    # IP-based skipping of trusted proxies is unnecessary — trust is gated by the
+    # X-ULI-Proxy-Auth shared secret, not by source IP.
     for ip in reversed(parts):
-        if not _is_trusted_proxy(ip):
+        if ip:
             return ip
     return client_ip
 
 
 def get_forwarded_proto(request: Request) -> str:
-    """Get protocol, trusting X-Forwarded-Proto only from trusted proxies."""
-    client_ip = request.client.host if request.client else '127.0.0.1'
-    if _is_trusted_proxy(client_ip):
+    """Get protocol, trusting X-Forwarded-Proto only when proxy secret matches."""
+    if _is_trusted_proxy(request):
         proto = request.headers.get('x-forwarded-proto', '').lower()
         if proto in ('http', 'https'):
             return proto
@@ -76,6 +93,8 @@ def get_forwarded_proto(request: Request) -> str:
 
 def _require_https(request: Request):
     if get_forwarded_proto(request) != 'https':
+        if not _is_trusted_proxy(request):
+            raise HTTPException(403, "Unable to verify a secure connection. Your reverse proxy may not be sending the required X-ULI-Proxy-Auth header. See the authentication docs for proxy configuration.")
         raise HTTPException(403, "Authentication requires HTTPS. Please access the app through a reverse proxy with TLS enabled.")
 
 
@@ -304,6 +323,7 @@ AUTH_SESSION_PATHS = {
     '/api/auth/me',
     '/api/auth/session-ttl',
     '/api/auth/change-password',
+    '/api/auth/proxy-token',
 }
 
 
@@ -343,12 +363,32 @@ def auth_status(request: Request):
     """Public bootstrap endpoint for SPA."""
     from routes.setup import setup_status as get_setup_status
     setup_result = get_setup_status()
-    return {
+    result = {
         "auth_enabled_effective": _auth_enabled(),
         "has_users": _has_users(),
         "is_https": get_forwarded_proto(request) == 'https',
+        "proxy_trusted": _is_trusted_proxy(request),
         "setup_complete": setup_result.get('setup_complete', False),
         "session_ttl_hours": int(get_config(enricher_db, 'auth_session_ttl_hours', 168) or 168),
+    }
+    return result
+
+
+@router.get("/api/auth/proxy-token")
+def get_proxy_token(request: Request):
+    """Return the derived proxy-auth token. Requires admin session (not API tokens)."""
+    info = getattr(request.state, 'auth_info', None)
+    if not info or not info.get('user_id'):
+        raise HTTPException(401, "Authentication required")
+    # Reject API-token-backed auth — infrastructure-secret material,
+    # only interactive admin sessions should retrieve it.
+    if info.get('token_id'):
+        raise HTTPException(403, "Session auth required — API tokens cannot retrieve proxy secret")
+    if info.get('role_name') != 'admin':
+        raise HTTPException(403, "Admin access required")
+    return {
+        "token": PROXY_AUTH_TOKEN,
+        "header_name": "X-ULI-Proxy-Auth",
     }
 
 

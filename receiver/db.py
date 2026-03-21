@@ -37,8 +37,10 @@ def _derive_fernet_key(postgres_password: str) -> bytes:
 
 
 def _get_secret_key() -> str:
-    """Return the encryption secret: SECRET_KEY > POSTGRES_PASSWORD."""
-    return os.environ.get('SECRET_KEY') or os.environ.get('POSTGRES_PASSWORD', '')
+    """Return the encryption secret: SECRET_KEY > POSTGRES_PASSWORD > DB_PASSWORD."""
+    return (os.environ.get('SECRET_KEY')
+            or os.environ.get('POSTGRES_PASSWORD')
+            or os.environ.get('DB_PASSWORD', ''))
 
 
 def encrypt_api_key(api_key: str) -> str:

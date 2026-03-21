@@ -33,7 +33,8 @@ from routes.migration import router as migration_router
 from routes.auth import (
     router as auth_router, require_auth,
     get_forwarded_proto, get_real_client_ip, _auth_enabled,
-    TRUSTED_NETWORKS, AUTH_SESSION_PATHS, PUBLIC_PATHS, PUBLIC_PREFIXES,
+    AUTH_SESSION_PATHS, PUBLIC_PATHS, PUBLIC_PREFIXES,
+    log_proxy_token,
 )
 from routes.tokens import router as tokens_router
 
@@ -251,6 +252,7 @@ class _QuietAccessFilter(logging.Filter):
 @app.on_event("startup")
 def _configure_access_logging():
     logging.getLogger("uvicorn.access").addFilter(_QuietAccessFilter())
+    log_proxy_token()
 
 
 # ── Route Registration ───────────────────────────────────────────────────────
