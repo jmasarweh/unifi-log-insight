@@ -78,11 +78,18 @@ def _make_database(monkeypatch, cursors, logger=None):
 
 
 def _validation_cursor():
-    """Validation cursor with truthy responses for table/function/index checks."""
+    """Validation cursor with truthy responses for table/function/index checks.
 
+    Order: logs table, cleanup_old_logs function, idx_logs_timestamp,
+    threat_backfill_queue table, ip_threats.last_seen_at column,
+    idx_logs_fw_block_null_threat_src index.
+    """
     return FakeCursor(fetches=[
         (1,),
         ('public.cleanup_old_logs(integer,integer)',),
+        (1,),
+        (1,),
+        (1,),
         (1,),
     ])
 

@@ -73,6 +73,27 @@ CREATE INDEX IF NOT EXISTS idx_logs_src_port     ON logs (src_port) WHERE src_po
 CREATE INDEX IF NOT EXISTS idx_logs_dst_port     ON logs (dst_port) WHERE dst_port IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_logs_protocol     ON logs (protocol) WHERE protocol IS NOT NULL;
 
+-- Targeted backfill indexes (issue #67: avoid full-table scans)
+CREATE INDEX IF NOT EXISTS idx_logs_fw_block_null_threat_src
+    ON logs (src_ip)
+    WHERE log_type = 'firewall' AND rule_action = 'block'
+      AND threat_score IS NULL AND src_ip IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_logs_fw_block_null_threat_dst
+    ON logs (dst_ip)
+    WHERE log_type = 'firewall' AND rule_action = 'block'
+      AND threat_score IS NULL AND dst_ip IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_logs_fw_block_missing_abuse_src
+    ON logs (src_ip)
+    WHERE log_type = 'firewall' AND rule_action = 'block'
+      AND threat_score IS NOT NULL AND abuse_usage_type IS NULL AND src_ip IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_logs_fw_block_missing_abuse_dst
+    ON logs (dst_ip)
+    WHERE log_type = 'firewall' AND rule_action = 'block'
+      AND threat_score IS NOT NULL AND abuse_usage_type IS NULL AND dst_ip IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_logs_fw_service_name_null_id
+    ON logs (id)
+    WHERE log_type = 'firewall' AND service_name IS NULL AND dst_port IS NOT NULL;
+
 -- Retention cleanup function (configurable periods)
 CREATE OR REPLACE FUNCTION cleanup_old_logs(
     general_days INTEGER DEFAULT 60,
@@ -103,10 +124,30 @@ CREATE TABLE IF NOT EXISTS ip_threats (
     abuse_total_reports INTEGER,
     abuse_last_reported TIMESTAMPTZ,
     abuse_is_whitelisted BOOLEAN,
-    abuse_is_tor BOOLEAN
+    abuse_is_tor BOOLEAN,
+    last_seen_at    TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_ip_threats_looked_up ON ip_threats (looked_up_at);
+CREATE INDEX IF NOT EXISTS idx_ip_threats_reenrich_candidates
+    ON ip_threats (last_seen_at DESC, threat_score DESC)
+    WHERE threat_score > 0
+      AND abuse_usage_type IS NULL AND abuse_hostnames IS NULL
+      AND abuse_total_reports IS NULL AND abuse_last_reported IS NULL
+      AND abuse_is_whitelisted IS NULL AND abuse_is_tor IS NULL;
+
+-- Deferred threat enrichment queue (issue #67: replaces sweep-style backfill)
+CREATE TABLE IF NOT EXISTS threat_backfill_queue (
+    ip            INET PRIMARY KEY,
+    source        TEXT NOT NULL DEFAULT 'live_miss',
+    first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    next_retry_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    attempts      INTEGER NOT NULL DEFAULT 0,
+    last_error    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_threat_backfill_queue_due
+    ON threat_backfill_queue (next_retry_at, last_seen_at DESC);
 
 -- UniFi client cache (Phase 2: IP-to-device-name enrichment)
 CREATE TABLE IF NOT EXISTS unifi_clients (

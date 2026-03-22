@@ -387,7 +387,7 @@ def main():
     scheduler_thread = threading.Thread(target=run_scheduler, args=(db, enricher, blacklist_fetcher), daemon=True)
     scheduler_thread.start()
 
-    # Start backfill daemon (patches NULL threat scores every 30 min)
+    # Start backfill daemon (queue-driven threat enrichment every 5 min)
     backfill = BackfillTask(db, enricher)
     backfill.start()
 
