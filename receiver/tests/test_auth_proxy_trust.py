@@ -177,3 +177,4 @@ class TestGetForwardedProto:
             'x-forwarded-proto': 'ftp',
         })
         assert _get_forwarded_proto(req, self.token) == 'http'
+

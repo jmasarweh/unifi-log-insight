@@ -50,8 +50,8 @@ export default function SettingsSecurity({ onAuthEnabled }) {
             setProxyToken(tokenResp.token)
           } catch (err) {
             // 401/403 expected for non-admin users — only log unexpected errors.
-            const status = err?.status
-            if (status !== 401 && status !== 403 && err?.message !== 'Session expired') {
+            const errStatus = err?.status
+            if (errStatus !== 401 && errStatus !== 403 && err?.message !== 'Session expired') {
               console.error('Failed to fetch proxy token:', err)
             }
           }

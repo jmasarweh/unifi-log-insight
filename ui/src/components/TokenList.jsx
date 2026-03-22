@@ -2,14 +2,20 @@
  * Shared active-token list used by SettingsAPI and SettingsMCP.
  * Shows first `pageSize` tokens with pagination controls.
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // PropTypes not used in this project. Date values come from own API (Python
 // isoformat) — defensive validation against own server is unnecessary.
 export default function TokenList({ tokens = [], onRevoke, formatPrefix, revokingId, pageSize = 5 }) {
   const [page, setPage] = useState(0)
   const totalPages = Math.max(1, Math.ceil(tokens.length / pageSize))
-  const visible = tokens.slice(page * pageSize, (page + 1) * pageSize)
+  const safePage = Math.max(0, Math.min(page, totalPages - 1))
+  const visible = tokens.slice(safePage * pageSize, (safePage + 1) * pageSize)
+
+  useEffect(() => {
+    const clampedPage = Math.max(0, Math.min(page, totalPages - 1))
+    if (clampedPage !== page) setPage(clampedPage)
+  }, [page, totalPages])
 
   return (
     <div className="space-y-2">
@@ -57,18 +63,20 @@ export default function TokenList({ tokens = [], onRevoke, formatPrefix, revokin
       ))}
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-2">
-          <p className="text-xs text-gray-500">{tokens.length} tokens · Page {page + 1} of {totalPages}</p>
+          <p className="text-xs text-gray-500">{tokens.length} tokens · Page {safePage + 1} of {totalPages}</p>
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPage(p => p - 1)}
-              disabled={page === 0}
+              disabled={safePage === 0}
+              aria-label="Go to previous page"
               className="px-2 py-1 text-xs rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Prev
             </button>
             <button
               onClick={() => setPage(p => p + 1)}
-              disabled={page >= totalPages - 1}
+              disabled={safePage >= totalPages - 1}
+              aria-label="Go to next page"
               className="px-2 py-1 text-xs rounded border border-gray-700 text-gray-400 hover:text-gray-200 hover:border-gray-500 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               Next
