@@ -187,35 +187,35 @@ function MigrationWizard() {
                   </label>
                   <input id="mig-host" value={form.host} onChange={e => setField('host', e.target.value)}
                     placeholder="e.g. postgres or 192.168.1.50"
-                    className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
+                    className="w-full px-3 py-1.5 rounded bg-black border border-gray-600 text-sm text-gray-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20" />
                 </div>
                 <div>
                   <label htmlFor="mig-port" className="block text-sm font-medium text-gray-200 mb-1">Port</label>
                   <input id="mig-port" type="number" value={form.port} onChange={e => setField('port', parseInt(e.target.value) || 5432)}
-                    className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
+                    className="w-full px-3 py-1.5 rounded bg-black border border-gray-600 text-sm text-gray-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20" />
                 </div>
               </div>
               <div>
                 <label htmlFor="mig-dbname" className="block text-sm font-medium text-gray-200 mb-1">Database Name</label>
                 <input id="mig-dbname" value={form.dbname} readOnly
-                  className="w-full px-3 py-1.5 rounded bg-gray-900/50 border border-gray-700 text-sm text-gray-500 cursor-not-allowed" />
+                  className="w-full px-3 py-1.5 rounded bg-black/50 border border-gray-700 text-sm text-gray-500 cursor-not-allowed" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label htmlFor="mig-user" className="block text-sm font-medium text-gray-200 mb-1">Username</label>
                   <input id="mig-user" value={form.user} onChange={e => setField('user', e.target.value)}
-                    className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
+                    className="w-full px-3 py-1.5 rounded bg-black border border-gray-600 text-sm text-gray-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20" />
                 </div>
                 <div>
                   <label htmlFor="mig-password" className="block text-sm font-medium text-gray-200 mb-1">Password</label>
                   <input id="mig-password" type="password" value={form.password} onChange={e => setField('password', e.target.value)}
-                    className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none" />
+                    className="w-full px-3 py-1.5 rounded bg-black border border-gray-600 text-sm text-gray-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20" />
                 </div>
               </div>
               <div>
                 <label htmlFor="mig-sslmode" className="block text-sm font-medium text-gray-200 mb-1">SSL Mode</label>
                 <select id="mig-sslmode" value={form.sslmode} onChange={e => setField('sslmode', e.target.value)}
-                  className="w-full px-3 py-1.5 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 focus:border-blue-500 focus:outline-none">
+                  className="w-full px-3 py-1.5 rounded bg-black border border-gray-600 text-sm text-gray-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20">
                   <option value="disable">disable</option>
                   <option value="require">require</option>
                   <option value="verify-ca">verify-ca</option>
@@ -343,7 +343,7 @@ function MigrationWizard() {
                     <div className="rounded border border-gray-700 overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
-                          <tr className="bg-gray-900">
+                          <tr className="bg-black">
                             <th className="text-left px-3 py-1.5 text-gray-400 font-semibold">Table</th>
                             <th className="text-right px-3 py-1.5 text-gray-400 font-semibold">Source</th>
                             <th className="text-right px-3 py-1.5 text-gray-400 font-semibold">Target</th>
@@ -394,7 +394,7 @@ function MigrationWizard() {
                     onChange={e => setComposeInput(e.target.value)}
                     placeholder="Paste your docker-compose.yml here..."
                     rows={10}
-                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-600 text-sm text-gray-200 font-mono focus:border-blue-500 focus:outline-none resize-y"
+                    className="w-full px-3 py-2 rounded bg-black border border-gray-600 text-sm text-gray-200 font-mono focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20 resize-y"
                   />
                   <div className="flex justify-end">
                     <button onClick={handlePatchCompose} disabled={patching || !composeInput.trim()}
@@ -419,7 +419,7 @@ function MigrationWizard() {
                   <p className="text-sm text-gray-400">
                     1. Copy and save the following as your <code className="bg-gray-800 px-1 py-0.5 rounded">docker-compose.yml</code>
                   </p>
-                  <div className="relative rounded bg-gray-900 border border-gray-700 p-3">
+                  <div className="relative rounded bg-black border border-gray-700 p-3">
                     <pre className="text-sm text-gray-300 font-mono whitespace-pre overflow-x-auto max-h-96 overflow-y-auto">{composeOutput}</pre>
                     <div className="absolute top-2 right-2">
                       <CopyButton text={composeOutput} />
@@ -464,7 +464,7 @@ function MigrationWizard() {
                       Paste Different Compose File
                     </button>
                   </div>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-sm text-gray-500">
                     YAML comments from your original file are not preserved.
                   </p>
                 </div>
@@ -628,7 +628,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
             {/* General retention slider */}
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-200">Log retention</label>
+                <label className="text-base text-gray-200 font-medium">Log retention</label>
                 <span className="text-sm font-mono font-semibold text-gray-200">{retentionDays} days</span>
               </div>
               <input
@@ -670,7 +670,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
             {/* DNS retention input */}
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-200">DNS log retention</label>
+                <label className="text-base text-gray-200 font-medium">DNS log retention</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
@@ -678,7 +678,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
                     max={365}
                     value={dnsRetentionDays}
                     onChange={e => setDnsRetentionDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
-                    className="w-16 px-2 py-1 rounded bg-gray-900 border border-gray-600 font-mono text-sm text-gray-200 text-right focus:border-blue-500 focus:outline-none"
+                    className="w-16 px-2 py-1 rounded bg-black border border-gray-600 font-mono text-sm text-gray-200 text-right focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                   />
                   <span className="text-sm text-gray-500">days</span>
                 </div>
@@ -744,7 +744,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
           {/* Save + status */}
           <div className="border-t border-gray-800" />
           <div className="px-5 py-3 flex items-center justify-between">
-            <p className="text-xs text-gray-500">
+            <p className="text-sm text-gray-500">
               {totalLogs != null && <>{totalLogs.toLocaleString()} logs stored · </>}Cleanup runs daily at 03:00 UTC
             </p>
             <div className="flex items-center gap-3">
@@ -786,7 +786,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
         <div className="rounded-lg border border-gray-700 bg-gray-950">
           {/* Export */}
           <div className="p-5">
-            <h3 className="text-sm font-medium text-gray-200 mb-2">Export Configuration</h3>
+            <h3 className="text-base text-gray-200 font-medium mb-2">Export Configuration</h3>
             <div className="space-y-2">
               <button
                 onClick={() => handleExport(false)}
@@ -833,7 +833,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
 
           {/* Import */}
           <div className="p-5">
-            <h3 className="text-sm font-medium text-gray-200 mb-2">Import Configuration</h3>
+            <h3 className="text-base text-gray-200 font-medium mb-2">Import Configuration</h3>
             <input
               ref={fileInputRef}
               type="file"
@@ -844,7 +844,7 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
 
             {importPreview ? (
               <div className="space-y-3">
-                <div className="rounded border border-gray-700 bg-gray-900 p-3">
+                <div className="rounded border border-gray-700 bg-black p-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-medium text-gray-300">
                       Backup from {importPreview.exported_at ? new Date(importPreview.exported_at).toLocaleDateString() : 'unknown date'}

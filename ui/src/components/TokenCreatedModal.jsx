@@ -95,7 +95,7 @@ export default function TokenCreatedModal({ token, title = 'Token Created', onCl
               readOnly
               value={token}
               aria-label="Generated token"
-              className="flex-1 px-3 py-2 rounded bg-gray-900 border border-gray-700 text-sm text-gray-200 font-mono"
+              className="flex-1 px-3 py-2 rounded bg-black border border-gray-700 text-sm text-gray-200 font-mono"
             />
             <CopyButton text={token} />
           </div>

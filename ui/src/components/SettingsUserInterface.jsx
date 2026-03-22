@@ -139,7 +139,7 @@ export default function SettingsUserInterface({ onSaved }) {
                   max={100}
                   value={settings.ui_block_highlight_threshold ?? 0}
                   onChange={e => update('ui_block_highlight_threshold', Math.min(100, Math.max(0, parseInt(e.target.value) || 0)))}
-                  className="w-20 px-2 py-1 rounded bg-gray-900 border border-gray-700 text-sm text-gray-200 focus:border-teal-500 focus:outline-none"
+                  className="w-20 px-2 py-1 rounded bg-black border border-gray-700 text-sm text-gray-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                 />
               </div>
             )}

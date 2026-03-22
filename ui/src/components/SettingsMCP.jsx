@@ -245,7 +245,7 @@ export default function SettingsMCP() {
                 className={`px-3 py-1 rounded text-sm font-semibold border transition-colors ${
                   draft.enabled
                     ? 'bg-green-500/10 text-green-300 border-green-500/40'
-                    : 'bg-gray-900 text-gray-400 border-gray-700'
+                    : 'bg-black text-gray-400 border-gray-700'
                 }`}
               >
                 {draft.enabled ? 'Enabled' : 'Disabled'}
@@ -269,7 +269,7 @@ export default function SettingsMCP() {
                 className={`px-3 py-1 rounded text-sm font-semibold border transition-colors ${
                   draft.audit_enabled
                     ? 'bg-green-500/10 text-green-300 border-green-500/40'
-                    : 'bg-gray-900 text-gray-400 border-gray-700'
+                    : 'bg-black text-gray-400 border-gray-700'
                 }`}
               >
                 {draft.audit_enabled ? 'Enabled' : 'Disabled'}
@@ -288,7 +288,7 @@ export default function SettingsMCP() {
                     ...prev,
                     audit_retention_days: Math.max(1, Math.min(365, parseInt(e.target.value) || 1))
                   }))}
-                  className="w-16 px-2 py-1 rounded bg-gray-900 border border-gray-600 font-mono text-sm text-gray-200 text-right focus:border-blue-500 focus:outline-none"
+                  className="w-16 px-2 py-1 rounded bg-black border border-gray-600 font-mono text-sm text-gray-200 text-right focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                 />
                 <span className="text-sm text-gray-500">days</span>
               </div>
@@ -323,7 +323,7 @@ export default function SettingsMCP() {
                       setDraft(prev => ({ ...prev, allowed_origins: parsed }))
                     }}
                     placeholder="https://your-client.example.com"
-                    className="w-full px-3 py-2 rounded bg-gray-900 border border-gray-700 text-sm text-gray-200 font-mono focus:border-blue-500 focus:outline-none"
+                    className="w-full px-3 py-2 rounded bg-black border border-gray-700 text-sm text-gray-200 font-mono focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                   />
                 </div>
               </div>
@@ -334,7 +334,7 @@ export default function SettingsMCP() {
 
           <div className="px-5 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <p className="text-xs text-gray-500">MCP endpoint: /api/mcp</p>
+              <p className="text-sm text-gray-500">MCP endpoint: /api/mcp</p>
               {serverStatus?.type === 'saved' && <span className="text-sm text-emerald-400">{serverStatus.text}</span>}
               {serverStatus?.type === 'error' && <span className="text-sm text-red-400">{serverStatus.text}</span>}
             </div>
@@ -370,7 +370,7 @@ export default function SettingsMCP() {
                   value={tokenName}
                   onChange={e => setTokenName(e.target.value)}
                   placeholder="Token name (optional)"
-                  className="flex-1 px-3 py-2 rounded bg-gray-900 border border-gray-700 text-sm text-gray-200 focus:border-blue-500 focus:outline-none"
+                  className="flex-1 px-3 py-2 rounded bg-black border border-gray-700 text-sm text-gray-200 focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                 />
                 <button
                   onClick={handleCreateToken}
@@ -392,7 +392,7 @@ export default function SettingsMCP() {
                     />
                     <span>
                       <span className="text-gray-200 font-medium">{scope.description}</span>
-                      <span className="block text-xs text-gray-500 font-mono">{scope.id}</span>
+                      <span className="block text-sm text-gray-500 font-mono">{scope.id}</span>
                     </span>
                   </label>
                 ))}
@@ -404,7 +404,7 @@ export default function SettingsMCP() {
 
           <div className="p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-gray-200">Active tokens</p>
+              <p className="text-base text-gray-200 font-medium">Active tokens</p>
               {tokenStatus && (
                 <span className={`text-sm ${tokenStatus.type === 'saved' ? 'text-emerald-400' : 'text-red-400'}`}>
                   {tokenStatus.text}
@@ -457,7 +457,7 @@ export default function SettingsMCP() {
               <div className="flex items-center justify-between gap-3">
                 <span className="text-sm text-gray-400">Server URL</span>
                 <div className="flex items-center gap-1">
-                  <span className="text-sm text-gray-200 font-mono bg-gray-900 border border-gray-800 rounded px-2 py-1 break-all">
+                  <span className="text-sm text-gray-200 font-mono bg-black border border-gray-800 rounded px-2 py-1 break-all">
                     {mcpUrl}
                   </span>
                   <CopyButton text={mcpUrl} color={TEAL} />
@@ -490,7 +490,7 @@ export default function SettingsMCP() {
                   <span className="text-gray-600 text-sm">·</span>
                   <details className="inline">
                     <summary className="text-sm text-teal-400 hover:text-teal-300 cursor-pointer">Show example</summary>
-                    <pre className="mt-2 text-sm text-gray-300 bg-gray-900 border border-gray-800 rounded p-3 overflow-x-auto whitespace-pre font-mono">
+                    <pre className="mt-2 text-sm text-gray-300 bg-black border border-gray-800 rounded p-3 overflow-x-auto whitespace-pre font-mono">
                       {fullConfig}
                     </pre>
                   </details>
@@ -502,7 +502,7 @@ export default function SettingsMCP() {
                   <span className="text-gray-600 text-sm">·</span>
                   <details className="inline">
                     <summary className="text-sm text-teal-400 hover:text-teal-300 cursor-pointer">Show example</summary>
-                    <pre className="mt-2 text-sm text-gray-300 bg-gray-900 border border-gray-800 rounded p-3 overflow-x-auto whitespace-pre font-mono">
+                    <pre className="mt-2 text-sm text-gray-300 bg-black border border-gray-800 rounded p-3 overflow-x-auto whitespace-pre font-mono">
                       {serverEntry}
                     </pre>
                     <p className="mt-1 text-sm text-gray-500">Paste inside the <span className="font-mono font-semibold">mcpServers</span> block, after the last existing entry.</p>
@@ -529,7 +529,7 @@ export default function SettingsMCP() {
                 <p className="text-base font-semibold text-gray-200">Claude Code</p>
               </div>
 
-              <div className="rounded bg-gray-900 border border-gray-800 p-3 overflow-x-auto">
+              <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
                 <pre className="text-sm text-gray-300 font-mono whitespace-pre">{cliCommand}</pre>
               </div>
               <div className="flex items-center justify-end gap-1.5">
@@ -547,7 +547,7 @@ export default function SettingsMCP() {
                 <p className="text-base font-semibold text-gray-200">Gemini CLI</p>
               </div>
 
-              <div className="rounded bg-gray-900 border border-gray-800 p-3 overflow-x-auto">
+              <div className="rounded bg-black border border-gray-800 p-3 overflow-x-auto">
                 <pre className="text-sm text-gray-300 font-mono whitespace-pre">{geminiCommand}</pre>
               </div>
               <div className="flex items-center justify-end gap-1.5">
@@ -605,17 +605,17 @@ export default function SettingsMCP() {
           {auditLoaded && (
             <div className="space-y-2">
               {auditEntries.map(entry => (
-                <details key={entry.id} className="border border-gray-800 rounded bg-gray-900/60 px-3 py-2">
+                <details key={entry.id} className="border border-gray-800 rounded bg-black/60 px-3 py-2">
                   <summary className="cursor-pointer list-none">
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-base text-gray-200 font-medium truncate">
                           {entry.tool_name}
                           {entry.scope && (
-                            <span className="text-xs text-gray-500 font-mono ml-2">{entry.scope}</span>
+                            <span className="text-sm text-gray-500 font-mono ml-2">{entry.scope}</span>
                           )}
                         </p>
-                        <p className="text-xs text-gray-500">
+                        <p className="text-sm text-gray-500">
                           {entry.created_at ? new Date(entry.created_at).toLocaleString() : 'unknown time'}
                           {entry.token_name && ` · ${entry.token_name}`}
                           {entry.token_prefix && ` (${entry.token_prefix}…)`}

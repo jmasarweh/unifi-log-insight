@@ -25,7 +25,7 @@ export default function TokenList({ tokens = [], onRevoke, formatPrefix, revokin
       {visible.map(t => (
         <div
           key={t.id}
-          className="flex items-center justify-between gap-3 px-3 py-2 rounded border border-gray-800 bg-gray-900/60"
+          className="flex items-center justify-between gap-3 px-3 py-2 rounded border border-gray-800 bg-black/60"
         >
           <div className="min-w-0">
             <p className="text-base text-gray-200 font-medium truncate">{t.name}</p>
@@ -44,7 +44,7 @@ export default function TokenList({ tokens = [], onRevoke, formatPrefix, revokin
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs uppercase font-semibold px-2 py-0.5 rounded ${
-              t.disabled ? 'bg-gray-700 text-gray-300' : 'bg-green-500/10 text-green-300'
+              t.disabled ? 'bg-gray-800 text-gray-400' : 'bg-green-500/10 text-green-300'
             }`}>
               {t.disabled ? 'Disabled' : 'Active'}
             </span>

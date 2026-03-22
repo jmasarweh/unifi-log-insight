@@ -29,6 +29,11 @@ body {
   background-color: #000;
 }
 
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Prevent browser autofill from overriding dark input backgrounds */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,

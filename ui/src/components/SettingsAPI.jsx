@@ -3,7 +3,7 @@ import useApiTokens from '../hooks/useApiTokens'
 import TokenCreatedModal from './TokenCreatedModal'
 import TokenList from './TokenList'
 
-const INPUT_CLS = 'px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:border-teal-500'
+const INPUT_CLS = 'px-3 py-1.5 bg-black border border-gray-700 rounded text-sm text-gray-200 focus:outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20'
 
 // Scopes the browser extension needs — locked when client_type is 'extension'
 const EXTENSION_REQUIRED_SCOPES = new Set(['health.read', 'settings.read', 'threats.read', 'stats.read', 'unifi.read'])
@@ -169,7 +169,7 @@ export default function SettingsAPI() {
                       />
                       <span>
                         <span className={`${locked ? 'text-gray-400' : 'text-gray-200'} font-medium`}>{s.description}{locked ? ' (required)' : ''}</span>
-                        <span className="block text-xs text-gray-500 font-mono">{s.id}</span>
+                        <span className="block text-sm text-gray-500 font-mono">{s.id}</span>
                       </span>
                     </label>
                   )
@@ -201,7 +201,7 @@ export default function SettingsAPI() {
         <div className="rounded-lg border border-gray-700 bg-gray-950">
           <div className="p-5">
             <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-gray-200">Active tokens</p>
+              <p className="text-base text-gray-200 font-medium">Active tokens</p>
               {listStatus && (
                 <span className={`text-sm ${listStatus.type === 'saved' ? 'text-emerald-400' : 'text-red-400'}`}>
                   {listStatus.text}
@@ -215,11 +215,11 @@ export default function SettingsAPI() {
 
       <section>
         <div className="rounded-lg border border-gray-700 bg-gray-950 p-5">
-          <h3 className="text-sm font-medium text-gray-200 mb-2">Usage</h3>
+          <h3 className="text-base text-gray-200 font-medium mb-2">Usage</h3>
           <p className="text-sm text-gray-400 mb-3">
             Pass your token as a Bearer token in the <span className="font-mono">Authorization</span> header:
           </p>
-          <code className="block px-3 py-2 bg-gray-900 border border-gray-700 rounded text-sm text-gray-300 font-mono whitespace-pre-wrap">curl -H "Authorization: Bearer YOUR_TOKEN" https://your-host/api/logs</code>
+          <code className="block px-3 py-2 bg-black border border-gray-700 rounded text-sm text-gray-300 font-mono whitespace-pre-wrap">curl -H "Authorization: Bearer YOUR_TOKEN" https://your-host/api/logs</code>
           <div className="mt-4 space-y-2">
             <p className="text-sm text-gray-400">
               View the{' '}
@@ -243,7 +243,7 @@ export default function SettingsAPI() {
 
       <section>
         <div className="rounded-lg border border-gray-700 bg-gray-950 p-5">
-          <h3 className="text-sm font-medium text-gray-200 mb-2">Browser Extension</h3>
+          <h3 className="text-base text-gray-200 font-medium mb-2">Browser Extension</h3>
           <p className="text-sm text-gray-400">
             Create a token with <span className="font-mono">extension</span> client type and the scopes your extension needs.
             Paste the token into the extension popup under "API Token".{' '}

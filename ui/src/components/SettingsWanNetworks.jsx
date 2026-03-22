@@ -163,7 +163,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                     {unifiSettings?.status?.connected ? 'Online' : 'Offline'}
                   </span>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
+                <div className="text-sm text-gray-500 mt-1">
                   {unifiSettings?.controller_name
                     ? `${unifiSettings.controller_name}${unifiSettings.controller_version ? ` (v${unifiSettings.controller_version})` : ''}`
                     : 'Connected via API'}
@@ -207,9 +207,9 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs font-mono text-gray-500">{wan.iface}</span>
+                    <span className="text-sm font-mono text-gray-500">{wan.iface}</span>
                     {wan.wanIp && (
-                      <span className="text-xs font-mono text-gray-500">
+                      <span className="text-sm font-mono text-gray-500">
                         {wan.wanIp}{wan.tunnelIp ? ` (tunnel: ${wan.tunnelIp})` : ''}
                       </span>
                     )}
@@ -259,9 +259,9 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs font-mono text-gray-500">{net.iface}</span>
+                    <span className="text-sm font-mono text-gray-500">{net.iface}</span>
                     {net.subnet && (
-                      <span className="text-xs font-mono text-gray-600">{net.subnet}</span>
+                      <span className="text-sm font-mono text-gray-600">{net.subnet}</span>
                     )}
                   </div>
                 </div>
@@ -362,10 +362,10 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                             )}
                           </div>
                           <div className="flex items-center gap-2 mt-1">
-                            {entry.label && <span className="text-xs text-gray-500">{entry.label}</span>}
-                            <span className="text-xs font-mono text-gray-500">{entry.iface}</span>
+                            {entry.label && <span className="text-sm text-gray-500">{entry.label}</span>}
+                            <span className="text-sm font-mono text-gray-500">{entry.iface}</span>
                             {entry.cidr && (
-                              <span className="text-xs font-mono text-gray-600">{entry.cidr}</span>
+                              <span className="text-sm font-mono text-gray-600">{entry.cidr}</span>
                             )}
                           </div>
                         </div>
@@ -381,7 +381,7 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                   <div className="flex items-center justify-between mb-2">
                     <div>
                       <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">Unlabelled</h3>
-                      <p className="text-xs text-gray-500 mt-1">Auto-detected from your firewall logs. Labels have been pre-filled where possible — click Configure to review and save.</p>
+                      <p className="text-sm text-gray-500 mt-1">Auto-detected from your firewall logs. Labels have been pre-filled where possible — click Configure to review and save.</p>
                     </div>
                     <button
                       onClick={() => configureDiscovered(unlabeledVpn)}
@@ -406,9 +406,9 @@ export default function SettingsWanNetworks({ unifiEnabled, unifiSettings, wanCa
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1">
-                              <span className="text-xs font-mono text-gray-500">{i.name}</span>
+                              <span className="text-sm font-mono text-gray-500">{i.name}</span>
                               {!suggested && (
-                                <span className="text-xs text-yellow-400 italic">type needs verifying</span>
+                                <span className="text-sm text-yellow-400 italic">type needs verifying</span>
                               )}
                             </div>
                           </div>
