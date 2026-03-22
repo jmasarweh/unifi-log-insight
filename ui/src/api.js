@@ -56,6 +56,18 @@ export async function fetchStats(timeRange = '24h') {
   return apiFetch(`${BASE}/stats?time_range=${timeRange}`)
 }
 
+export async function fetchStatsOverview(timeRange = '24h') {
+  return apiFetch(`${BASE}/stats/overview?time_range=${timeRange}`)
+}
+
+export async function fetchStatsCharts(timeRange = '24h') {
+  return apiFetch(`${BASE}/stats/charts?time_range=${timeRange}`)
+}
+
+export async function fetchStatsTables(timeRange = '24h') {
+  return apiFetch(`${BASE}/stats/tables?time_range=${timeRange}`)
+}
+
 export async function fetchHealth() {
   return apiFetch(`${BASE}/health`)
 }
