@@ -64,7 +64,9 @@ export default function FlowView({ maxFilterDays }) {
         if (s.topN) setTopN(s.topN)
         if (s.activeActions) setActiveActions(s.activeActions)
         if (s.activeDirections) setActiveDirections(s.activeDirections)
-        if (s.timeRange) setTimeRange(s.timeRange)
+        // timeRange is NOT restored here — useTimeRange already reads
+        // from the shared TR_KEY in sessionStorage. Overwriting it with
+        // FlowView's stale saved value would clobber cross-tab changes.
         if (s.timeFrom) setTimeFrom(s.timeFrom)
         if (s.timeTo) setTimeTo(s.timeTo)
         if (s.activeViewName) setActiveViewName(s.activeViewName)
@@ -84,10 +86,10 @@ export default function FlowView({ maxFilterDays }) {
     try {
       sessionStorage.setItem(SESSION_KEY, JSON.stringify({
         dims, topN, activeActions, activeDirections,
-        timeRange, timeFrom, timeTo, activeViewName,
+        timeFrom, timeTo, activeViewName,
       }))
     } catch { /* ignore quota errors */ }
-  }, [dims, topN, activeActions, activeDirections, timeRange, timeFrom, timeTo, activeViewName])
+  }, [dims, topN, activeActions, activeDirections, timeFrom, timeTo, activeViewName])
 
   // Badge clear: any manual filter change clears the active view badge
   useEffect(() => {

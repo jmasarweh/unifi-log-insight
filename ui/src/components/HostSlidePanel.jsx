@@ -59,6 +59,9 @@ export default function HostSlidePanel({ ip, filters, onClose, onPeerClick }) {
                   {data.network}{data.vlan != null ? ` (VLAN ${data.vlan})` : ''}
                 </span>
               )}
+              {(data.rdns || data.asn_name) && (
+                <span className="text-xs text-gray-500 truncate">{data.rdns || data.asn_name}</span>
+              )}
             </>
           ) : null}
         </div>
@@ -92,9 +95,16 @@ export default function HostSlidePanel({ ip, filters, onClose, onPeerClick }) {
                         onClick={() => onPeerClick?.(peer.peer_ip)}
                       >
                         <td className="px-4 py-1.5">
-                          <span className="text-gray-200 font-mono hover:text-blue-400">{peer.peer_ip}</span>
-                          {peer.device_name && (
-                            <span className="ml-2 text-xs text-gray-500">{peer.device_name}</span>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-gray-200 font-mono hover:text-blue-400">{peer.peer_ip}</span>
+                            {peer.device_name && (
+                              <span className="text-gray-500 truncate">{peer.device_name}</span>
+                            )}
+                          </div>
+                          {(peer.rdns || peer.asn_name) && (
+                            <div className="text-gray-600 truncate">
+                              {peer.rdns || peer.asn_name}
+                            </div>
                           )}
                         </td>
                         <td className="px-2 py-1.5 text-right text-gray-300 tabular-nums">{formatNumber(peer.count)}</td>
@@ -122,9 +132,16 @@ export default function HostSlidePanel({ ip, filters, onClose, onPeerClick }) {
                         onClick={() => onPeerClick?.(peer.peer_ip)}
                       >
                         <td className="px-4 py-1.5">
-                          <span className="text-gray-200 font-mono hover:text-blue-400">{peer.peer_ip}</span>
-                          {peer.device_name && (
-                            <span className="ml-2 text-xs text-gray-500">{peer.device_name}</span>
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-gray-200 font-mono hover:text-blue-400">{peer.peer_ip}</span>
+                            {peer.device_name && (
+                              <span className="text-gray-500 truncate">{peer.device_name}</span>
+                            )}
+                          </div>
+                          {(peer.rdns || peer.asn_name) && (
+                            <div className="text-gray-600 truncate">
+                              {peer.rdns || peer.asn_name}
+                            </div>
                           )}
                         </td>
                         <td className="px-2 py-1.5 text-right text-gray-300 tabular-nums">{formatNumber(peer.count)}</td>

@@ -398,7 +398,9 @@ def get_host_detail(
                     COUNT(*) FILTER (WHERE rule_action = 'block') AS block_count,
                     COUNT(DISTINCT CASE WHEN src_ip = %s::inet THEN host(dst_ip) ELSE host(src_ip) END) AS unique_peers,
                     MIN(timestamp) AS first_seen,
-                    MAX(timestamp) AS last_seen
+                    MAX(timestamp) AS last_seen,
+                    MAX(asn_name) AS asn_name,
+                    MAX(rdns) AS rdns
                 FROM logs
                 WHERE {host_where}
             """, [ip] + host_params)
@@ -436,6 +438,10 @@ def get_host_detail(
             if vpn_badge and not device.get('network'):
                 device['network'] = vpn_badge
 
+            # Enrich header with ASN/rDNS from summary query (useful for external IPs with no device entry)
+            device['asn_name'] = summary.pop('asn_name', None)
+            device['rdns'] = summary.pop('rdns', None)
+
             # 3. Top outbound peers (this IP as source)
             src_where = f"{where} AND src_ip = %s::inet"
             src_params = params + [ip]
@@ -443,7 +449,9 @@ def get_host_detail(
                 SELECT host(dst_ip) AS peer_ip,
                        COUNT(*) AS count,
                        COUNT(*) FILTER (WHERE rule_action = 'allow') AS allow_count,
-                       COUNT(*) FILTER (WHERE rule_action = 'block') AS block_count
+                       COUNT(*) FILTER (WHERE rule_action = 'block') AS block_count,
+                       MAX(asn_name) AS asn_name,
+                       MAX(rdns) AS rdns
                 FROM logs
                 WHERE {src_where} AND dst_ip IS NOT NULL
                 GROUP BY dst_ip
@@ -459,7 +467,9 @@ def get_host_detail(
                 SELECT host(src_ip) AS peer_ip,
                        COUNT(*) AS count,
                        COUNT(*) FILTER (WHERE rule_action = 'allow') AS allow_count,
-                       COUNT(*) FILTER (WHERE rule_action = 'block') AS block_count
+                       COUNT(*) FILTER (WHERE rule_action = 'block') AS block_count,
+                       MAX(asn_name) AS asn_name,
+                       MAX(rdns) AS rdns
                 FROM logs
                 WHERE {dst_where} AND src_ip IS NOT NULL
                 GROUP BY src_ip
@@ -505,6 +515,8 @@ def get_host_detail(
             "network": device.get("network"),
             "vlan": device.get("vlan"),
             "mac": device.get("mac"),
+            "asn_name": device.get("asn_name"),
+            "rdns": device.get("rdns"),
             "summary": summary,
             "peers_as_source": peers_out_raw,
             "peers_as_destination": peers_in_raw,
