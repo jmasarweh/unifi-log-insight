@@ -28,7 +28,7 @@ services:
       TZ: "Europe/London"
       UNIFI_API_KEY: "your_unifi_api_key_here"
       UNIFI_HOST: "https://192.168.1.1"
-      AUTH_ENABLED:true #optional
+      AUTH_ENABLED: true #optional
       # ── External Database (uncomment to use) ──
       # DB_HOST: "postgres"
       # DB_PORT: "5432"
