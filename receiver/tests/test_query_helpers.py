@@ -105,6 +105,19 @@ class TestValidateTimeParams:
         assert r is None
         assert f is not None
 
+    def test_valid_from_clears_preset_range(self):
+        """Simulates FastAPI injecting time_range='24h' while frontend sends custom dates."""
+        r, f, t = validate_time_params('24h', '2026-01-01T00:00:00Z', '2026-01-10T00:00:00Z')
+        assert r is None, "time_range must be cleared when valid time_from is present"
+        assert f == '2026-01-01T00:00:00Z'
+        assert t == '2026-01-10T00:00:00Z'
+
+    def test_invalid_from_with_range_keeps_range(self):
+        """Invalid time_from should not suppress the preset range fallback."""
+        r, f, t = validate_time_params('24h', 'not-a-date', None)
+        assert r == '24h'
+        assert f is None
+
 
 # ── build_log_query ──────────────────────────────────────────────────────────
 
@@ -123,8 +136,9 @@ class TestBuildLogQuery:
 
     def test_no_filters(self):
         where, params = self._build()
-        assert where == '1=1'
-        assert params == []
+        # build_time_conditions() always adds a 24h fallback when no time params are given
+        assert 'timestamp >= %s' in where
+        assert len(params) == 1
 
     def test_single_log_type(self):
         where, params = self._build(log_type='firewall')
@@ -133,7 +147,8 @@ class TestBuildLogQuery:
 
     def test_multiple_log_types(self):
         where, params = self._build(log_type='firewall,dns')
-        assert where.count('%s') == 2
+        # 2 log_type placeholders + 1 time fallback
+        assert where.count('%s') == 3
         assert 'firewall' in params
         assert 'dns' in params
 
@@ -163,7 +178,9 @@ class TestBuildLogQuery:
 
     def test_dst_port_invalid_ignored(self):
         where, params = self._build(dst_port='abc')
-        assert where == '1=1'
+        # Invalid port ignored; only the 24h time fallback remains
+        assert 'dst_port' not in where
+        assert 'timestamp >= %s' in where
 
     def test_negated_protocol(self):
         where, params = self._build(protocol='!tcp')

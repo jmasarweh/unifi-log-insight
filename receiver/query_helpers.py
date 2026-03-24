@@ -36,6 +36,9 @@ def validate_time_params(
     if time_from:
         try:
             datetime.fromisoformat(time_from.replace('Z', '+00:00'))
+            # Valid custom time_from takes precedence — clear any preset range
+            # so build_time_conditions() doesn't emit conflicting bounds.
+            time_range = None
         except (ValueError, AttributeError):
             time_from = None
     if time_to:
@@ -80,6 +83,35 @@ def parse_time_range(time_range: str) -> Optional[datetime]:
     return now - delta if delta else None
 
 
+def build_time_conditions(
+    time_range: Optional[str],
+    time_from: Optional[str],
+    time_to: Optional[str],
+) -> tuple[list[str], list]:
+    """Build timestamp WHERE clauses from time parameters.
+
+    Returns (conditions, params) lists to AND into a query.
+    Caller must call validate_time_params() first.
+    """
+    conditions = []
+    params = []
+    if time_range:
+        cutoff = parse_time_range(time_range)
+        if cutoff:
+            conditions.append("timestamp >= %s")
+            params.append(cutoff)
+    if time_from:
+        conditions.append("timestamp >= %s")
+        params.append(time_from)
+    if time_to:
+        conditions.append("timestamp <= %s")
+        params.append(time_to)
+    if not conditions:
+        conditions.append("timestamp >= %s")
+        params.append(datetime.now(timezone.utc) - timedelta(hours=24))
+    return conditions, params
+
+
 def build_log_query(
     log_type: Optional[str],
     time_range: Optional[str],
@@ -112,19 +144,9 @@ def build_log_query(
         conditions.append(f"log_type IN ({placeholders})")
         params.extend(types)
 
-    if time_range:
-        cutoff = parse_time_range(time_range)
-        if cutoff:
-            conditions.append("timestamp >= %s")
-            params.append(cutoff)
-
-    if time_from:
-        conditions.append("timestamp >= %s")
-        params.append(time_from)
-
-    if time_to:
-        conditions.append("timestamp <= %s")
-        params.append(time_to)
+    time_conds, time_params = build_time_conditions(time_range, time_from, time_to)
+    conditions.extend(time_conds)
+    params.extend(time_params)
 
     if src_ip:
         negated, val = _parse_negation(src_ip)

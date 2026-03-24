@@ -7,6 +7,7 @@ import { formatNumber } from '../utils'
 import { THREAT_LEVELS } from '../lib/threatPresentation'
 import useTimeRange from '../hooks/useTimeRange'
 import ThreatSidebar from './ThreatSidebar'
+import DateRangePicker from './DateRangePicker'
 
 maplibregl.setWorkerUrl(maplibreWorkerUrl)
 
@@ -223,6 +224,10 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
   const [loading, setLoading] = useState(true)
   const [sidebarLocation, setSidebarLocation] = useState(null)
   const [hasFlyToMarker, setHasFlyToMarker] = useState(false)
+  const [timeFrom, setTimeFrom] = useState(null)
+  const [timeTo, setTimeTo] = useState(null)
+
+  const isCustomTime = !!(timeFrom || timeTo)
 
   const closeSidebar = useCallback(() => setSidebarLocation(null), [])
 
@@ -237,23 +242,33 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
     let mounted = true
     setLoading(true)
     setSidebarLocation(null)
-    fetchThreatGeo({ time_range: timeRange, mode })
+    fetchThreatGeo({
+      time_range: isCustomTime ? null : timeRange,
+      time_from: timeFrom,
+      time_to: timeTo,
+      mode,
+    })
       .then(data => { if (mounted) setGeoData(data) })
       .catch(() => {})
       .finally(() => { if (mounted) setLoading(false) })
     return () => { mounted = false }
-  }, [timeRange, mode])
+  }, [timeRange, timeFrom, timeTo, mode])
 
   // Auto-refresh every 60s
   useEffect(() => {
     let mounted = true
     const interval = setInterval(() => {
-      fetchThreatGeo({ time_range: timeRange, mode })
+      fetchThreatGeo({
+        time_range: isCustomTime ? null : timeRange,
+        time_from: timeFrom,
+        time_to: timeTo,
+        mode,
+      })
         .then(data => { if (mounted) setGeoData(data) })
         .catch(() => {})
     }, 60000)
     return () => { mounted = false; clearInterval(interval) }
-  }, [timeRange, mode])
+  }, [timeRange, timeFrom, timeTo, mode])
 
   // Initialize map
   useEffect(() => {
@@ -468,7 +483,7 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
 
   // Count active non-default filters for mobile badge
   const activeFilterCount = [
-    timeRange !== '24h',
+    isCustomTime || timeRange !== '24h',
     mode !== 'threats',
     view !== 'heatmap',
   ].filter(Boolean).length
@@ -487,9 +502,9 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
         >
           <span className="flex items-center gap-2">
             <span>Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ''}</span>
-            {loading && <span className="text-blue-400 text-[10px]">Loading...</span>}
+            {loading && <span className="text-blue-400 text-xs">Loading...</span>}
             {!loading && summary && (
-              <span className="text-[10px] text-gray-500">{formatNumber(summary.total_events)} events</span>
+              <span className="text-xs text-gray-500">{formatNumber(summary.total_events)} events</span>
             )}
           </span>
           <svg className={`w-3.5 h-3.5 transition-transform ${filtersExpanded ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false">
@@ -543,19 +558,50 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
               <button
                 type="button"
                 key={tr}
-                onClick={() => setTimeRange(tr)}
-                aria-pressed={timeRange === tr}
+                onClick={() => { setTimeRange(tr); setTimeFrom(null); setTimeTo(null) }}
+                aria-pressed={!isCustomTime && timeRange === tr}
                 className={`px-2.5 py-1 rounded text-xs font-medium transition-all ${
-                  timeRange === tr ? 'bg-black text-white border border-gray-600' : 'text-gray-400 hover:text-gray-300 border border-transparent'
+                  !isCustomTime && timeRange === tr ? 'bg-black text-white border border-gray-600' : 'text-gray-400 hover:text-gray-300 border border-transparent'
                 }`}
               >
                 {tr}
               </button>
             ))}
+            <DateRangePicker
+              isActive={isCustomTime}
+              timeFrom={timeFrom}
+              timeTo={timeTo}
+              maxFilterDays={maxFilterDays}
+              onApply={({ time_from, time_to }) => {
+                setTimeFrom(time_from)
+                setTimeTo(time_to)
+              }}
+              onClear={() => {
+                setTimeFrom(null)
+                setTimeTo(null)
+                setTimeRange('24h')
+              }}
+            />
           </div>
 
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setTimeRange('24h')
+                setTimeFrom(null)
+                setTimeTo(null)
+                setMode('threats')
+                setView('heatmap')
+              }}
+              className="shrink-0 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+            >
+              Reset
+            </button>
+          )}
+
           {/* Summary stats */}
-          <div className="ml-auto flex items-center gap-3 text-[10px] text-gray-400">
+          <div className="ml-auto flex items-center gap-3 text-xs text-gray-400">
             {loading && <span className="text-blue-400">Loading...</span>}
             {summary && (
               <>
