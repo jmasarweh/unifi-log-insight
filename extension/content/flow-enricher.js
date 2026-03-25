@@ -2,7 +2,7 @@
  * Feature 2: Enrich public IPs on UniFi Insights Flow View with
  * threat score, rDNS, and ASN data from Log Insight cache.
  *
- * Activated by 'uli-ready' event from controller-detector.js.
+ * Boots independently after shared config is available.
  * Runs in content script isolated world (has chrome.runtime access).
  *
  * UniFi DOM (verified against UniFi Network 9.x):
@@ -16,9 +16,17 @@
  * - Columns are user-configurable: discover positions from header text
  */
 
-window.addEventListener('uli-ready', async function () {
-  const config = window.__uliConfig;
-  if (!config || !config.enableFlowEnrichment) return;
+;(async function () {
+  if (window.__uliFlowEnricherStarted) return;
+  window.__uliFlowEnricherStarted = true;
+
+  if (!window.__uliUtils?.ensureConfig) return;
+  const config = await window.__uliUtils.ensureConfig();
+  if (!config) {
+    window.__uliFlowEnricherStarted = false;
+    return;
+  }
+  if (!config.enableFlowEnrichment) return;
 
   const { ABUSE_CATEGORIES, IPV4_RE, isPrivateIP, getThreatLevel, escapeHtml, escapeAttr, detectTheme, navigateToIP } = window.__uliUtils;
   const IPV6_TOKEN_RE = /[0-9a-fA-F:.]+/g;
@@ -454,4 +462,4 @@ window.addEventListener('uli-ready', async function () {
     if (score < 85) return '#ef4444';   // red-500
     return '#991b1b';                    // red-900
   }
-});
+})();

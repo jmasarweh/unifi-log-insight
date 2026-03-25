@@ -2,13 +2,20 @@
  * Feature 1: Inject a "Insights Plus" tab into the UniFi Controller portal nav.
  * Clicking it embeds the Insights Plus app in the UniFi content area below the nav.
  *
- * Activated by 'uli-ready' event from controller-detector.js.
+ * Boots independently after shared config is available.
  * Runs in content script isolated world (has chrome.runtime access).
  */
 
-window.addEventListener('uli-ready', async function () {
-  const config = window.__uliConfig;
-  if (!config) return;
+;(async function () {
+  if (window.__uliTabInjectorStarted) return;
+  window.__uliTabInjectorStarted = true;
+
+  if (!window.__uliUtils?.ensureConfig) return;
+  const config = await window.__uliUtils.ensureConfig();
+  if (!config) {
+    window.__uliTabInjectorStarted = false;
+    return;
+  }
 
   const detectUniFiTheme = window.__uliUtils.detectTheme;
 
@@ -59,9 +66,10 @@ window.addEventListener('uli-ready', async function () {
   let iframeLoaded = false;       // true after iframe fires its first 'load' event
   let pendingNavigate = null;     // queued hash for delivery after iframe loads
 
-  // Wait for the tab container to render
-  const tabContainer = await waitForTabContainer(15000);
-  if (!tabContainer) return;
+  // Wait indefinitely for the tab container to render — it may not exist
+  // until after login completes (SPA route change, no full reload).
+  const tabContainer = await waitForTabContainer();
+  if (!tabContainer) return; // only if page is unloading
 
   injectTab(tabContainer);
 
@@ -116,17 +124,20 @@ window.addEventListener('uli-ready', async function () {
   };
   window.addEventListener('pagehide', teardown, { once: true });
 
-  function waitForTabContainer(timeout) {
+  function waitForTabContainer() {
     return new Promise((resolve) => {
       const found = findTabContainer();
       if (found) { resolve(found); return; }
       let settled = false;
       const obs = new MutationObserver(() => {
         const el = findTabContainer();
-        if (el && !settled) { settled = true; clearTimeout(timer); obs.disconnect(); resolve(el); }
+        if (el && !settled) { settled = true; obs.disconnect(); resolve(el); }
       });
       obs.observe(document.documentElement, { childList: true, subtree: true });
-      const timer = setTimeout(() => { if (!settled) { settled = true; obs.disconnect(); resolve(null); } }, timeout);
+      // Clean up on pagehide (page discard or bfcache entry) if the container never appeared
+      window.addEventListener('pagehide', () => {
+        if (!settled) { settled = true; obs.disconnect(); resolve(null); }
+      }, { once: true });
     });
   }
 
@@ -456,4 +467,4 @@ window.addEventListener('uli-ready', async function () {
     }
   };
   window.addEventListener('uli-navigate', onUliNavigate);
-});
+})();
