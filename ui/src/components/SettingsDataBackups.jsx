@@ -725,7 +725,7 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="text-base text-gray-200 font-medium">Log retention</label>
-                <span className="text-sm font-mono font-semibold text-gray-200">{retentionDays} days</span>
+                <span className="text-sm font-mono font-semibold text-gray-200">{retentionDays} {retentionDays === 1 ? 'day' : 'days'}</span>
               </div>
               <input
                 type="range"
@@ -757,7 +757,7 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
                     <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
                   </svg>
                   <p className="text-sm text-yellow-400/90">
-                    Extended retention may affect query performance on large datasets. Ensure you have enough disk space.
+                    Extended retention may affect Dashboard and Flow View performance. Also, ensure you have enough disk space.
                   </p>
                 </div>
               )}
@@ -776,7 +776,7 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
                     onChange={e => setDnsRetentionDays(Math.max(1, Math.min(365, parseInt(e.target.value) || 1)))}
                     className="w-16 px-2 py-1 rounded bg-black border border-gray-600 font-mono text-sm text-gray-200 text-right focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500/20"
                   />
-                  <span className="text-sm text-gray-500">days</span>
+                  <span className="text-sm text-gray-500">{dnsRetentionDays === 1 ? 'day' : 'days'}</span>
                 </div>
               </div>
             </div>
