@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   fetchRetentionConfig, updateRetentionConfig, runRetentionCleanup,
   exportConfig, importConfig,
   testMigrationConnection, startMigration, getMigrationStatus,
-  patchMigrationCompose
+  patchMigrationCompose,
+  fetchLogCountsByType, purgeLogsByType, fetchPurgeStatus,
+  fetchUiSettings, updateUiSettings
 } from '../api'
 import CopyButton from './CopyButton'
 import InfoTooltip from './InfoTooltip'
+import SyslogToggle from './SyslogToggle'
 
 const RETENTION_PRESETS = [30, 60, 90, 120, 180, 365]
 const DISK_CRITICAL_BYTES = 512 * 1024 * 1024       // 512 MB
@@ -488,7 +491,7 @@ function MigrationWizard() {
   )
 }
 
-export default function SettingsDataBackups({ totalLogs, storage }) {
+export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
   // Retention state
   const [retention, setRetention] = useState(null)
   const [retentionDays, setRetentionDays] = useState(60)
@@ -498,11 +501,65 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
   const [showCleanup, setShowCleanup] = useState(false)
   const [cleaningUp, setCleaningUp] = useState(false)
 
+  // Log cleanup state
+  const [logCounts, setLogCounts] = useState(null)
+  const [purgeJobs, setPurgeJobs] = useState({}) // { wifi: { status, batch, total_batches, deleted_so_far, total_rows }, ... }
+  const [purgeConfirm, setPurgeConfirm] = useState(null) // { type, count, label } | null
+  const [purgeMsg, setPurgeMsg] = useState(null)
+  const pollRef = useRef(null)
+
+  // Log processing state
+  const [processingSettings, setProcessingSettings] = useState(null)
+  const [processingSaving, setProcessingSaving] = useState(false)
+  const [processingDirty, setProcessingDirty] = useState(false)
+  const [processingStatus, setProcessingStatus] = useState(null)
+
   // Export/Import state
   const [exporting, setExporting] = useState(false)
   const [importPreview, setImportPreview] = useState(null)
   const [importMsg, setImportMsg] = useState(null)
   const fileInputRef = useRef(null)
+
+  const hasRunningPurge = useMemo(() => Object.values(purgeJobs).some(j => j.status === 'running'), [purgeJobs])
+
+  // Poll purge status while any job is running
+  useEffect(() => {
+    if (!hasRunningPurge) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      return
+    }
+    if (pollRef.current) return // already polling
+    pollRef.current = setInterval(() => {
+      fetchPurgeStatus().then(jobs => {
+        setPurgeJobs(prev => {
+          const next = {}
+          // Merge server state with local state
+          for (const [lt, was] of Object.entries(prev)) {
+            const job = jobs[lt]
+            if (!job) {
+              // Server cleared it (TTL expired) — treat as complete
+              if (was.status === 'running') {
+                setPurgeMsg({ type: 'success', text: `${lt.toUpperCase()} log cleanup finished` })
+                fetchLogCountsByType().then(setLogCounts).catch(err => console.error('Failed to refresh log counts:', err))
+                setTimeout(() => setPurgeMsg(null), 5000)
+              }
+              continue // drop from local state
+            }
+            next[lt] = job
+            if (was.status === 'running' && job.status === 'complete') {
+              setPurgeMsg({ type: 'success', text: `Deleted ${job.deleted_so_far.toLocaleString()} ${lt} log records` })
+              fetchLogCountsByType().then(setLogCounts).catch(err => console.error('Failed to refresh log counts:', err))
+              setTimeout(() => setPurgeMsg(null), 5000)
+            } else if (was.status === 'running' && job.status === 'failed') {
+              setPurgeMsg({ type: 'error', text: `Failed to delete ${lt} logs: ${job.error}` })
+            }
+          }
+          return next
+        })
+      }).catch(err => console.error('Failed to poll purge status:', err))
+    }, 3000)
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+  }, [hasRunningPurge])
 
   useEffect(() => {
     fetchRetentionConfig().then(data => {
@@ -510,6 +567,18 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
       setRetentionDays(data.retention_days)
       setDnsRetentionDays(data.dns_retention_days)
     }).catch(err => console.error('Failed to load retention config:', err))
+    fetchLogCountsByType().then(setLogCounts).catch(err => console.error('Failed to load log counts:', err))
+    fetchUiSettings().then(data => {
+      setProcessingSettings({ wifi_processing_enabled: data.wifi_processing_enabled, system_processing_enabled: data.system_processing_enabled })
+    }).catch(err => console.error('Failed to load processing settings:', err))
+    // Detect any in-progress purge jobs on mount (e.g. user navigated away and back)
+    fetchPurgeStatus().then(jobs => {
+      const active = {}
+      for (const [lt, job] of Object.entries(jobs)) {
+        if (job.status === 'running') active[lt] = job
+      }
+      if (Object.keys(active).length > 0) setPurgeJobs(active)
+    }).catch(err => console.error('Failed to fetch purge status:', err))
   }, [])
 
   // ── Retention handlers ──
@@ -615,6 +684,33 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
     setImportMsg(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
+
+  // ── Log processing handlers ──
+  const updateProcessing = (key, value) => {
+    setProcessingSettings(prev => ({ ...prev, [key]: value }))
+    setProcessingDirty(true)
+    setProcessingStatus(null)
+  }
+
+  async function saveProcessing() {
+    setProcessingSaving(true)
+    setProcessingStatus(null)
+    try {
+      await updateUiSettings(processingSettings)
+      setProcessingDirty(false)
+      setProcessingStatus({ type: 'saved' })
+      setTimeout(() => setProcessingStatus(null), 3000)
+      onSaved?.(prev => ({ ...prev, ...processingSettings }))
+    } catch (err) {
+      setProcessingStatus({ type: 'error', text: err.message })
+    } finally {
+      setProcessingSaving(false)
+    }
+  }
+
+  const disabledTypes = []
+  if (processingSettings?.wifi_processing_enabled === false) disabledTypes.push('WIFI')
+  if (processingSettings?.system_processing_enabled === false) disabledTypes.push('System')
 
   return (
     <div className="space-y-8">
@@ -777,6 +873,188 @@ export default function SettingsDataBackups({ totalLogs, storage }) {
           </div>
         </div>
       </section>
+
+      {/* ── Log Cleanup ─────────────────────────────────────────── */}
+      <section>
+        <h2 className="text-base font-semibold text-gray-300 mb-3 uppercase tracking-wider">
+          Log Cleanup
+        </h2>
+        <div className="rounded-lg border border-gray-700 bg-gray-950">
+          {[
+            { type: 'wifi', label: 'WIFI Logs', count: logCounts?.wifi ?? null },
+            { type: 'system', label: 'System Logs', count: logCounts?.system ?? null },
+          ].map(({ type, label, count }, i) => {
+            const job = purgeJobs[type]
+            const running = job?.status === 'running'
+            return (
+              <div key={type}>
+                {i > 0 && <div className="border-t border-gray-800" />}
+                <div className="px-5 py-3 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-200 font-medium">{label}</span>
+                    <span className={`text-sm font-mono ${running ? 'purge-progress-text' : 'text-gray-500'}`}>
+                      {running
+                        ? `Cleanup in progress... ${job.deleted_so_far.toLocaleString()} / ${job.total_rows.toLocaleString()} (batch ${job.batch}/${job.total_batches})`
+                        : count === null ? 'Loading...' : `${count.toLocaleString()} records`}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setPurgeConfirm({ type, label, count })}
+                    disabled={!count || running}
+                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                      count > 0 && !running
+                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                        : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    {running ? 'Deleting...' : 'Delete All'}
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+          {purgeMsg && (
+            <>
+              <div className="border-t border-gray-800" />
+              <div className="px-5 py-2">
+                <span className={`text-sm ${purgeMsg.type === 'success' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {purgeMsg.text}
+                </span>
+              </div>
+            </>
+          )}
+          <div className="border-t border-gray-800" />
+          <div className="px-5 py-3">
+            <p className="text-sm text-gray-500">Logs are deleted in the background. When all WIFI or System logs are deleted, their respective filter is removed from the Log Stream filters bar.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Log Processing ─────────────────────────────────────── */}
+      <section>
+        <h2 className="text-base font-semibold text-gray-300 mb-3 uppercase tracking-wider">
+          Log Processing
+        </h2>
+        <div className="rounded-lg border border-gray-700 bg-gray-950">
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-sm text-gray-500">Control which log types are processed and stored. Disabling a type silently discards incoming logs before enrichment.</p>
+              {processingSettings && (
+                <div className="flex items-center gap-1.5 shrink-0 ml-4">
+                  {[
+                    { key: 'wifi_processing_enabled', label: 'WIFI', active: 'bg-amber-500/15 text-amber-400 border-amber-500/30' },
+                    { key: 'system_processing_enabled', label: 'System', active: 'bg-gray-500/15 text-gray-300 border-gray-500/30' },
+                  ].map(({ key, label, active }) => {
+                    const enabled = processingSettings[key] !== false
+                    return (
+                      <span key={key} className={`inline-flex items-center gap-1 px-1.5 py-px rounded text-xs font-medium uppercase border ${
+                        enabled ? active : 'border-transparent text-gray-500'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full block ${enabled ? 'bg-emerald-400' : 'bg-gray-500'}`} />
+                        {label}
+                      </span>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="space-y-3">
+              {[
+                { key: 'wifi_processing_enabled', label: 'WIFI Logs', desc: 'Process and store WIFI events (stamgr, hostapd)', title: 'Toggle WIFI log processing' },
+                { key: 'system_processing_enabled', label: 'System Logs', desc: 'Process and store system events (earlyoom, systemd, etc.)', title: 'Toggle System log processing' },
+              ].map(({ key, label, desc, title }) => {
+                const enabled = !processingSettings || processingSettings[key] !== false
+                return (
+                  <div key={key} className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-300">{label}</p>
+                      <p className="text-sm text-gray-500">{desc}</p>
+                    </div>
+                    <SyslogToggle
+                      checked={enabled}
+                      onChange={v => updateProcessing(key, v)}
+                      title={title}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="border-t border-gray-800" />
+          <div className="px-5 py-3 flex items-center justify-between">
+            <div>
+              {processingStatus && (
+                <span className={`text-sm ${processingStatus.type === 'saved' ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {processingStatus.type === 'saved' ? 'Settings saved' : processingStatus.text}
+                </span>
+              )}
+              {!processingStatus && disabledTypes.length > 0 && (
+                <span className="text-sm text-gray-500">New {disabledTypes.join(' and ')} logs will be discarded. Existing records are still visible &mdash; use Log Cleanup above to remove them.</span>
+              )}
+            </div>
+            <button
+              onClick={saveProcessing}
+              disabled={!processingDirty || processingSaving}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                processingDirty
+                  ? 'bg-teal-600 hover:bg-teal-500 text-white'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              {processingSaving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Purge confirmation modal */}
+      {purgeConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setPurgeConfirm(null)}>
+          <div className="bg-gray-950 border border-gray-700 rounded-lg shadow-xl max-w-lg w-full mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+              <span className="text-sm font-semibold text-gray-200">Confirm Deletion</span>
+              <button onClick={() => setPurgeConfirm(null)} className="text-gray-400 hover:text-gray-200 text-lg leading-none">&times;</button>
+            </div>
+            <div className="px-4 py-4 space-y-3">
+              <p className="text-sm text-gray-300">
+                Delete all <strong className="text-white">{purgeConfirm.count.toLocaleString()}</strong> {purgeConfirm.label} records? This cannot be undone.
+              </p>
+            </div>
+            <div className="px-4 py-3 border-t border-gray-700 flex justify-end gap-2">
+              <button
+                onClick={() => setPurgeConfirm(null)}
+                className="px-3 py-1.5 rounded text-sm font-medium border border-gray-600 text-gray-300 hover:bg-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  const { type } = purgeConfirm
+                  setPurgeConfirm(null)
+                  setPurgeMsg(null)
+                  try {
+                    const result = await purgeLogsByType(type)
+                    if (result.status === 'running') {
+                      // Job started in background — seed purgeJobs to trigger polling
+                      setPurgeJobs(prev => ({ ...prev, [type]: { status: 'running', batch: 0, total_batches: result.total_batches, deleted_so_far: 0, total_rows: result.total_rows, error: null } }))
+                    } else if (result.status === 'complete') {
+                      // Zero records — already done
+                      setPurgeMsg({ type: 'success', text: `No ${type} log records to delete` })
+                      setTimeout(() => setPurgeMsg(null), 5000)
+                    }
+                  } catch (e) {
+                    setPurgeMsg({ type: 'error', text: `Failed to delete: ${e.message}` })
+                  }
+                }}
+                className="px-3 py-1.5 rounded text-sm font-medium bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Export / Import Configuration ──────────────────────── */}
       <section>
