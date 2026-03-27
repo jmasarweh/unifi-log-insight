@@ -4,6 +4,19 @@ on:
   push:
     tags:
       - 'ext-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Extension tag to publish (e.g. ext-v1.1.1)'
+        required: true
+      publish_chrome:
+        description: 'Publish to Chrome Web Store'
+        type: boolean
+        default: true
+      publish_firefox:
+        description: 'Publish to Firefox Add-ons'
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -14,7 +27,18 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      - name: Validate tag format
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if ! printf '%s\n' "$TAG" | grep -qE '^ext-v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Invalid tag format '$TAG'. Expected ext-vX.Y.Z (e.g. ext-v1.1.1)"
+            exit 1
+          fi
+
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Build extension
         run: |
@@ -23,10 +47,12 @@ jobs:
 
       - name: Extract and validate version
         id: version
+        env:
+          TAG_NAME: ${{ inputs.tag || github.ref_name }}
         run: |
           CHROME_VER=$(jq -r '.version' extension/dist/chrome/manifest.json)
           FIREFOX_VER=$(jq -r '.version' extension/dist/firefox/manifest.json)
-          TAG_VER="${GITHUB_REF_NAME#ext-v}"
+          TAG_VER="${TAG_NAME#ext-v}"
 
           echo "Chrome manifest version: $CHROME_VER"
           echo "Firefox manifest version: $FIREFOX_VER"
@@ -60,6 +86,7 @@ jobs:
 
   publish-chrome:
     needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_chrome }}
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -116,6 +143,12 @@ jobs:
           echo "Upload response (HTTP $HTTP_CODE):"
           echo "$BODY"
 
+          if echo "$BODY" | jq -e 'any(.error.details[]?; .reason == "NOT_UPDATEABLE")' > /dev/null; then
+            echo "::warning::CWS upload skipped — a previous version is still in review. Re-run this workflow after the review completes."
+            echo "skipped=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           if [ "$HTTP_CODE" -ge 400 ]; then
             echo "::error::CWS upload failed with HTTP $HTTP_CODE"
             exit 1
@@ -128,7 +161,10 @@ jobs:
             exit 1
           fi
 
+          echo "skipped=false" >> "$GITHUB_OUTPUT"
+
       - name: Publish on Chrome Web Store
+        if: steps.upload.outputs.skipped != 'true'
         env:
           TOKEN: ${{ steps.auth.outputs.token }}
           PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
@@ -151,6 +187,7 @@ jobs:
           fi
 
       - name: Check publish status
+        if: steps.upload.outputs.skipped != 'true'
         env:
           TOKEN: ${{ steps.auth.outputs.token }}
           PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
@@ -165,6 +202,7 @@ jobs:
 
   publish-firefox:
     needs: build
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.publish_firefox }}
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -314,8 +352,15 @@ jobs:
 
           echo "Firefox version submitted for review"
 
-  create-release:
+  upload-assets:
     needs: [build, publish-chrome, publish-firefox]
+    if: >-
+      ${{
+        !cancelled()
+        && needs.build.result == 'success'
+        && (needs.publish-chrome.result == 'success' || needs.publish-chrome.result == 'skipped'
+         || needs.publish-firefox.result == 'success' || needs.publish-firefox.result == 'skipped')
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
@@ -323,16 +368,24 @@ jobs:
         with:
           name: extension-zips
 
-      - name: Create GitHub Release
+      - name: Upload assets to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
+          TAG_NAME: ${{ inputs.tag || github.ref_name }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Extension v${VERSION}" \
-            --notes "Browser extension v${VERSION}
 
-          - Submitted to Chrome Web Store (pending review)
-          - Submitted to Mozilla Add-ons (pending review)" \
-            chrome.zip firefox.zip
+          # Verify the release exists (should be created by bump-version before tagging)
+          if ! gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::GitHub release '$TAG_NAME' not found. Create it with the bump-version skill before running this workflow."
+            exit 1
+          fi
+
+          # Rename firefox.zip to the .xpi format expected by updates.json
+          mv firefox.zip "unifi_log_insight-${VERSION}.xpi"
+
+          # Upload assets to the existing release
+          gh release upload "$TAG_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            chrome.zip "unifi_log_insight-${VERSION}.xpi"
