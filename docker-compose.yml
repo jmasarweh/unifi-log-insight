@@ -20,6 +20,7 @@ services:
     #env_file:
     #- .env
     environment:
+      SECRET_KEY: "your_strong_key_for_encryption"
       POSTGRES_PASSWORD: "your_strong_password_here"
       ABUSEIPDB_API_KEY: "your_key_here"
       MAXMIND_ACCOUNT_ID: "your_account_id"
