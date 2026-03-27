@@ -195,8 +195,12 @@ export async function dismissUpgradeModal() {
   return apiFetch(`${BASE}/settings/unifi/dismiss-upgrade`, { method: 'POST' })
 }
 
-export async function dismissVpnToast() {
-  return apiFetch(`${BASE}/settings/unifi/dismiss-vpn-toast`, { method: 'POST' })
+export async function dismissVpnToast(interfaces) {
+  return apiFetch(`${BASE}/settings/unifi/dismiss-vpn-toast`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ interfaces }),
+  })
 }
 
 export async function fetchUniFiNetworkConfig() {
@@ -428,21 +432,25 @@ export async function fetchLatestRelease(currentVersion) {
   // Beta builds: include pre-releases when finding the latest
   if (currentVersion && currentVersion.includes('-beta')) {
     const resp = await fetch(
-      'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases?per_page=1'
+      'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases?per_page=10'
     )
     if (!resp.ok) return null
     const data = await resp.json()
-    if (!data.length) return null
-    const r = data[0]
-    return { tag: r.tag_name, url: r.html_url, body: r.body || '', prerelease: r.prerelease }
+    // Skip extension releases (ext-v*) — only match app releases (v*)
+    const appRelease = data.find(r => /^v\d/.test(r.tag_name))
+    if (!appRelease) return null
+    return { tag: appRelease.tag_name, url: appRelease.html_url, body: appRelease.body || '', prerelease: appRelease.prerelease }
   }
-  // Stable builds: /releases/latest skips pre-releases automatically
+  // Stable builds: /releases/latest may return ext-v* releases, so fetch
+  // a batch and find the first app release (v* without ext- prefix)
   const resp = await fetch(
-    'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases/latest'
+    'https://api.github.com/repos/jmasarweh/unifi-log-insight/releases?per_page=10'
   )
   if (!resp.ok) return null
   const data = await resp.json()
-  return { tag: data.tag_name, url: data.html_url, body: data.body || '' }
+  const appRelease = data.find(r => /^v\d/.test(r.tag_name) && !r.prerelease)
+  if (!appRelease) return null
+  return { tag: appRelease.tag_name, url: appRelease.html_url, body: appRelease.body || '' }
 }
 
 export async function fetchAllReleases() {

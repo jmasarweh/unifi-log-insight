@@ -237,17 +237,19 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
   viewRef.current = view
   geoDataRef.current = geoData
 
+  const geoParams = {
+    time_range: isCustomTime ? null : timeRange,
+    time_from: timeFrom,
+    time_to: timeTo,
+    mode,
+  }
+
   // Fetch geo data
   useEffect(() => {
     let mounted = true
     setLoading(true)
     setSidebarLocation(null)
-    fetchThreatGeo({
-      time_range: isCustomTime ? null : timeRange,
-      time_from: timeFrom,
-      time_to: timeTo,
-      mode,
-    })
+    fetchThreatGeo(geoParams)
       .then(data => { if (mounted) setGeoData(data) })
       .catch(() => {})
       .finally(() => { if (mounted) setLoading(false) })
@@ -258,12 +260,7 @@ export default function ThreatMap({ maxFilterDays, flyTo, onFlyToDone }) {
   useEffect(() => {
     let mounted = true
     const interval = setInterval(() => {
-      fetchThreatGeo({
-        time_range: isCustomTime ? null : timeRange,
-        time_from: timeFrom,
-        time_to: timeTo,
-        mode,
-      })
+      fetchThreatGeo(geoParams)
         .then(data => { if (mounted) setGeoData(data) })
         .catch(() => {})
     }, 60000)
