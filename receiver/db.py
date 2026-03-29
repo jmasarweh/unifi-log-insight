@@ -234,6 +234,9 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_logs_threat_score ON logs (threat_score) WHERE threat_score IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC)",
             "CREATE INDEX IF NOT EXISTS idx_logs_action_time  ON logs (rule_action, timestamp DESC)",
+            # Accelerates _run_purge() batches (DELETE … WHERE log_type=X AND id<=Y LIMIT N)
+            # and the pre-purge COUNT/MAX snapshot. See init.sql for full rationale.
+            "CREATE INDEX IF NOT EXISTS idx_logs_type_id ON logs (log_type, id)",
             "CREATE INDEX IF NOT EXISTS idx_logs_src_port     ON logs (src_port) WHERE src_port IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_logs_dst_port     ON logs (dst_port) WHERE dst_port IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_logs_protocol     ON logs (protocol) WHERE protocol IS NOT NULL",

@@ -58,6 +58,15 @@ CREATE INDEX IF NOT EXISTS idx_logs_service_name ON logs (service_name) WHERE se
 CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_logs_action_time  ON logs (rule_action, timestamp DESC);
 
+-- Composite index for type-scoped purge batches and COUNT/MAX snapshots.
+-- Enables the DELETE … WHERE id IN (SELECT id … WHERE log_type = X AND id <= Y ORDER BY id LIMIT N)
+-- loop in _run_purge() to resolve each batch as a constant O(N) range scan instead
+-- of a O(total-rows-of-type) heap-sort. On 165M-row tables with ~30M wifi rows this
+-- reduces per-batch cost by >1000x and cuts total purge time from hours to minutes.
+-- Also makes the pre-purge snapshot "SELECT COUNT(*), MAX(id) … WHERE log_type = X"
+-- satisfy via index-only scan (<10ms vs 3-5s).
+CREATE INDEX IF NOT EXISTS idx_logs_type_id ON logs (log_type, id);
+
 -- Composite index for flow aggregation (Sankey + IP Pairs)
 CREATE INDEX IF NOT EXISTS idx_logs_flow_agg
     ON logs (timestamp DESC, src_ip, dst_ip, dst_port, protocol)
