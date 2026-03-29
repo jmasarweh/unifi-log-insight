@@ -644,6 +644,17 @@ class Database:
                         )
                         sys.exit(1)
 
+                    vcur.execute("""SELECT 1 FROM pg_indexes
+                                   WHERE schemaname = 'public' AND indexname = 'idx_logs_nondns_timestamp'""")
+                    if not vcur.fetchone():
+                        logger.critical(
+                            "FATAL: Index 'idx_logs_nondns_timestamp' missing after schema migration. "
+                            "The batched non-DNS retention cleanup path requires this index. "
+                            "The database user '%s' likely lacks CREATE INDEX privilege. %s",
+                            db_user, grant_hint
+                        )
+                        sys.exit(1)
+
                     # Issue #67: validate queue-driven backfill artifacts
                     vcur.execute("""SELECT 1 FROM information_schema.tables
                                    WHERE table_schema = 'public' AND table_name = 'threat_backfill_queue'""")
@@ -912,7 +923,9 @@ class Database:
                             f"DELETE FROM logs WHERE id IN ("
                             f"  SELECT id FROM logs"
                             f"  WHERE {type_filter} AND timestamp < %s"
+                            f"  ORDER BY timestamp ASC"
                             f"  LIMIT %s"
+                            f"  FOR UPDATE SKIP LOCKED"
                             f")",
                             [cutoff, _BATCH],
                         )

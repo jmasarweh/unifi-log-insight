@@ -687,6 +687,11 @@ def run_retention_cleanup_now():
         dns = int(os.environ.get('DNS_RETENTION_DAYS', '10'))
     else:
         dns = int(dns)
+    if general <= 0 or dns <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Retention days must be positive (general={general}, dns={dns})"
+        )
     deleted = enricher_db.run_retention_cleanup(general, dns)
     return {"success": True, "deleted": deleted}
 
