@@ -234,6 +234,8 @@ class Database:
             "CREATE INDEX IF NOT EXISTS idx_logs_threat_score ON logs (threat_score) WHERE threat_score IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_logs_type_time    ON logs (log_type, timestamp DESC)",
             "CREATE INDEX IF NOT EXISTS idx_logs_action_time  ON logs (rule_action, timestamp DESC)",
+            # Partial index for non-DNS retention cleanup batches. See init.sql for rationale.
+            "CREATE INDEX IF NOT EXISTS idx_logs_nondns_timestamp ON logs (timestamp DESC) WHERE log_type != 'dns'",
             "CREATE INDEX IF NOT EXISTS idx_logs_src_port     ON logs (src_port) WHERE src_port IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_logs_dst_port     ON logs (dst_port) WHERE dst_port IS NOT NULL",
             "CREATE INDEX IF NOT EXISTS idx_logs_protocol     ON logs (protocol) WHERE protocol IS NOT NULL",
@@ -873,15 +875,60 @@ class Database:
             logger.info("Row-by-row fallback: %d inserted, %d dropped", inserted, dropped)
 
     def run_retention_cleanup(self, general_days: int = 60, dns_days: int = 10):
-        """Run the retention cleanup function. Returns number of deleted rows."""
-        with self.get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT cleanup_old_logs(%s, %s)", [general_days, dns_days])
-                deleted = cur.fetchone()[0]
-        if deleted > 0:
-            logger.info("Retention cleanup: deleted %d old logs (general=%dd, dns=%dd)",
-                        deleted, general_days, dns_days)
-        return deleted
+        """Delete expired logs in small batches to avoid long-held locks and WAL bloat.
+
+        Replaces the single unbatched DELETE in cleanup_old_logs() which on 165M-row
+        tables holds row locks for the entire multi-minute duration and triggers WAL
+        spikes. Two separate passes (DNS / non-DNS) let each use its own index:
+          - DNS pass:     idx_logs_type_time    (log_type, timestamp DESC)
+          - non-DNS pass: idx_logs_nondns_timestamp (timestamp DESC) WHERE log_type != 'dns'
+
+        Each batch commits immediately so autovacuum can reclaim dead tuples
+        incrementally. Returns total number of deleted rows.
+        """
+        from datetime import datetime, timezone, timedelta
+
+        if general_days <= 0 or dns_days <= 0:
+            raise ValueError(
+                f"retention days must be positive (general={general_days}, dns={dns_days})"
+            )
+
+        _BATCH = 5_000
+
+        # Pre-compute cutoffs once so the window cannot shift between batches.
+        now = datetime.now(timezone.utc)
+        passes = [
+            ("DNS",     "log_type = 'dns'",  now - timedelta(days=dns_days)),
+            ("non-DNS", "log_type != 'dns'", now - timedelta(days=general_days)),
+        ]
+
+        total_deleted = 0
+        for label, type_filter, cutoff in passes:
+            batch_num = 0
+            while True:
+                with self.get_conn() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            f"DELETE FROM logs WHERE id IN ("
+                            f"  SELECT id FROM logs"
+                            f"  WHERE {type_filter} AND timestamp < %s"
+                            f"  LIMIT %s"
+                            f")",
+                            [cutoff, _BATCH],
+                        )
+                        n = cur.rowcount
+                if n == 0:
+                    break
+                batch_num += 1
+                total_deleted += n
+                logger.debug("Retention %s: batch %d — deleted %d rows", label, batch_num, n)
+
+        if total_deleted > 0:
+            logger.info(
+                "Retention cleanup: deleted %d old logs (general=%dd, dns=%dd)",
+                total_deleted, general_days, dns_days,
+            )
+        return total_deleted
 
     def get_stats(self) -> dict:
         """Get basic stats for health check / logging."""
