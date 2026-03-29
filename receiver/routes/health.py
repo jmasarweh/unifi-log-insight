@@ -18,6 +18,7 @@ router = APIRouter()
 
 @router.get("/api/health")
 def health():
+    """Return service health, log count estimate, retention config, and storage stats."""
     conn = get_conn()
     try:
         with conn.cursor() as cur:
