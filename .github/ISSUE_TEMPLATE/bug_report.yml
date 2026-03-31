@@ -17,6 +17,24 @@ body:
       required: true
 
   - type: dropdown
+    id: host_platform
+    attributes:
+      label: Host Platform
+      description: Where is the container running?
+      options:
+        - Linux (native Docker)
+        - Windows (WSL2)
+        - Windows (Docker Desktop)
+        - macOS (Docker Desktop)
+        - Synology NAS
+        - UNRAID
+        - TrueNAS / FreeNAS
+        - Proxmox / LXC
+        - Other (specify in description)
+    validations:
+      required: true
+
+  - type: dropdown
     id: gateway
     attributes:
       label: Gateway Model
@@ -44,6 +62,15 @@ body:
     validations:
       required: false
 
+  - type: input
+    id: network_version
+    attributes:
+      label: UniFi Network Application Version
+      description: "Found in UniFi Settings > System > Updates, or the bottom of the UniFi dashboard"
+      placeholder: "e.g. 9.0.114"
+    validations:
+      required: true
+
   - type: dropdown
     id: setup_path
     attributes:
@@ -66,6 +93,33 @@ body:
         - External PostgreSQL
     validations:
       required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Browser Extension (fill in if your bug is related to the extension)
+
+  - type: input
+    id: extension_version
+    attributes:
+      label: Browser Extension Version
+      description: "Shown in your browser's extension management page (chrome://extensions or about:addons)"
+      placeholder: "e.g. 1.2.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: extension_browser
+    attributes:
+      label: Browser
+      description: Which browser are you using the extension with?
+      options:
+        - Chrome
+        - Edge
+        - Firefox
+        - Other (specify in description)
+    validations:
+      required: false
 
   - type: textarea
     id: description
