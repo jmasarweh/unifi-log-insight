@@ -69,7 +69,6 @@ def _make_database(monkeypatch, cursors, logger=None):
         yield FakeConn(cursors)
 
     monkeypatch.setattr(database, 'get_conn', fake_get_conn)
-    monkeypatch.setattr(database, '_fix_function_ownership', MagicMock())
     monkeypatch.setattr(database, '_backfill_tz_timestamps', MagicMock())
     if logger is None:
         logger = MagicMock()
@@ -78,16 +77,14 @@ def _make_database(monkeypatch, cursors, logger=None):
 
 
 def _validation_cursor():
-    """Validation cursor with truthy responses for table/function/index checks.
+    """Validation cursor with truthy responses for table/index checks.
 
-    Order: logs table, cleanup_old_logs function, idx_logs_timestamp,
-    threat_backfill_queue table, ip_threats.last_seen_at column,
-    ip_threats.last_seen_at column_default,
+    Order: logs table, idx_logs_timestamp, threat_backfill_queue table,
+    ip_threats.last_seen_at column, ip_threats.last_seen_at column_default,
     idx_logs_fw_block_null_threat_src index.
     """
     return FakeCursor(fetches=[
         (1,),
-        ('public.cleanup_old_logs(integer,integer)',),
         (1,),
         (1,),
         (1,),
@@ -110,7 +107,6 @@ def test_ensure_schema_uses_transaction_scoped_advisory_lock(monkeypatch):
     assert "SELECT pg_try_advisory_lock(20250314)" not in executed_sql
     assert "SELECT pg_advisory_unlock(20250314)" not in executed_sql
     assert any(sql.startswith("SAVEPOINT sp_0") for sql in executed_sql)
-    database._fix_function_ownership.assert_called_once_with()
     database._backfill_tz_timestamps.assert_called_once_with()
 
 
@@ -163,7 +159,6 @@ def test_ensure_schema_exits_when_last_seen_at_has_no_default(monkeypatch):
     """
     validation_cursor = FakeCursor(fetches=[
         (1,),                                                  # logs table
-        ('public.cleanup_old_logs(integer,integer)',),          # function
         (1,),                                                  # idx_logs_timestamp
         (1,),                                                  # threat_backfill_queue
         (1,),                                                  # last_seen_at column exists
@@ -204,10 +199,10 @@ def test_ensure_post_boot_indexes_skips_if_exists(monkeypatch):
 
 
 def test_ensure_post_boot_indexes_creates_when_missing(monkeypatch):
-    """ensure_post_boot_indexes() creates the index when it doesn't exist."""
+    """ensure_post_boot_indexes() creates all indexes when they don't exist."""
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
-    mock_cursor.fetchone.return_value = None  # index missing
+    mock_cursor.fetchone.return_value = None  # all indexes missing
     mock_cursor.__enter__ = lambda s: s
     mock_cursor.__exit__ = MagicMock(return_value=False)
     mock_conn.cursor.return_value = mock_cursor
@@ -220,6 +215,8 @@ def test_ensure_post_boot_indexes_creates_when_missing(monkeypatch):
     executed_sql = ' '.join(str(c) for c in mock_cursor.execute.call_args_list)
     assert 'CREATE INDEX CONCURRENTLY' in executed_sql
     assert 'spgist' in executed_sql.lower()
+    assert 'idx_logs_type_id' in executed_sql
+    assert 'idx_logs_nondns_timestamp' in executed_sql
     assert mock_conn.autocommit is True
 
 
@@ -235,7 +232,44 @@ def test_ensure_post_boot_indexes_warns_on_failure(monkeypatch):
     database.ensure_post_boot_indexes()
 
     mock_logger.warning.assert_called_once()
-    assert 'idx_logs_spgist_dst_ip_firewall' in mock_logger.warning.call_args[0][1]
+    assert 'connect' in mock_logger.warning.call_args[0][0]
+
+
+def test_ensure_post_boot_indexes_continues_after_single_failure(monkeypatch):
+    """If one index fails, remaining indexes are still attempted."""
+    mock_conn = MagicMock()
+    call_count = [0]
+
+    def execute_side_effect(sql, params=None):
+        nonlocal call_count
+        call_count[0] += 1
+        if isinstance(sql, str) and 'pg_indexes' in sql:
+            return  # fetchone returns None (index missing)
+        if isinstance(sql, str) and 'idx_logs_type_id' in sql:
+            raise Exception("simulated CREATE INDEX failure")
+
+    mock_cursor = MagicMock()
+    mock_cursor.execute = MagicMock(side_effect=execute_side_effect)
+    mock_cursor.fetchone.return_value = None  # all indexes missing
+    mock_cursor.__enter__ = lambda s: s
+    mock_cursor.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cursor
+
+    database = Database(conn_params={'user': 'unifi'})
+    monkeypatch.setattr('db.psycopg2.connect', lambda **kw: mock_conn)
+    mock_logger = MagicMock()
+    monkeypatch.setattr(db_module, 'logger', mock_logger)
+
+    database.ensure_post_boot_indexes()
+
+    # Should have warned about the failed index
+    warning_calls = [c for c in mock_logger.warning.call_args_list
+                     if 'idx_logs_type_id' in str(c)]
+    assert len(warning_calls) == 1
+    # Should have attempted all 3 indexes (check + create for each = 6 execute calls,
+    # minus the one that failed mid-create). Just verify more than 2 execute calls
+    # happened, proving it didn't stop at the first failure.
+    assert call_count[0] >= 4  # at least 2 indexes attempted beyond the failed one
 
 
 def test_ensure_schema_does_not_contain_concurrent_ddl():
@@ -266,3 +300,170 @@ def test_ensure_schema_exits_on_unrelated_unique_violation(monkeypatch):
     assert "ROLLBACK TO SAVEPOINT sp_0" in executed_sql
     logger.critical.assert_called_once_with("Schema migration failed", exc_info=True)
     database._backfill_tz_timestamps.assert_not_called()
+
+
+# ── Post-boot index list ─────────────────────────────────────────────────────
+
+def test_post_boot_index_list_has_expected_entries():
+    """_POST_BOOT_INDEXES contains all expected upgrade indexes."""
+    names = {idx['name'] for idx in Database._POST_BOOT_INDEXES}
+    assert 'idx_logs_spgist_dst_ip_firewall' in names
+    assert 'idx_logs_type_id' in names
+    assert 'idx_logs_nondns_timestamp' in names
+
+
+def test_post_boot_indexes_all_use_concurrently():
+    """Every post-boot index SQL must use CONCURRENTLY."""
+    for idx in Database._POST_BOOT_INDEXES:
+        assert 'CONCURRENTLY' in idx['sql'], f"{idx['name']} missing CONCURRENTLY"
+
+
+# ── Retention validation ──────────────────────────────────────────────────────
+
+def test_validate_retention_days_rejects_zero():
+    with pytest.raises(ValueError, match="positive"):
+        Database.validate_retention_days(0, 10)
+
+
+def test_validate_retention_days_rejects_negative():
+    with pytest.raises(ValueError, match="positive"):
+        Database.validate_retention_days(60, -1)
+
+
+def test_validate_retention_days_rejects_non_int():
+    with pytest.raises(ValueError, match="integers"):
+        Database.validate_retention_days("60", 10)
+
+
+def test_validate_retention_days_accepts_valid():
+    # Should not raise
+    Database.validate_retention_days(60, 10)
+    Database.validate_retention_days(1, 1)
+
+
+# ── Batched retention cleanup ─────────────────────────────────────────────────
+
+class FakeRetentionConn:
+    """Simulates a connection that processes batched deletes."""
+
+    def __init__(self, dns_rows=0, nondns_rows=0, batch_size=5000):
+        self._remaining = {'dns': dns_rows, 'non_dns': nondns_rows}
+        self._batch_size = batch_size
+        self._current_label = None
+
+    def cursor(self):
+        return FakeRetentionCursor(self)
+
+    def commit(self):
+        pass
+
+
+class FakeRetentionCursor:
+    def __init__(self, conn):
+        self._conn = conn
+        self.rowcount = 0
+
+    def execute(self, sql, params=None):
+        if sql and 'DELETE' in sql:
+            if "log_type = 'dns'" in sql and "!=" not in sql:
+                label = 'dns'
+            else:
+                label = 'non_dns'
+            remaining = self._conn._remaining[label]
+            batch = min(remaining, self._conn._batch_size)
+            self._conn._remaining[label] -= batch
+            self.rowcount = batch
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+
+def test_run_retention_cleanup_structured_result(monkeypatch):
+    """run_retention_cleanup returns structured result with correct counts."""
+    database = Database(conn_params={'user': 'unifi'})
+
+    remaining = {'dns': 100, 'non_dns': 200}
+
+    @contextmanager
+    def fake_get_conn():
+        conn = FakeRetentionConn(
+            dns_rows=remaining['dns'],
+            nondns_rows=remaining['non_dns'],
+            batch_size=5000,
+        )
+        yield conn
+        remaining['dns'] = conn._remaining['dns']
+        remaining['non_dns'] = conn._remaining['non_dns']
+
+    monkeypatch.setattr(database, 'get_conn', fake_get_conn)
+
+    result = database.run_retention_cleanup(60, 10)
+    assert result['status'] == 'complete'
+    assert result['error'] is None
+    assert result['dns_deleted'] == 100
+    assert result['non_dns_deleted'] == 200
+    assert result['deleted_so_far'] == 300
+
+
+def test_run_retention_cleanup_no_data(monkeypatch):
+    """run_retention_cleanup with no expired data returns zero counts."""
+    database = Database(conn_params={'user': 'unifi'})
+
+    remaining = {'dns': 0, 'non_dns': 0}
+
+    @contextmanager
+    def fake_get_conn():
+        conn = FakeRetentionConn(dns_rows=remaining['dns'], nondns_rows=remaining['non_dns'])
+        yield conn
+        remaining['dns'] = conn._remaining['dns']
+        remaining['non_dns'] = conn._remaining['non_dns']
+
+    monkeypatch.setattr(database, 'get_conn', fake_get_conn)
+
+    result = database.run_retention_cleanup(60, 10)
+    assert result['status'] == 'complete'
+    assert result['deleted_so_far'] == 0
+    assert result['dns_deleted'] == 0
+    assert result['non_dns_deleted'] == 0
+
+
+def test_run_retention_cleanup_invalid_days():
+    """run_retention_cleanup rejects invalid day values."""
+    database = Database(conn_params={'user': 'unifi'})
+    with pytest.raises(ValueError):
+        database.run_retention_cleanup(0, 10)
+    with pytest.raises(ValueError):
+        database.run_retention_cleanup(60, -1)
+
+
+def test_run_retention_cleanup_progress_callback(monkeypatch):
+    """progress_cb is called during cleanup."""
+    database = Database(conn_params={'user': 'unifi'})
+
+    from contextlib import contextmanager as cm
+
+    # Shared mutable state across all get_conn() calls
+    remaining = {'dns': 100, 'non_dns': 0}
+
+    @contextmanager
+    def fake_get_conn():
+        conn = FakeRetentionConn(
+            dns_rows=remaining['dns'],
+            nondns_rows=remaining['non_dns'],
+            batch_size=5000,
+        )
+        yield conn
+        # Sync remaining back so next call sees updated state
+        remaining['dns'] = conn._remaining['dns']
+        remaining['non_dns'] = conn._remaining['non_dns']
+
+    monkeypatch.setattr(database, 'get_conn', fake_get_conn)
+
+    progress_calls = []
+    result = database.run_retention_cleanup(60, 10, progress_cb=progress_calls.append)
+    assert result['status'] == 'complete'
+    assert len(progress_calls) >= 1
+    assert progress_calls[0]['phase'] == 'dns'

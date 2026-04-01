@@ -364,6 +364,10 @@ export async function runRetentionCleanup() {
   return apiFetch(`${BASE}/config/retention/cleanup`, { method: 'POST' })
 }
 
+export async function fetchRetentionCleanupStatus() {
+  return apiFetch(`${BASE}/config/retention/cleanup-status`)
+}
+
 // ── Log Counts & Purge ──────────────────────────────────────────────────────
 
 export async function fetchLogCountsByType() {

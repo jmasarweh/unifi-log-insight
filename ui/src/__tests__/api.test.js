@@ -14,6 +14,8 @@ import {
   enrichIP,
   getExportUrl,
   createSavedView,
+  runRetentionCleanup,
+  fetchRetentionCleanupStatus,
 } from '../api'
 
 
@@ -250,5 +252,52 @@ describe('createSavedView', () => {
     expect(url).toBe('/api/views')
     expect(opts.method).toBe('POST')
     expect(JSON.parse(opts.body)).toEqual({ name: 'My View', filters: { log_type: 'dns' } })
+  })
+})
+
+
+describe('runRetentionCleanup', () => {
+  it('sends POST to cleanup endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ success: true, status: 'running' }),
+    }))
+
+    const result = await runRetentionCleanup()
+    const [url, opts] = fetch.mock.calls[0]
+    expect(url).toBe('/api/config/retention/cleanup')
+    expect(opts.method).toBe('POST')
+    expect(result.status).toBe('running')
+  })
+
+  it('throws on error response', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(mockErrorResponse(409)))
+
+    await expect(runRetentionCleanup()).rejects.toThrow()
+  })
+})
+
+
+describe('fetchRetentionCleanupStatus', () => {
+  it('calls GET on cleanup-status endpoint', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'idle' }),
+    }))
+
+    const result = await fetchRetentionCleanupStatus()
+    expect(fetch.mock.calls[0][0]).toBe('/api/config/retention/cleanup-status')
+    expect(result.status).toBe('idle')
+  })
+
+  it('returns complete status with counts', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'complete', deleted_so_far: 150, dns_deleted: 50, non_dns_deleted: 100 }),
+    }))
+
+    const result = await fetchRetentionCleanupStatus()
+    expect(result.status).toBe('complete')
+    expect(result.deleted_so_far).toBe(150)
   })
 })

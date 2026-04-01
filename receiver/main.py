@@ -266,18 +266,13 @@ def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: Blacklist
 
     def retention_cleanup():
         try:
-            # Resolution: system_config > env var > default
-            general = get_config(db, 'retention_days')
-            if general is None:
-                general = int(os.environ.get('RETENTION_DAYS', '60'))
-            else:
-                general = int(general)
-            dns = get_config(db, 'dns_retention_days')
-            if dns is None:
-                dns = int(os.environ.get('DNS_RETENTION_DAYS', '10'))
-            else:
-                dns = int(dns)
-            db.run_retention_cleanup(general, dns)
+            general, dns = db.resolve_retention_days()
+            result = db.run_retention_cleanup(general, dns)
+            if result['status'] == 'partial':
+                logger.warning("Retention cleanup partial: %d deleted, error: %s",
+                               result['deleted_so_far'], result['error'])
+            elif result['status'] == 'failed':
+                logger.error("Retention cleanup failed: %s", result['error'])
         except Exception as e:
             logger.error("Retention cleanup failed: %s", e)
 

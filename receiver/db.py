@@ -156,7 +156,28 @@ INSERT_SQL = f"""
 class Database:
     """PostgreSQL connection pool and operations."""
 
-    _IDX_LOGS_DST_IP_SPGIST = 'idx_logs_spgist_dst_ip_firewall'
+    # Heavyweight indexes created post-boot with CONCURRENTLY for upgrades.
+    # Fresh installs get these from init.sql; this list handles existing installs.
+    _POST_BOOT_INDEXES = [
+        {
+            'name': 'idx_logs_spgist_dst_ip_firewall',
+            'sql': "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_logs_spgist_dst_ip_firewall "
+                   "ON logs USING spgist (dst_ip) WHERE log_type = 'firewall'",
+            'label': 'SP-GiST dst_ip for WAN detection',
+        },
+        {
+            'name': 'idx_logs_type_id',
+            'sql': "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_logs_type_id "
+                   "ON logs (log_type, id)",
+            'label': 'type+id for purge batches',
+        },
+        {
+            'name': 'idx_logs_nondns_timestamp',
+            'sql': "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_logs_nondns_timestamp "
+                   "ON logs (timestamp DESC) WHERE log_type != 'dns'",
+            'label': 'non-DNS retention cleanup',
+        },
+    ]
 
     def __init__(self, conn_params: dict | None = None, min_conn: int = 2, max_conn: int = 10):
         self.conn_params = conn_params or build_conn_params()
@@ -384,20 +405,10 @@ END $$;""",
             """CREATE INDEX IF NOT EXISTS idx_logs_zone_matrix
                 ON logs (timestamp DESC, interface_in, interface_out, rule_action)
                 WHERE log_type = 'firewall' AND interface_in IS NOT NULL AND interface_out IS NOT NULL""",
-            # Parameterized retention cleanup function (replaces hardcoded 60/10 day version)
-            """CREATE OR REPLACE FUNCTION cleanup_old_logs(
-                general_days INTEGER DEFAULT 60,
-                dns_days INTEGER DEFAULT 10
-            ) RETURNS INTEGER AS $$
-            DECLARE deleted INTEGER;
-            BEGIN
-                DELETE FROM logs
-                WHERE (log_type = 'dns' AND timestamp < NOW() - (dns_days || ' days')::INTERVAL)
-                   OR (log_type != 'dns' AND timestamp < NOW() - (general_days || ' days')::INTERVAL);
-                GET DIAGNOSTICS deleted = ROW_COUNT;
-                RETURN deleted;
-            END;
-            $$ LANGUAGE plpgsql""",
+            # cleanup_old_logs() SQL function removed — retention cleanup now
+            # runs as a batched Python engine in run_retention_cleanup().
+            # Drop the orphaned function from existing databases.
+            "DROP FUNCTION IF EXISTS cleanup_old_logs(integer, integer)",
             # IP classification function — single source of truth for public/private
             """CREATE OR REPLACE FUNCTION is_public_inet(addr inet) RETURNS boolean AS $$
                 SELECT addr IS NOT NULL
@@ -582,10 +593,6 @@ END $$;""",
                   AND service_name IS NULL
                   AND dst_port IS NOT NULL""",
         ]
-        # Fix function ownership BEFORE migrations so CREATE OR REPLACE
-        # succeeds on the first boot after upgrade (not just the second).
-        self._fix_function_ownership()
-
         try:
             with self.get_conn() as conn:
                 with conn.cursor() as cur:
@@ -635,16 +642,6 @@ END $$;""",
                         logger.critical(
                             "FATAL: 'logs' table does not exist after schema migration. "
                             "The database user '%s' likely lacks CREATE TABLE privilege. %s",
-                            db_user, grant_hint
-                        )
-                        sys.exit(1)
-
-                    vcur.execute("SELECT to_regprocedure('public.cleanup_old_logs(integer,integer)')")
-                    row = vcur.fetchone()
-                    if not row or row[0] is None:
-                        logger.critical(
-                            "FATAL: 'cleanup_old_logs' function does not exist after schema migration. "
-                            "The database user '%s' likely lacks CREATE FUNCTION privilege. %s",
                             db_user, grant_hint
                         )
                         sys.exit(1)
@@ -716,76 +713,43 @@ END $$;""",
         self._backfill_tz_timestamps()
 
     def ensure_post_boot_indexes(self):
-        """Create performance indexes that require CONCURRENTLY (existing installs).
+        """Create heavyweight indexes with CONCURRENTLY for existing installs.
 
-        Uses a dedicated connection with autocommit to run CREATE INDEX
-        CONCURRENTLY outside any transaction.  Fresh installs get the index
-        from init.sql; this handles upgrades.
+        Uses a dedicated autocommit connection (CONCURRENTLY cannot run inside
+        a transaction).  Fresh installs get these from init.sql; this handles
+        upgrades.  Skips indexes that already exist.
 
         Must be called from the receiver startup path only — not from
         Database.connect() — to avoid the API and receiver both racing on
         the same concurrent index creation.
         """
-        idx_name = self._IDX_LOGS_DST_IP_SPGIST
         try:
             conn = psycopg2.connect(**self.conn_params)
             conn.autocommit = True
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT 1 FROM pg_indexes WHERE indexname = %s",
-                        (idx_name,),
-                    )
-                    if cur.fetchone():
-                        return  # already exists
-                    logger.info("Creating %s concurrently (one-time)...", idx_name)
-                    cur.execute(f"""
-                        CREATE INDEX CONCURRENTLY IF NOT EXISTS {idx_name}
-                        ON logs USING spgist (dst_ip)
-                        WHERE log_type = 'firewall'
-                    """)
-                    logger.info("Index %s created successfully", idx_name)
-            finally:
-                conn.close()
         except Exception:
-            logger.warning("Could not create %s — will retry next boot",
-                           idx_name, exc_info=True)
-
-    def _fix_function_ownership(self):
-        """One-time fix: transfer function ownership from postgres to unifi.
-
-        init.sql creates cleanup_old_logs() as the postgres superuser, so it's
-        owned by postgres.  The app connects as unifi and can't CREATE OR REPLACE
-        a function it doesn't own (fixes #24).  We connect as postgres via the
-        local Unix socket (pg_hba.conf: local all all trust) to run the ALTER,
-        then gate it so it only runs once.
-        """
-        if is_external_db():
-            return  # Not needed: no Unix socket superuser, app user owns the function
+            logger.warning("Post-boot index creation failed (connect) — will retry next boot",
+                           exc_info=True)
+            return
         try:
-            if self.get_config('fn_ownership_fixed'):
-                return
-            fix_conn = psycopg2.connect(
-                dbname='unifi_logs', user='postgres',
-                host='/var/run/postgresql',
-            )
-            try:
-                fix_conn.autocommit = True
-                with fix_conn.cursor() as cur:
-                    cur.execute(
-                        "ALTER FUNCTION cleanup_old_logs(INTEGER, INTEGER) "
-                        "OWNER TO unifi"
-                    )
-            finally:
-                fix_conn.close()
-            self.set_config('fn_ownership_fixed', True)
-            logger.info("Fixed function ownership: cleanup_old_logs → unifi")
-        except Exception:
-            logger.debug(
-                "Could not fix function ownership via superuser "
-                "(may be a fresh install where system_config doesn't exist yet)",
-                exc_info=True,
-            )
+            for idx in self._POST_BOOT_INDEXES:
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "SELECT 1 FROM pg_indexes WHERE indexname = %s",
+                            (idx['name'],),
+                        )
+                        if cur.fetchone():
+                            continue  # already exists
+                        logger.info("Creating %s concurrently (%s)...",
+                                    idx['name'], idx['label'])
+                        cur.execute(idx['sql'])
+                        logger.info("Index %s created successfully", idx['name'])
+                except Exception:
+                    logger.warning("Could not create %s — will retry next boot",
+                                   idx['name'], exc_info=True)
+        finally:
+            conn.close()
+
 
     def _backfill_tz_timestamps(self):
         """One-time migration: fix historical timestamps stored with wrong timezone.
@@ -925,16 +889,131 @@ END $$;""",
                     logger.warning("Dropped bad log row: %s — raw: %.200s", row_err, row[-1] if row else '?')
             logger.info("Row-by-row fallback: %d inserted, %d dropped", inserted, dropped)
 
-    def run_retention_cleanup(self, general_days: int = 60, dns_days: int = 10):
-        """Run the retention cleanup function. Returns number of deleted rows."""
-        with self.get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT cleanup_old_logs(%s, %s)", [general_days, dns_days])
-                deleted = cur.fetchone()[0]
-        if deleted > 0:
-            logger.info("Retention cleanup: deleted %d old logs (general=%dd, dns=%dd)",
-                        deleted, general_days, dns_days)
-        return deleted
+    # ── Retention cleanup ────────────────────────────────────────────────────
+
+    _RETENTION_BATCH_SIZE = 5_000
+
+    @staticmethod
+    def validate_retention_days(general_days: int, dns_days: int):
+        """Validate retention day values. Raises ValueError on bad input."""
+        if not isinstance(general_days, int) or not isinstance(dns_days, int):
+            raise ValueError(
+                f"retention days must be integers (general={general_days!r}, dns={dns_days!r})"
+            )
+        if general_days <= 0 or dns_days <= 0:
+            raise ValueError(
+                f"retention days must be positive (general={general_days}, dns={dns_days})"
+            )
+
+    def resolve_retention_days(self) -> tuple[int, int]:
+        """Return (general_days, dns_days) from config > env > defaults.
+
+        Single source of truth for both the scheduler and the API route.
+        Handles malformed env values gracefully by falling back to defaults.
+        """
+        try:
+            general = self.get_config('retention_days')
+            if general is not None:
+                general = int(general)
+            else:
+                general = int(os.environ.get('RETENTION_DAYS', '60'))
+        except (ValueError, TypeError):
+            logger.warning("Invalid RETENTION_DAYS, falling back to 60")
+            general = 60
+        try:
+            dns = self.get_config('dns_retention_days')
+            if dns is not None:
+                dns = int(dns)
+            else:
+                dns = int(os.environ.get('DNS_RETENTION_DAYS', '10'))
+        except (ValueError, TypeError):
+            logger.warning("Invalid DNS_RETENTION_DAYS, falling back to 10")
+            dns = 10
+        return general, dns
+
+    def run_retention_cleanup(self, general_days: int = 60, dns_days: int = 10,
+                              progress_cb=None) -> dict:
+        """Delete expired logs in small batches to avoid long-held locks.
+
+        Two separate passes (DNS / non-DNS) let each use its own index:
+          - DNS pass:     idx_logs_type_time (log_type, timestamp DESC)
+          - non-DNS pass: idx_logs_nondns_timestamp (timestamp DESC) WHERE log_type != 'dns'
+
+        Each batch commits immediately so autovacuum can reclaim dead tuples
+        incrementally.
+
+        Args:
+            general_days: Retention period for non-DNS logs.
+            dns_days: Retention period for DNS logs.
+            progress_cb: Optional callable(dict) invoked after each batch with
+                         current progress state.  Used by the async job route.
+
+        Returns:
+            Structured result dict with keys: status, dns_deleted,
+            non_dns_deleted, deleted_so_far, batches_completed, error.
+        """
+        from datetime import datetime, timezone, timedelta
+
+        self.validate_retention_days(general_days, dns_days)
+
+        batch_size = self._RETENTION_BATCH_SIZE
+        now = datetime.now(timezone.utc)
+        passes = [
+            ("dns",     "log_type = 'dns'",  now - timedelta(days=dns_days)),
+            ("non_dns", "log_type != 'dns'", now - timedelta(days=general_days)),
+        ]
+
+        result = {
+            'status': 'complete',
+            'dns_deleted': 0,
+            'non_dns_deleted': 0,
+            'deleted_so_far': 0,
+            'batches_completed': 0,
+            'error': None,
+        }
+
+        try:
+            for label, type_filter, cutoff in passes:
+                while True:
+                    with self.get_conn() as conn:
+                        with conn.cursor() as cur:
+                            # type_filter is from the hardcoded passes list
+                            # above — never user input. cutoff and batch_size
+                            # remain bound parameters.
+                            cur.execute(
+                                f"DELETE FROM logs WHERE id IN ("
+                                f"  SELECT id FROM logs"
+                                f"  WHERE {type_filter} AND timestamp < %s"
+                                f"  ORDER BY timestamp ASC"
+                                f"  LIMIT %s"
+                                f"  FOR UPDATE SKIP LOCKED"
+                                f")",
+                                [cutoff, batch_size],
+                            )
+                            n = cur.rowcount
+                    if n == 0:
+                        break
+                    result[f'{label}_deleted'] += n
+                    result['deleted_so_far'] += n
+                    result['batches_completed'] += 1
+                    logger.debug("Retention %s: batch %d — deleted %d rows",
+                                 label, result['batches_completed'], n)
+                    if progress_cb:
+                        progress_cb({**result, 'phase': label})
+        except Exception as exc:
+            result['error'] = str(exc)
+            result['status'] = 'partial' if result['deleted_so_far'] > 0 else 'failed'
+            logger.error("Retention cleanup %s: %d rows deleted before error: %s",
+                         result['status'], result['deleted_so_far'], exc)
+            return result
+
+        if result['deleted_so_far'] > 0:
+            logger.info("Retention cleanup: deleted %d old logs "
+                        "(dns_deleted=%d, non_dns_deleted=%d, "
+                        "general_retention=%d days, dns_retention=%d days)",
+                        result['deleted_so_far'], result['dns_deleted'],
+                        result['non_dns_deleted'], general_days, dns_days)
+        return result
 
     def get_stats(self) -> dict:
         """Get basic stats for health check / logging."""

@@ -10,7 +10,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from psycopg2.extras import RealDictCursor, Json
 
-from db import get_config, set_config, count_logs, encrypt_api_key, decrypt_api_key
+from db import Database, get_config, set_config, count_logs, encrypt_api_key, decrypt_api_key
 from deps import get_conn, put_conn, enricher_db, unifi_api, signal_receiver, APP_VERSION, ttl_cache
 from unifi_api import UniFiAPI
 from firewall_policy_matcher import invalidate_cache as invalidate_fw_cache
@@ -721,21 +721,117 @@ def update_retention(body: dict):
     return {"success": True}
 
 
+# ── Retention cleanup (async job) ────────────────────────────────────────────
+
+_CLEANUP_RESULT_TTL = 60  # seconds to keep terminal status before clearing
+_cleanup_job: dict | None = None
+_cleanup_lock = threading.Lock()
+
+
+def _cleanup_gc():
+    """Clear finished cleanup job older than TTL.  Caller must hold _cleanup_lock."""
+    global _cleanup_job
+    if _cleanup_job and _cleanup_job['status'] in ('complete', 'partial', 'failed'):
+        finished = _cleanup_job.get('finished_at')
+        if finished:
+            elapsed = (datetime.now(timezone.utc) - datetime.fromisoformat(finished)).total_seconds()
+            if elapsed > _CLEANUP_RESULT_TTL:
+                _cleanup_job = None
+
+
+def _resolve_retention_days():
+    """Return (general_days, dns_days) via the shared DB resolver."""
+    return enricher_db.resolve_retention_days()
+
+
+def _run_cleanup_worker(general_days: int, dns_days: int):
+    """Background worker for retention cleanup."""
+    global _cleanup_job
+
+    def on_progress(state):
+        with _cleanup_lock:
+            if _cleanup_job:
+                _cleanup_job.update(
+                    phase=state.get('phase', 'dns'),
+                    dns_deleted=state['dns_deleted'],
+                    non_dns_deleted=state['non_dns_deleted'],
+                    deleted_so_far=state['deleted_so_far'],
+                    batches_completed=state['batches_completed'],
+                    last_updated_at=_now_ts(),
+                )
+
+    logger.info("Retention cleanup started (general_retention=%d days, dns_retention=%d days)",
+                general_days, dns_days)
+    result = enricher_db.run_retention_cleanup(general_days, dns_days,
+                                                progress_cb=on_progress)
+    logger.info("Retention cleanup finished: status=%s, deleted=%d",
+                result['status'], result['deleted_so_far'])
+    now = _now_ts()
+    with _cleanup_lock:
+        if _cleanup_job:
+            _cleanup_job.update(
+                status=result['status'],
+                phase='done',
+                dns_deleted=result['dns_deleted'],
+                non_dns_deleted=result['non_dns_deleted'],
+                deleted_so_far=result['deleted_so_far'],
+                batches_completed=result['batches_completed'],
+                error=result['error'],
+                last_updated_at=now,
+                finished_at=now,
+            )
+
+
 @router.post("/api/config/retention/cleanup")
 def run_retention_cleanup_now():
-    """Run retention cleanup immediately using the current saved settings."""
-    general = get_config(enricher_db, 'retention_days')
-    if general is None:
-        general = int(os.environ.get('RETENTION_DAYS', '60'))
-    else:
-        general = int(general)
-    dns = get_config(enricher_db, 'dns_retention_days')
-    if dns is None:
-        dns = int(os.environ.get('DNS_RETENTION_DAYS', '10'))
-    else:
-        dns = int(dns)
-    deleted = enricher_db.run_retention_cleanup(general, dns)
-    return {"success": True, "deleted": deleted}
+    """Start background retention cleanup using current saved settings.
+
+    Returns immediately.  Poll GET /api/config/retention/cleanup-status for progress.
+    """
+    global _cleanup_job
+    general, dns = _resolve_retention_days()
+    try:
+        Database.validate_retention_days(general, dns)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+    with _cleanup_lock:
+        _cleanup_gc()
+        if _cleanup_job and _cleanup_job['status'] == 'running':
+            raise HTTPException(status_code=409, detail="Retention cleanup already in progress")
+        now = _now_ts()
+        _cleanup_job = {
+            'status': 'running',
+            'general_days': general,
+            'dns_days': dns,
+            'batch_size': Database._RETENTION_BATCH_SIZE,
+            'phase': 'dns',
+            'dns_deleted': 0,
+            'non_dns_deleted': 0,
+            'deleted_so_far': 0,
+            'batches_completed': 0,
+            'error': None,
+            'started_at': now,
+            'last_updated_at': now,
+            'finished_at': None,
+        }
+    t = threading.Thread(target=_run_cleanup_worker, args=(general, dns), daemon=True)
+    t.start()
+    return {"success": True, "status": "running", "general_days": general, "dns_days": dns,
+            "batch_size": Database._RETENTION_BATCH_SIZE}
+
+
+@router.get("/api/config/retention/cleanup-status")
+def get_retention_cleanup_status():
+    """Return current or recent retention cleanup job state.
+
+    Returns idle if no job is active or recent.
+    """
+    with _cleanup_lock:
+        _cleanup_gc()
+        if _cleanup_job:
+            return dict(_cleanup_job)
+    return {"status": "idle"}
 
 
 _PURGEABLE_LOG_TYPES = {'wifi', 'system'}

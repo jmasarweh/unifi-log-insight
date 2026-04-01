@@ -99,24 +99,17 @@ CREATE INDEX IF NOT EXISTS idx_logs_spgist_dst_ip_firewall
     ON logs USING spgist (dst_ip)
     WHERE log_type = 'firewall';
 
--- Retention cleanup function (configurable periods)
-CREATE OR REPLACE FUNCTION cleanup_old_logs(
-    general_days INTEGER DEFAULT 60,
-    dns_days INTEGER DEFAULT 10
-) RETURNS INTEGER AS $$
-DECLARE
-    deleted INTEGER;
-BEGIN
-    IF general_days IS NULL OR dns_days IS NULL OR general_days <= 0 OR dns_days <= 0 THEN
-        RAISE EXCEPTION 'cleanup_old_logs: days must be positive (general_days=%, dns_days=%)', general_days, dns_days;
-    END IF;
-    DELETE FROM logs
-    WHERE (log_type = 'dns' AND timestamp < NOW() - (dns_days || ' days')::INTERVAL)
-       OR (log_type != 'dns' AND timestamp < NOW() - (general_days || ' days')::INTERVAL);
-    GET DIAGNOSTICS deleted = ROW_COUNT;
-    RETURN deleted;
-END;
-$$ LANGUAGE plpgsql;
+-- Composite index for type-scoped purge batches and COUNT/MAX snapshots.
+-- Enables O(N) batch scans for DELETE … WHERE log_type = X AND id <= Y LIMIT N
+-- instead of O(total-rows-of-type) heap-sorts on large tables.
+CREATE INDEX IF NOT EXISTS idx_logs_type_id ON logs (log_type, id);
+
+-- Partial index for non-DNS retention cleanup batches.
+-- The non-DNS pass deletes WHERE log_type != 'dns' AND timestamp < cutoff.
+-- Without this index the pass falls back to a sequential scan on large tables.
+CREATE INDEX IF NOT EXISTS idx_logs_nondns_timestamp
+    ON logs (timestamp DESC)
+    WHERE log_type != 'dns';
 
 -- AbuseIPDB threat score cache (persistent across restarts)
 CREATE TABLE IF NOT EXISTS ip_threats (

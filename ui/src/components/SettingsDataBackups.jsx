@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import {
-  fetchRetentionConfig, updateRetentionConfig, runRetentionCleanup,
+  fetchRetentionConfig, updateRetentionConfig, runRetentionCleanup, fetchRetentionCleanupStatus,
   exportConfig, importConfig,
   testMigrationConnection, startMigration, getMigrationStatus,
   patchMigrationCompose,
@@ -505,7 +505,8 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
   const [retentionSaving, setRetentionSaving] = useState(false)
   const [retentionMsg, setRetentionMsg] = useState(null)
   const [showCleanup, setShowCleanup] = useState(false)
-  const [cleaningUp, setCleaningUp] = useState(false)
+  const [cleanupJob, setCleanupJob] = useState(null) // null | { status, deleted_so_far, ... }
+  const cleanupPollRef = useRef(null)
 
   // Log cleanup state
   const [logCounts, setLogCounts] = useState(null)
@@ -567,6 +568,42 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
     return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
   }, [hasRunningPurge])
 
+  // Poll retention cleanup status while job is running
+  const cleanupRunning = cleanupJob?.status === 'running'
+  useEffect(() => {
+    if (!cleanupRunning) {
+      if (cleanupPollRef.current) { clearInterval(cleanupPollRef.current); cleanupPollRef.current = null }
+      return
+    }
+    if (cleanupPollRef.current) return
+    cleanupPollRef.current = setInterval(() => {
+      fetchRetentionCleanupStatus().then(job => {
+        setCleanupJob(prev => {
+          if (job.status === 'idle' && prev?.status === 'running') {
+            // Server cleared it (TTL expired) — treat as complete
+            setRetentionMsg({ type: 'success', text: 'Retention cleanup finished' })
+            fetchLogCountsByType().then(setLogCounts).catch(err => console.error('Failed to refresh log counts:', err))
+            setTimeout(() => setRetentionMsg(null), 5000)
+            return null
+          }
+          if (prev?.status === 'running' && job.status === 'complete') {
+            setRetentionMsg({ type: 'success', text: `Cleanup complete — ${job.deleted_so_far.toLocaleString()} logs removed` })
+            setShowCleanup(false)
+            fetchLogCountsByType().then(setLogCounts).catch(err => console.error('Failed to refresh log counts:', err))
+            setTimeout(() => setRetentionMsg(null), 5000)
+          } else if (prev?.status === 'running' && job.status === 'partial') {
+            setRetentionMsg({ type: 'error', text: `Cleanup partially done — ${job.deleted_so_far.toLocaleString()} removed, then failed: ${job.error}` })
+            fetchLogCountsByType().then(setLogCounts).catch(err => console.error('Failed to refresh log counts:', err))
+          } else if (prev?.status === 'running' && job.status === 'failed') {
+            setRetentionMsg({ type: 'error', text: `Cleanup failed: ${job.error}` })
+          }
+          return job.status === 'idle' ? null : job
+        })
+      }).catch(err => console.error('Failed to poll cleanup status:', err))
+    }, 3000)
+    return () => { if (cleanupPollRef.current) { clearInterval(cleanupPollRef.current); cleanupPollRef.current = null } }
+  }, [cleanupRunning])
+
   useEffect(() => {
     fetchRetentionConfig().then(data => {
       setRetention(data)
@@ -585,6 +622,13 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
       }
       if (Object.keys(active).length > 0) setPurgeJobs(active)
     }).catch(err => console.error('Failed to fetch purge status:', err))
+    // Detect any in-progress cleanup job on mount
+    fetchRetentionCleanupStatus().then(job => {
+      if (job.status === 'running') {
+        setCleanupJob(job)
+        setShowCleanup(true)
+      }
+    }).catch(err => console.error('Failed to fetch cleanup status:', err))
   }, [])
 
   // ── Retention handlers ──
@@ -616,17 +660,16 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
   }
 
   async function handleCleanupNow() {
-    setCleaningUp(true)
     setRetentionMsg(null)
     try {
-      const result = await runRetentionCleanup()
-      setRetentionMsg({ type: 'success', text: `Cleanup complete — ${result.deleted.toLocaleString()} logs removed` })
-      setShowCleanup(false)
-      setTimeout(() => setRetentionMsg(null), 5000)
+      await runRetentionCleanup()
+      setCleanupJob({ status: 'running', deleted_so_far: 0 })
     } catch (e) {
-      setRetentionMsg({ type: 'error', text: 'Cleanup failed: ' + e.message })
-    } finally {
-      setCleaningUp(false)
+      if (e.status === 409) {
+        setRetentionMsg({ type: 'error', text: 'Cleanup already in progress' })
+      } else {
+        setRetentionMsg({ type: 'error', text: 'Failed to start cleanup: ' + e.message })
+      }
     }
   }
 
@@ -874,10 +917,12 @@ export default function SettingsDataBackups({ totalLogs, storage, onSaved }) {
               {showCleanup && (
                 <button
                   onClick={handleCleanupNow}
-                  disabled={cleaningUp}
+                  disabled={cleanupRunning}
                   className="px-4 py-1.5 rounded text-sm font-medium border border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10 transition-colors disabled:opacity-50"
                 >
-                  {cleaningUp ? 'Cleaning up...' : 'Run Cleanup Now'}
+                  {cleanupRunning
+                    ? `Cleaning up${cleanupJob?.deleted_so_far ? ` (${cleanupJob.deleted_so_far.toLocaleString()})` : '...'}`
+                    : 'Run Cleanup Now'}
                 </button>
               )}
               <button

@@ -39,8 +39,6 @@ if [ ! -s "$PGDATA/PG_VERSION" ]; then
     su - postgres -c "psql -d unifi_logs -c \"ALTER TABLE logs OWNER TO unifi;\""
     su - postgres -c "psql -d unifi_logs -c \"ALTER TABLE ip_threats OWNER TO unifi;\""
     su - postgres -c "psql -d unifi_logs -c \"ALTER SEQUENCE logs_id_seq OWNER TO unifi;\""
-    su - postgres -c "psql -d unifi_logs -c \"ALTER FUNCTION cleanup_old_logs(INTEGER, INTEGER) OWNER TO unifi;\""
-
     # Defensive: transfer ownership of app-created tables if they exist
     su - postgres -c "psql -d unifi_logs -c \"DO \\\$\\\$ BEGIN IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename='system_config') THEN ALTER TABLE system_config OWNER TO unifi; END IF; END \\\$\\\$;\""
     su - postgres -c "psql -d unifi_logs -c \"DO \\\$\\\$ BEGIN IF EXISTS (SELECT 1 FROM pg_tables WHERE tablename='unifi_clients') THEN ALTER TABLE unifi_clients OWNER TO unifi; END IF; END \\\$\\\$;\""
