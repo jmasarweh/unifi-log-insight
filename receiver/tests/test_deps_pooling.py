@@ -34,8 +34,10 @@ _pool_mod.ThreadedConnectionPool = lambda *a, **kw: MagicMock()
 import deps as _deps_module
 _real_put_conn = _deps_module.put_conn
 
-# Restore
+# Restore — remove the half-mocked deps module and transitive stubs
+# so later tests that import deps get the real (or absent) module.
 _pool_mod.ThreadedConnectionPool = _orig_pool
+sys.modules.pop('deps', None)
 for _mod, _orig in _stashed.items():
     if _orig is None:
         sys.modules.pop(_mod, None)
