@@ -500,6 +500,32 @@ class UniFiAPI:
             if session:
                 session.close()
 
+    @staticmethod
+    def extract_network_identity_from_net_config(
+        net_config: dict,
+    ) -> tuple[dict[str, str], dict[str, dict]]:
+        """Derive WAN/gateway identity from a get_network_config() result.
+
+        Returns (wan_ip_by_iface, gateway_ip_vlans):
+        - wan_ip_by_iface: {physical_interface: wan_ip} for active WANs
+        - gateway_ip_vlans: {gateway_ip: {vlan, name}} for configured networks
+        """
+        wan_ip_by_iface = {
+            w['physical_interface']: w['wan_ip']
+            for w in net_config.get('wan_interfaces', [])
+            if w.get('physical_interface') and w.get('wan_ip')
+        }
+        gateway_ip_vlans = {}
+        for net in net_config.get('networks', []):
+            subnet = net.get('ip_subnet', '')
+            if '/' in subnet:
+                gw_ip = subnet.split('/')[0]
+                gateway_ip_vlans[gw_ip] = {
+                    'vlan': net.get('vlan'),
+                    'name': net.get('name', ''),
+                }
+        return wan_ip_by_iface, gateway_ip_vlans
+
     def get_network_config(self) -> dict:
         """Fetch network topology from Classic + Integration APIs for wizard."""
         if not self.enabled:

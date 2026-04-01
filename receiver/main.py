@@ -229,6 +229,27 @@ class SyslogReceiver:
             logger.warning("No UDP packets received for %.0fs — gateway may have stopped sending or port is unreachable", silence)
 
 
+# ── Network identity gate ────────────────────────────────────────────────────
+
+def _use_log_identity_detection(db: Database) -> bool:
+    """Return True when log-based WAN/gateway detection should run."""
+    return not bool(db.get_config('unifi_enabled', False))
+
+
+def _refresh_network_identity_from_logs(db: Database):
+    """Run log-based WAN/gateway detection only when UniFi is not authoritative."""
+    if not _use_log_identity_detection(db):
+        return
+    try:
+        db.detect_wan_ip()
+    except Exception as e:
+        logger.error("WAN IP detection failed: %s", e)
+    try:
+        db.detect_gateway_ips()
+    except Exception as e:
+        logger.error("Gateway IP detection failed: %s", e)
+
+
 # ── Scheduler ─────────────────────────────────────────────────────────────────
 
 def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: BlacklistFetcher = None):
@@ -271,14 +292,7 @@ def run_scheduler(db: Database, enricher: Enricher, blacklist_fetcher: Blacklist
                 logger.error("Blacklist pull failed: %s", e)
 
     def refresh_wan_ip():
-        try:
-            db.detect_wan_ip()
-        except Exception as e:
-            logger.error("WAN IP detection failed: %s", e)
-        try:
-            db.detect_gateway_ips()
-        except Exception as e:
-            logger.error("Gateway IP detection failed: %s", e)
+        _refresh_network_identity_from_logs(db)
 
     schedule.every(STATS_INTERVAL_MINUTES).minutes.do(log_stats)
     schedule.every(STATS_INTERVAL_MINUTES).minutes.do(refresh_wan_ip)
@@ -342,14 +356,8 @@ def main():
     logger.info("Loaded config: WAN interfaces = %s", parsers.WAN_INTERFACES)
 
     # Detect and persist WAN IP + gateway IPs from existing log data
-    try:
-        db.detect_wan_ip()
-    except Exception as e:
-        logger.error("Startup WAN IP detection failed: %s", e)
-    try:
-        db.detect_gateway_ips()
-    except Exception as e:
-        logger.error("Startup gateway IP detection failed: %s", e)
+    # (skipped when UniFi API is authoritative — identity comes from poll)
+    _refresh_network_identity_from_logs(db)
 
     # Check config version for future migrations
     current_version = get_config(db, 'config_version', 0)

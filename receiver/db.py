@@ -1472,6 +1472,32 @@ END $$;""",
     # ── WAN IP detection ──────────────────────────────────────────────────────
 
     # Shared SQL filter for excluding private/non-routable dst_ip
+    def persist_network_identity(
+        self,
+        *,
+        wan_ip_by_iface: dict[str, str] | None = None,
+        gateway_ip_vlans: dict[str, dict] | None = None,
+    ) -> None:
+        """Persist WAN/gateway identity derived from UniFi API data.
+
+        Writes only non-empty values.  Missing/empty inputs do not clear
+        last-known-good persisted values.  wan_ip_names stays outside this
+        helper (poll-specific).
+        """
+        if wan_ip_by_iface:
+            self.set_config('wan_ip_by_iface', wan_ip_by_iface)
+            # Derive ordered wan_ips following configured wan_interfaces order
+            cfg_wan_ifaces = self.get_config('wan_interfaces') or []
+            wan_ips = [wan_ip_by_iface[iface] for iface in cfg_wan_ifaces
+                       if iface in wan_ip_by_iface]
+            if wan_ips:
+                self.set_config('wan_ips', wan_ips)
+                self.set_config('wan_ip', wan_ips[0])
+
+        if gateway_ip_vlans:
+            self.set_config('gateway_ip_vlans', gateway_ip_vlans)
+            self.set_config('gateway_ips', sorted(gateway_ip_vlans.keys()))
+
     _PRIVATE_IP_FILTER = """
         NOT (dst_ip << '10.0.0.0/8'::inet
           OR dst_ip << '172.16.0.0/12'::inet
@@ -1506,12 +1532,11 @@ END $$;""",
                 return {row[0]: row[1] for row in cur.fetchall() if row[1]}
 
     def detect_wan_ip(self) -> str | None:
-        """Detect WAN IPs and persist to system_config.
+        """Detect WAN IPs from logs and persist to system_config.
 
-        When UniFi API is enabled AND wan_ip_by_iface exists, derives wan_ips
-        from the map (no log computation). Otherwise computes per-interface
-        WAN IPs from logs via get_wan_ips_by_interface() and stores
-        wan_ip_by_iface automatically.
+        Only called when unifi_enabled is false (gated by caller).
+        Computes per-interface WAN IPs from logs via
+        get_wan_ips_by_interface() and stores wan_ip_by_iface automatically.
 
         Returns the primary detected WAN IP or None.
         """
@@ -1519,29 +1544,20 @@ END $$;""",
         if not wan_interfaces:
             return None
 
-        unifi_enabled = self.get_config('unifi_enabled', False)
-        wan_ip_by_iface = self.get_config('wan_ip_by_iface')
+        # Compute per-interface WAN IPs from logs
+        iface_ips = self.get_wan_ips_by_interface(wan_interfaces)
 
-        if unifi_enabled and wan_ip_by_iface:
-            # UniFi API is authoritative — derive from map, don't compute from logs
-            wan_ips = [wan_ip_by_iface[iface] for iface in wan_interfaces
-                       if iface in wan_ip_by_iface and wan_ip_by_iface[iface]]
-            primary = wan_ips[0] if wan_ips else None
-        else:
-            # Compute per-interface WAN IPs from logs
-            iface_ips = self.get_wan_ips_by_interface(wan_interfaces)
+        # Store wan_ip_by_iface (auto-populate for legacy installs)
+        if iface_ips:
+            current_map = self.get_config('wan_ip_by_iface')
+            if current_map != iface_ips:
+                self.set_config('wan_ip_by_iface', iface_ips)
+                logger.info("wan_ip_by_iface auto-populated from logs: %s", iface_ips)
 
-            # Store wan_ip_by_iface (auto-populate for legacy installs)
-            if iface_ips:
-                current_map = self.get_config('wan_ip_by_iface')
-                if current_map != iface_ips:
-                    self.set_config('wan_ip_by_iface', iface_ips)
-                    logger.info("wan_ip_by_iface auto-populated from logs: %s", iface_ips)
-
-            # Derive ordered wan_ips following wan_interfaces order
-            wan_ips = [iface_ips[iface] for iface in wan_interfaces
-                       if iface in iface_ips and iface_ips[iface]]
-            primary = wan_ips[0] if wan_ips else None
+        # Derive ordered wan_ips following wan_interfaces order
+        wan_ips = [iface_ips[iface] for iface in wan_interfaces
+                   if iface in iface_ips and iface_ips[iface]]
+        primary = wan_ips[0] if wan_ips else None
 
         # Persist primary wan_ip
         if primary:
