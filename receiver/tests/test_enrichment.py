@@ -100,6 +100,88 @@ class TestTTLCache:
         cache = TTLCache()
         assert cache.get('nonexistent') is None
 
+    def test_set_existing_key_replaces_value_without_growing(self):
+        cache = TTLCache(ttl_seconds=60, max_entries=3)
+
+        cache.set('a', {'value': 1})
+        cache.set('a', {'value': 2})
+
+        assert cache.size() == 1
+        assert cache.get('a') == {'value': 2}
+
+    @pytest.mark.parametrize(
+        ('kwargs', 'message'),
+        [
+            ({'max_entries': 0}, 'positive'),
+            ({'max_entries': -1}, 'positive'),
+            ({'max_entries': 1, 'prune_trigger_ratio': 0.99}, '>= 1.0'),
+            ({'max_entries': 1, 'prune_target_ratio': 0}, 'within'),
+            ({'max_entries': 1, 'prune_target_ratio': 1.01}, 'within'),
+        ],
+    )
+    def test_constructor_validation(self, kwargs, message):
+        with pytest.raises(ValueError, match=message):
+            TTLCache(**kwargs)
+
+    def test_set_prunes_expired_entries_at_watermark(self, monkeypatch):
+        cache = TTLCache(ttl_seconds=10, max_entries=3)
+        real_time = [1000.0]
+        monkeypatch.setattr(_time, 'time', lambda: real_time[0])
+
+        cache.set('a', {'value': 'a'})
+        cache.set('b', {'value': 'b'})
+        cache.set('c', {'value': 'c'})
+
+        real_time[0] = 1011.0
+        cache.set('d', {'value': 'd'})
+
+        assert cache.size() == 1
+        assert cache.get('a') is None
+        assert cache.get('b') is None
+        assert cache.get('c') is None
+        assert cache.get('d') == {'value': 'd'}
+
+    def test_set_evicts_lru_down_to_watermark_target(self):
+        cache = TTLCache(ttl_seconds=60, max_entries=3)
+
+        cache.set('a', {'value': 'a'})
+        cache.set('b', {'value': 'b'})
+        cache.set('c', {'value': 'c'})
+        assert cache.get('a') == {'value': 'a'}  # refresh recency
+        cache.set('d', {'value': 'd'})
+
+        assert cache.size() == 2
+        assert cache.get('a') == {'value': 'a'}
+        assert cache.get('d') == {'value': 'd'}
+        assert cache.get('b') is None
+        assert cache.get('c') is None
+
+    def test_set_prunes_expired_then_evicts_lru_when_still_over_cap(self, monkeypatch):
+        cache = TTLCache(
+            ttl_seconds=10,
+            max_entries=5,
+            prune_trigger_ratio=2.0,
+            prune_target_ratio=0.8,
+        )
+        real_time = [1000.0]
+        monkeypatch.setattr(_time, 'time', lambda: real_time[0])
+
+        for key in ('a', 'b', 'c'):
+            cache.set(key, {'value': key})
+
+        real_time[0] = 1005.0
+        for key in ('d', 'e', 'f', 'g', 'h', 'i'):
+            cache.set(key, {'value': key})
+
+        real_time[0] = 1011.0
+        cache.set('j', {'value': 'j'})
+
+        assert cache.size() == 4
+        for key in ('a', 'b', 'c', 'd', 'e', 'f'):
+            assert cache.get(key) is None
+        for key in ('g', 'h', 'i', 'j'):
+            assert cache.get(key) == {'value': key}
+
 
 # ── GeoIPEnricher ────────────────────────────────────────────────────────────
 

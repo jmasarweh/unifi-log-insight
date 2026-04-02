@@ -10,16 +10,20 @@ Enriches public IPs with:
 
 import os
 import json
+import math
 import socket
 import ipaddress
 import logging
 import time
 import threading
+from collections import OrderedDict
 from typing import Optional
 
 import requests
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_TTL_SECONDS = 86400
 
 # ── Private/reserved IP detection ─────────────────────────────────────────────
 
@@ -78,17 +82,54 @@ def get_abuseipdb_stats(db):
 # ── Thread-safe cache ─────────────────────────────────────────────────────────
 
 class TTLCache:
-    """Simple thread-safe cache with TTL expiry."""
+    """Thread-safe TTL cache with optional LRU + watermark eviction."""
 
-    def __init__(self, ttl_seconds: int = 86400):
+    def __init__(
+        self,
+        ttl_seconds: int = DEFAULT_TTL_SECONDS,
+        max_entries: Optional[int] = None,
+        prune_trigger_ratio: float = 1.10,
+        prune_target_ratio: float = 0.90,
+    ):
         self.ttl = ttl_seconds
-        self._cache = {}
+        self.max_entries = max_entries
+        self._cache = OrderedDict()
         self._lock = threading.Lock()
+        if self.max_entries is not None:
+            if self.max_entries <= 0:
+                raise ValueError("max_entries must be positive")
+            if prune_trigger_ratio < 1.0:
+                raise ValueError("prune_trigger_ratio must be >= 1.0")
+            if prune_target_ratio <= 0 or prune_target_ratio > 1.0:
+                raise ValueError("prune_target_ratio must be within (0, 1]")
+            trigger_count = math.ceil(self.max_entries * prune_trigger_ratio)
+            target_count = math.floor(self.max_entries * prune_target_ratio)
+            self._prune_trigger_count = max(self.max_entries, trigger_count)
+            self._prune_target_count = max(1, min(self.max_entries, target_count))
+        else:
+            self._prune_trigger_count = None
+            self._prune_target_count = None
+
+    def _is_expired(self, entry_time: float, now: float) -> bool:
+        return now - entry_time >= self.ttl
+
+    def _prune_expired_locked(self, now: float):
+        expired_keys = [
+            key for key, entry in self._cache.items()
+            if self._is_expired(entry['time'], now)
+        ]
+        for key in expired_keys:
+            self._cache.pop(key, None)
+
+    def _evict_overflow_locked(self):
+        while len(self._cache) > self._prune_target_count:
+            self._cache.popitem(last=False)
 
     def get(self, key: str) -> Optional[dict]:
         with self._lock:
             entry = self._cache.get(key)
-            if entry and time.time() - entry['time'] < self.ttl:
+            if entry and not self._is_expired(entry['time'], time.time()):
+                self._cache.move_to_end(key)
                 return entry['value']
             elif entry:
                 del self._cache[key]
@@ -96,7 +137,14 @@ class TTLCache:
 
     def set(self, key: str, value: dict):
         with self._lock:
-            self._cache[key] = {'value': value, 'time': time.time()}
+            now = time.time()
+            self._cache[key] = {'value': value, 'time': now}
+            self._cache.move_to_end(key)
+            if (self._prune_trigger_count is not None
+                    and len(self._cache) >= self._prune_trigger_count):
+                self._prune_expired_locked(now)
+                if len(self._cache) > self.max_entries:
+                    self._evict_overflow_locked()
 
     def size(self) -> int:
         with self._lock:
@@ -195,10 +243,14 @@ class AbuseIPDBEnricher:
 
     API_URL = 'https://api.abuseipdb.com/api/v2/check'
     STATS_FILE = '/tmp/abuseipdb_stats.json'
+    MEMORY_CACHE_MAX_ENTRIES = 5000
 
     def __init__(self, api_key: str = None, db=None):
         self.api_key = api_key if api_key is not None else os.environ.get('ABUSEIPDB_API_KEY', '')
-        self.cache = TTLCache(ttl_seconds=86400)  # 24h in-memory hot cache
+        self.cache = TTLCache(
+            ttl_seconds=DEFAULT_TTL_SECONDS,
+            max_entries=self.MEMORY_CACHE_MAX_ENTRIES,
+        )  # 24h in-memory hot cache
         self.db = db  # Database instance for persistent threat cache
         self.enabled = bool(self.api_key)
         self._lock = threading.Lock()
@@ -516,9 +568,14 @@ class AbuseIPDBEnricher:
 class RDNSEnricher:
     """Reverse DNS (PTR) lookups with caching."""
 
+    MEMORY_CACHE_MAX_ENTRIES = 20000
+
     def __init__(self, timeout: float = 2.0):
         self.timeout = timeout
-        self.cache = TTLCache(ttl_seconds=86400)  # 24h cache
+        self.cache = TTLCache(
+            ttl_seconds=DEFAULT_TTL_SECONDS,
+            max_entries=self.MEMORY_CACHE_MAX_ENTRIES,
+        )  # 24h cache
 
     def lookup(self, ip_str: str) -> dict:
         """Perform rDNS lookup. Returns {'rdns': hostname} or {}."""
