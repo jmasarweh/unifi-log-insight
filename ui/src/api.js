@@ -430,6 +430,28 @@ export async function patchMigrationCompose(params) {
   })
 }
 
+// ── Pi-hole Settings API ────────────────────────────────────────────────────
+
+export async function fetchPiholeSettings() {
+  return apiFetch(`${BASE}/settings/pihole`)
+}
+
+export async function updatePiholeSettings(settings) {
+  return apiFetch(`${BASE}/settings/pihole`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(settings)
+  })
+}
+
+export async function testPiholeConnection(params) {
+  return apiFetch(`${BASE}/settings/pihole/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params)
+  })
+}
+
 // ── Version Check ────────────────────────────────────────────────────────────
 
 export async function fetchLatestRelease(currentVersion) {

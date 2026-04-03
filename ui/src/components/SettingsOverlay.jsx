@@ -7,6 +7,7 @@ import SettingsUserInterface from './SettingsUserInterface'
 import SettingsMCP from './SettingsMCP'
 import SettingsSecurity from './SettingsSecurity'
 import SettingsAPI from './SettingsAPI'
+import SettingsIntegrations from './SettingsIntegrations'
 import SetupWizard from './SetupWizard'
 import ReleaseNotesModal, { isNewerVersion } from './ReleaseNotesModal'
 
@@ -32,6 +33,16 @@ const BASE_SECTIONS = [
     icon: (
       <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
         <path fillRule="evenodd" clipRule="evenodd" d="M8 5h4v2H8V5Zm5 2V5h4v2h-4Zm5 0h2V5h-2v2ZM7 5H4v2h3V5ZM4 8h1v2H4V8Zm2 2V8h4v2H6Zm5 0h4V8h-4v2Zm5 0V8h4v2h-4ZM3 7v12a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v2Zm5 6v-2h4v2H8Zm5 0v-2h4v2h-4Zm5 0v-2h2v2h-2ZM7 11H4v2h3v-2Zm-3 8v-2h3v2H4Zm4 0v-2h4v2H8Zm10 0h2v-2h-2v2Zm-1 0v-2h-4v2h4Zm3-5v2h-4v-2h4Zm-5 0v2h-4v-2h4Zm-5 0v2H6v-2h4Zm-5 0v2H4v-2h1Z" />
+      </svg>
+    ),
+  },
+  {
+    id: 'integrations',
+    label: 'Integrations',
+    badge: 'Beta',
+    icon: (
+      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M21.4 7.5c.8.8.8 2.1 0 2.8l-2.8 2.8l-7.8-7.8l2.8-2.8c.8-.8 2.1-.8 2.8 0l1.8 1.8l3-3l1.4 1.4l-3 3zm-5.8 5.8l-1.4-1.4l-2.8 2.8l-2.1-2.1l2.8-2.8l-1.4-1.4l-2.8 2.8l-1.5-1.4l-2.8 2.8c-.8.8-.8 2.1 0 2.8l1.8 1.8l-4 4l1.4 1.4l4-4l1.8 1.8c.8.8 2.1.8 2.8 0l2.8-2.8l-1.4-1.4z" />
       </svg>
     ),
   },
@@ -266,6 +277,11 @@ export default function SettingsOverlay({ onClose, startInReconfig, initialSecti
             >
               {section.icon}
               {section.label}
+              {section.badge && (
+                <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none bg-yellow-500/15 text-yellow-400 border border-yellow-500/30">
+                  {section.badge}
+                </span>
+              )}
             </button>
           ))}
           {version && (
@@ -325,6 +341,9 @@ export default function SettingsOverlay({ onClose, startInReconfig, initialSecti
                     onVpnSaved={() => { fetchConfig().then(cfg => { setConfig(cfg); onVpnSavedApp?.(cfg) }).catch(() => {}) }}
                     unlabeledVpn={unlabeledVpn}
                   />
+                )}
+                {activeSection === 'integrations' && (
+                  <SettingsIntegrations />
                 )}
                 {activeSection === 'firewall' && (
                   <SettingsFirewall
