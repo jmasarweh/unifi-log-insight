@@ -1,0 +1,205 @@
+"""
+AdGuard Home v0.107+ query log poller.
+
+Polls GET /control/querylog using a cursor (older_than) to fetch new DNS
+queries since the last poll and stores them in the adguard_logs table.
+Authentication uses HTTP Basic Auth (username:password, base64-encoded).
+
+Client names are resolved from GET /control/clients and cached for 5 minutes.
+Configured clients take priority over auto-detected clients.
+"""
+
+import base64
+import logging
+import threading
+import time
+
+import requests
+
+from db import Database, decrypt_api_key, get_config
+
+logger = logging.getLogger('adguard_poller')
+
+_POLL_BATCH = 500           # max entries per API call
+_CLIENT_CACHE_TTL = 300     # seconds between /control/clients refreshes
+
+
+class AdGuardHomePoller:
+    """Background thread that polls AdGuard Home query logs into adguard_logs."""
+
+    def __init__(self, db: Database):
+        """Initialise poller. Config is loaded from system_config via reload_config()."""
+        self._db = db
+        self._stop = threading.Event()
+        self._thread = None
+        self._clients: dict[str, str] = {}   # ip → display name
+        self._clients_refreshed = 0.0
+        self.reload_config()
+
+    # ── Config ────────────────────────────────────────────────────────────────
+
+    def reload_config(self):
+        """Re-read AdGuard config from system_config. Safe to call from SIGUSR2 handler."""
+        self._enabled  = bool(get_config(self._db, 'adguard_enabled', False))
+        self._host     = (get_config(self._db, 'adguard_host', '') or '').rstrip('/')
+        self._username = get_config(self._db, 'adguard_username', 'admin') or 'admin'
+        enc            = get_config(self._db, 'adguard_password_enc', '') or ''
+        self._password = decrypt_api_key(enc) if enc else ''
+        self._interval = max(15, int(get_config(self._db, 'adguard_poll_interval', 30) or 30))
+
+    # ── Auth ──────────────────────────────────────────────────────────────────
+
+    def _auth_header(self) -> dict:
+        """Build HTTP Basic Auth header from stored credentials."""
+        token = base64.b64encode(
+            f"{self._username}:{self._password}".encode()
+        ).decode()
+        return {'Authorization': f'Basic {token}'}
+
+    # ── Client name cache ─────────────────────────────────────────────────────
+
+    def _refresh_clients(self):
+        """Fetch /control/clients and rebuild IP→name cache (TTL-gated)."""
+        if time.time() - self._clients_refreshed < _CLIENT_CACHE_TTL:
+            return
+        try:
+            r = requests.get(
+                f"{self._host}/control/clients",
+                headers=self._auth_header(),
+                timeout=10,
+            )
+            r.raise_for_status()
+            data = r.json()
+            cache: dict[str, str] = {}
+            # Auto-detected first (lower priority)
+            for c in data.get('auto_clients', []):
+                if c.get('name') and c.get('ip'):
+                    cache[c['ip']] = c['name']
+            # Configured clients override (higher priority)
+            for c in data.get('clients', []):
+                name = c.get('name', '')
+                for cid in c.get('ids', []):
+                    if name:
+                        cache[cid] = name
+            self._clients = cache
+            self._clients_refreshed = time.time()
+            logger.debug("AdGuard client cache refreshed: %d entries", len(cache))
+        except Exception as e:
+            logger.warning("AdGuard: client cache refresh failed: %s", e)
+
+    # ── Poll ──────────────────────────────────────────────────────────────────
+
+    def _poll(self):
+        """Fetch one batch of new query log entries and insert them into the DB."""
+        cursor = get_config(self._db, 'adguard_cursor', None)
+        params: dict = {'limit': _POLL_BATCH, 'response_status': 'all'}
+        if cursor:
+            params['older_than'] = cursor
+
+        try:
+            r = requests.get(
+                f"{self._host}/control/querylog",
+                headers=self._auth_header(),
+                params=params,
+                timeout=15,
+            )
+            r.raise_for_status()
+        except requests.HTTPError as e:
+            logger.error("AdGuard poll HTTP %s: %s", e.response.status_code if e.response is not None else '?', e)
+            return
+        except requests.RequestException as e:
+            logger.error("AdGuard poll connection error: %s", e)
+            return
+
+        data = r.json()
+        entries = data.get('data') or []
+        oldest  = data.get('oldest')   # ISO timestamp → cursor for next call
+
+        if not entries:
+            return
+
+        self._refresh_clients()
+        batch = [_parse_entry(e, self._clients) for e in entries]
+        inserted = self._db.insert_adguard_batch(batch)
+
+        # Advance cursor only after successful insert
+        if oldest:
+            self._db.set_config('adguard_cursor', oldest)
+
+        logger.debug("AdGuard: polled %d entries, inserted %d, cursor=%s",
+                     len(entries), inserted, (oldest or '')[:30])
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    def run(self):
+        """Main loop — runs in a daemon thread."""
+        logger.info("AdGuard poller started (host=%s, interval=%ds)", self._host, self._interval)
+        while not self._stop.is_set():
+            if self._enabled and self._host:
+                try:
+                    self._poll()
+                except Exception:
+                    logger.exception("AdGuard poll unhandled error")
+            self._stop.wait(self._interval)
+        logger.info("AdGuard poller stopped")
+
+    def start(self):
+        """Start the poller in a background daemon thread."""
+        self._thread = threading.Thread(
+            target=self.run, daemon=True, name="adguard-poller"
+        )
+        self._thread.start()
+
+    def stop(self):
+        """Signal the polling loop to exit."""
+        self._stop.set()
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _parse_entry(e: dict, clients: dict[str, str]) -> dict:
+    """Map a raw AGH QueryLogItem dict to a flat dict for DB insert."""
+    client_ip = e.get('client', '')
+    q = e.get('question') or {}
+    rules = e.get('rules') or []
+    client_info = e.get('client_info') or {}
+    return {
+        'timestamp':      e.get('time'),
+        'client_ip':      client_ip or None,
+        'client_name':    clients.get(client_ip) or client_info.get('name') or None,
+        'domain':         q.get('name', ''),
+        'record_type':    q.get('type', ''),
+        'reason':         e.get('reason', ''),
+        'dns_status':     e.get('status', ''),
+        'upstream':       e.get('upstream', '') or None,
+        'elapsed_ms':     _safe_float(e.get('elapsedMs')),
+        'cached':         bool(e.get('cached', False)),
+        'answer_dnssec':  bool(e.get('answer_dnssec', False)),
+        'rule_text':      rules[0].get('text') if rules else None,
+        'filter_list_id': rules[0].get('filter_list_id') if rules else None,
+    }
+
+
+def _safe_float(v) -> float | None:
+    """Convert a value to float, returning None on failure or None input."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def test_connection(host: str, username: str, password: str) -> dict:
+    """Test connectivity to an AdGuard Home instance.
+
+    Returns dict with 'version' and 'running' keys on success.
+    Raises requests.RequestException or HTTPError on failure.
+    """
+    host = (host or '').rstrip('/')
+    token = base64.b64encode(f"{username}:{password}".encode()).decode()
+    headers = {'Authorization': f'Basic {token}'}
+    r = requests.get(f"{host}/control/status", headers=headers, timeout=8)
+    r.raise_for_status()
+    data = r.json()
+    return {'version': data.get('version', ''), 'running': bool(data.get('running', False))}

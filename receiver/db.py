@@ -670,6 +670,28 @@ END $$;""",
                 WHERE log_type = 'firewall'
                   AND service_name IS NULL
                   AND dst_port IS NOT NULL""",
+            # ── AdGuard Home integration ──────────────────────────────────────
+            """CREATE TABLE IF NOT EXISTS adguard_logs (
+                id             BIGSERIAL PRIMARY KEY,
+                timestamp      TIMESTAMPTZ NOT NULL,
+                client_ip      INET,
+                client_name    TEXT,
+                domain         TEXT NOT NULL DEFAULT '',
+                record_type    TEXT,
+                reason         TEXT,
+                dns_status     TEXT,
+                upstream       TEXT,
+                elapsed_ms     DOUBLE PRECISION,
+                cached         BOOLEAN NOT NULL DEFAULT FALSE,
+                answer_dnssec  BOOLEAN NOT NULL DEFAULT FALSE,
+                rule_text      TEXT,
+                filter_list_id INTEGER,
+                inserted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )""",
+            "CREATE INDEX IF NOT EXISTS idx_adguard_timestamp   ON adguard_logs (timestamp DESC)",
+            "CREATE INDEX IF NOT EXISTS idx_adguard_client_ip   ON adguard_logs (client_ip)",
+            "CREATE INDEX IF NOT EXISTS idx_adguard_domain      ON adguard_logs (domain)",
+            "CREATE INDEX IF NOT EXISTS idx_adguard_reason      ON adguard_logs (reason)",
         ]
         try:
             with self.get_conn() as conn:
@@ -1001,6 +1023,29 @@ END $$;""",
                     dropped += 1
                     logger.warning("Dropped bad log row: %s — raw: %.200s", row_err, row[-1] if row else '?')
             logger.info("Row-by-row fallback: %d inserted, %d dropped", inserted, dropped)
+
+    def insert_adguard_batch(self, entries: list[dict]) -> int:
+        """Insert a batch of AdGuard Home query log entries.
+
+        Uses execute_batch for efficiency. Returns the number of rows inserted.
+        """
+        if not entries:
+            return 0
+        sql = """
+            INSERT INTO adguard_logs
+                (timestamp, client_ip, client_name, domain, record_type,
+                 reason, dns_status, upstream, elapsed_ms, cached,
+                 answer_dnssec, rule_text, filter_list_id)
+            VALUES
+                (%(timestamp)s, %(client_ip)s, %(client_name)s, %(domain)s,
+                 %(record_type)s, %(reason)s, %(dns_status)s, %(upstream)s,
+                 %(elapsed_ms)s, %(cached)s, %(answer_dnssec)s,
+                 %(rule_text)s, %(filter_list_id)s)
+        """
+        with self.get_conn() as conn:
+            with conn.cursor() as cur:
+                extras.execute_batch(cur, sql, entries, page_size=100)
+                return cur.rowcount
 
     def insert_pihole_batch(self, logs: list[dict], new_cursor: int):
         """Atomic insert of Pi-hole logs + cursor update. No row-by-row fallback.
