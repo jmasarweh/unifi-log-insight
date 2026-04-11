@@ -372,7 +372,7 @@ def test_post_boot_drops_set_lock_timeout_before_drops(monkeypatch):
 
 
 def test_post_boot_drops_skipped_if_set_lock_timeout_fails(monkeypatch):
-    """If SET lock_timeout fails, drops are skipped entirely (safer default)."""
+    """If SET lock_timeout fails, drops are skipped entirely and a warning is logged."""
     mock_conn = MagicMock()
     mock_cursor = MagicMock()
     mock_cursor.fetchone.return_value = (1,)  # creates skipped
@@ -388,11 +388,18 @@ def test_post_boot_drops_skipped_if_set_lock_timeout_fails(monkeypatch):
 
     database = Database(conn_params={'user': 'unifi'})
     monkeypatch.setattr('db.psycopg2.connect', lambda **kw: mock_conn)
+    mock_logger = MagicMock()
+    monkeypatch.setattr(db_module, 'logger', mock_logger)
 
     database.ensure_post_boot_indexes()
 
     executed_sql = ' '.join(str(c) for c in mock_cursor.execute.call_args_list)
     assert 'DROP INDEX' not in executed_sql
+
+    warning_calls = [c for c in mock_logger.warning.call_args_list
+                     if 'lock_timeout' in str(c)]
+    assert len(warning_calls) == 1, \
+        "Expected a warning mentioning lock_timeout when SET fails"
 
 
 def test_post_boot_drops_continue_after_single_failure(monkeypatch):
