@@ -84,7 +84,7 @@ def put_adguard_config(body: AdGuardConfig):
         try:
             set_config(enricher_db, 'adguard_password_enc', encrypt_api_key(body.password))
         except ValueError as e:
-            raise HTTPException(status_code=500, detail=f'Encryption failed: {e}')
+            raise HTTPException(status_code=500, detail=f'Encryption failed: {e}') from e
 
     # Clear cursor when host changes so the poller re-fetches from the new instance.
     if body.host.rstrip('/') != stored_host:
@@ -104,7 +104,7 @@ def test_adguard_connection(body: AdGuardTestRequest):
     try:
         info = test_connection(body.host, body.username, body.password)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f'Connection failed: {e}')
+        raise HTTPException(status_code=400, detail=f'Connection failed: {e}') from e
     return {'ok': True, 'version': info.get('version', ''), 'running': info.get('running', False)}
 
 

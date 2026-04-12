@@ -1051,7 +1051,10 @@ END $$;""",
         with self.get_conn() as conn:
             with conn.cursor() as cur:
                 extras.execute_batch(cur, sql, entries, page_size=100)
-                inserted = cur.rowcount
+                # execute_batch runs multiple internal rounds; cur.rowcount only
+                # reflects the last round. Use len(entries) — no ON CONFLICT clause
+                # means every row is inserted unconditionally.
+                inserted = len(entries)
                 if new_cursor:
                     cur.execute(
                         """INSERT INTO system_config (key, value, updated_at)
