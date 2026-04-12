@@ -40,8 +40,15 @@ class AdGuardHomePoller:
 
     def reload_config(self):
         """Re-read AdGuard config from system_config. Safe to call from SIGUSR2 handler."""
+        new_host = (get_config(self._db, 'adguard_host', '') or '').rstrip('/')
+        if new_host != self._host:
+            # Host changed — invalidate client cache so _refresh_clients fetches
+            # fresh names from the new instance rather than serving stale data.
+            self._clients = {}
+            self._clients_refreshed = 0.0
+
         self._enabled  = bool(get_config(self._db, 'adguard_enabled', False))
-        self._host     = (get_config(self._db, 'adguard_host', '') or '').rstrip('/')
+        self._host     = new_host
         self._username = get_config(self._db, 'adguard_username', 'admin') or 'admin'
         enc            = get_config(self._db, 'adguard_password_enc', '') or ''
         self._password = decrypt_api_key(enc) if enc else ''
@@ -90,59 +97,81 @@ class AdGuardHomePoller:
     # ── Poll ──────────────────────────────────────────────────────────────────
 
     def _poll(self):
-        """Fetch the latest query log entries and insert any that are newer than the cursor.
+        """Fetch all query log entries newer than the stored cursor and insert them.
 
-        Forward-pagination strategy: always fetch the most recent page (no
-        ``older_than``), then discard entries whose timestamp is at or before
-        the stored cursor.  The cursor is updated to the newest timestamp seen
-        so each subsequent poll only ingests genuinely new entries.
+        Pagination strategy: fetch pages from newest to oldest using the
+        ``older_than`` cursor returned by each page.  Stop when a page is empty,
+        when the page's oldest timestamp is at or before the stored cursor, or
+        when we exceed a safety page limit.  Accumulated entries are then
+        filtered to those strictly newer than the cursor before insert.
         """
         cursor = get_config(self._db, 'adguard_cursor', None)
-        params: dict = {'limit': _POLL_BATCH, 'response_status': 'all'}
-        # Do NOT pass older_than — we always want the most recent page so that
-        # new queries are never missed.  Deduplication is handled below.
 
-        try:
-            r = requests.get(
-                f"{self._host}/control/querylog",
-                headers=self._auth_header(),
-                params=params,
-                timeout=15,
-            )
-            r.raise_for_status()
-        except requests.HTTPError as e:
-            logger.error("AdGuard poll HTTP %s: %s", e.response.status_code if e.response is not None else '?', e)
+        all_entries: list[dict] = []
+        older_than: str | None = None   # used to walk backward through pages
+        max_pages = 20                  # safety limit (~10 000 entries)
+
+        for _ in range(max_pages):
+            params: dict = {'limit': _POLL_BATCH, 'response_status': 'all'}
+            if older_than:
+                params['older_than'] = older_than
+
+            try:
+                r = requests.get(
+                    f"{self._host}/control/querylog",
+                    headers=self._auth_header(),
+                    params=params,
+                    timeout=15,
+                )
+                r.raise_for_status()
+            except requests.HTTPError as e:
+                logger.error("AdGuard poll HTTP %s: %s",
+                             e.response.status_code if e.response is not None else '?', e)
+                return
+            except requests.RequestException as e:
+                logger.error("AdGuard poll connection error: %s", e)
+                return
+
+            data = r.json()
+            page = data.get('data') or []
+            oldest_on_page = data.get('oldest') or ''   # timestamp of last entry on page
+
+            if not page:
+                break
+
+            all_entries.extend(page)
+
+            # Stop if we've gone back past the cursor — no older new entries exist.
+            if cursor and oldest_on_page and oldest_on_page <= cursor:
+                break
+
+            # No more pages available.
+            if not oldest_on_page or len(page) < _POLL_BATCH:
+                break
+
+            older_than = oldest_on_page
+
+        if not all_entries:
             return
-        except requests.RequestException as e:
-            logger.error("AdGuard poll connection error: %s", e)
-            return
 
-        data = r.json()
-        entries = data.get('data') or []
-
-        if not entries:
-            return
-
-        # Filter to only entries newer than the cursor so we never re-insert
-        # rows we have already persisted.
+        # Keep only entries strictly newer than the stored cursor.
         if cursor:
-            entries = [e for e in entries if (e.get('time') or '') > cursor]
+            all_entries = [e for e in all_entries if (e.get('time') or '') > cursor]
 
-        if not entries:
+        if not all_entries:
             return
 
         self._refresh_clients()
-        batch = [_parse_entry(e, self._clients) for e in entries]
+        batch = [_parse_entry(e, self._clients) for e in all_entries]
 
-        # Advance the cursor to the newest timestamp in this batch (entries are
-        # newest-first, so index 0 holds the most recent entry).
-        new_cursor = max(e.get('time') or '' for e in entries)
+        # Advance cursor to the newest timestamp seen (entries are newest-first).
+        new_cursor = max(e.get('time') or '' for e in all_entries)
 
         # Insert rows and advance the cursor atomically.
         inserted = self._db.insert_adguard_batch(batch, new_cursor=new_cursor)
 
         logger.debug("AdGuard: polled %d new entries, inserted %d, cursor=%s",
-                     len(entries), inserted, new_cursor[:30])
+                     len(all_entries), inserted, new_cursor[:30])
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 

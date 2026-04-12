@@ -73,7 +73,10 @@ def put_adguard_config(body: AdGuardConfig):
             detail='poll_interval must be between 15 and 86400 seconds',
         )
 
-    if body.enabled and not body.host.strip():
+    # Normalise host once — strip surrounding whitespace then trailing slashes.
+    normalized_host = body.host.strip().rstrip('/')
+
+    if body.enabled and not normalized_host:
         raise HTTPException(
             status_code=400,
             detail='host is required when AdGuard integration is enabled',
@@ -88,17 +91,17 @@ def put_adguard_config(body: AdGuardConfig):
             raise HTTPException(status_code=500, detail=f'Encryption failed: {e}') from e
 
     # Read stored host BEFORE writing so the comparison is against the old value.
-    stored_host = (get_config(enricher_db, 'adguard_host', '') or '').rstrip('/')
+    stored_host = (get_config(enricher_db, 'adguard_host', '') or '').strip().rstrip('/')
 
     set_config(enricher_db, 'adguard_enabled',       body.enabled)
-    set_config(enricher_db, 'adguard_host',          body.host.rstrip('/'))
+    set_config(enricher_db, 'adguard_host',          normalized_host)
     set_config(enricher_db, 'adguard_username',      body.username)
     set_config(enricher_db, 'adguard_poll_interval', body.poll_interval)
     if encrypted_password is not None:
         set_config(enricher_db, 'adguard_password_enc', encrypted_password)
 
     # Clear cursor when host changes so the poller re-fetches from the new instance.
-    if body.host.rstrip('/') != stored_host:
+    if normalized_host != stored_host:
         set_config(enricher_db, 'adguard_cursor', None)
 
     signal_receiver()
