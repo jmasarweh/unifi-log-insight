@@ -79,6 +79,14 @@ def put_adguard_config(body: AdGuardConfig):
             detail='host is required when AdGuard integration is enabled',
         )
 
+    # Encrypt password BEFORE any writes so a failure leaves config unchanged.
+    encrypted_password = None
+    if body.password and body.password != _PASSWORD_PLACEHOLDER:
+        try:
+            encrypted_password = encrypt_api_key(body.password)
+        except ValueError as e:
+            raise HTTPException(status_code=500, detail=f'Encryption failed: {e}') from e
+
     # Read stored host BEFORE writing so the comparison is against the old value.
     stored_host = (get_config(enricher_db, 'adguard_host', '') or '').rstrip('/')
 
@@ -86,12 +94,8 @@ def put_adguard_config(body: AdGuardConfig):
     set_config(enricher_db, 'adguard_host',          body.host.rstrip('/'))
     set_config(enricher_db, 'adguard_username',      body.username)
     set_config(enricher_db, 'adguard_poll_interval', body.poll_interval)
-
-    if body.password and body.password != _PASSWORD_PLACEHOLDER:
-        try:
-            set_config(enricher_db, 'adguard_password_enc', encrypt_api_key(body.password))
-        except ValueError as e:
-            raise HTTPException(status_code=500, detail=f'Encryption failed: {e}') from e
+    if encrypted_password is not None:
+        set_config(enricher_db, 'adguard_password_enc', encrypted_password)
 
     # Clear cursor when host changes so the poller re-fetches from the new instance.
     if body.host.rstrip('/') != stored_host:
@@ -145,7 +149,7 @@ def get_adguard_stats():
             cur.execute("""
                 SELECT
                     COUNT(*)                                                                       AS total,
-                    COUNT(*) FILTER (WHERE reason NOT LIKE 'NotFiltered%%')                        AS blocked,
+                    COUNT(*) FILTER (WHERE reason LIKE 'Filtered%%')                               AS blocked,
                     COUNT(*) FILTER (WHERE cached = TRUE)                                          AS cached,
                     ROUND(AVG(elapsed_ms) FILTER (WHERE elapsed_ms IS NOT NULL)::numeric, 2)       AS avg_elapsed_ms
                 FROM adguard_logs

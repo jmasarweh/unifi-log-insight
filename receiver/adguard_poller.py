@@ -90,11 +90,17 @@ class AdGuardHomePoller:
     # ── Poll ──────────────────────────────────────────────────────────────────
 
     def _poll(self):
-        """Fetch one batch of new query log entries and insert them into the DB."""
+        """Fetch the latest query log entries and insert any that are newer than the cursor.
+
+        Forward-pagination strategy: always fetch the most recent page (no
+        ``older_than``), then discard entries whose timestamp is at or before
+        the stored cursor.  The cursor is updated to the newest timestamp seen
+        so each subsequent poll only ingests genuinely new entries.
+        """
         cursor = get_config(self._db, 'adguard_cursor', None)
         params: dict = {'limit': _POLL_BATCH, 'response_status': 'all'}
-        if cursor:
-            params['older_than'] = cursor
+        # Do NOT pass older_than — we always want the most recent page so that
+        # new queries are never missed.  Deduplication is handled below.
 
         try:
             r = requests.get(
@@ -113,19 +119,30 @@ class AdGuardHomePoller:
 
         data = r.json()
         entries = data.get('data') or []
-        oldest  = data.get('oldest')   # ISO timestamp → cursor for next call
+
+        if not entries:
+            return
+
+        # Filter to only entries newer than the cursor so we never re-insert
+        # rows we have already persisted.
+        if cursor:
+            entries = [e for e in entries if (e.get('time') or '') > cursor]
 
         if not entries:
             return
 
         self._refresh_clients()
         batch = [_parse_entry(e, self._clients) for e in entries]
-        # Insert rows and advance the cursor in the same transaction so a
-        # mid-flight crash cannot leave the cursor ahead of persisted data.
-        inserted = self._db.insert_adguard_batch(batch, new_cursor=oldest)
 
-        logger.debug("AdGuard: polled %d entries, inserted %d, cursor=%s",
-                     len(entries), inserted, (oldest or '')[:30])
+        # Advance the cursor to the newest timestamp in this batch (entries are
+        # newest-first, so index 0 holds the most recent entry).
+        new_cursor = max(e.get('time') or '' for e in entries)
+
+        # Insert rows and advance the cursor atomically.
+        inserted = self._db.insert_adguard_batch(batch, new_cursor=new_cursor)
+
+        logger.debug("AdGuard: polled %d new entries, inserted %d, cursor=%s",
+                     len(entries), inserted, new_cursor[:30])
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
