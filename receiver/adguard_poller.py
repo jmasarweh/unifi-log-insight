@@ -67,14 +67,19 @@ class AdGuardHomePoller:
 
     # ── Client name cache ─────────────────────────────────────────────────────
 
-    def _refresh_clients(self):
-        """Fetch /control/clients and rebuild IP→name cache (TTL-gated)."""
+    def _refresh_clients(self, poll_host: str, poll_headers: dict):
+        """Fetch /control/clients and rebuild IP→name cache (TTL-gated).
+
+        Accepts the poll-time host/headers snapshot so client names are always
+        fetched from the same instance that provided the query log entries,
+        avoiding a race with ``reload_config()`` changing ``self._host``.
+        """
         if time.time() - self._clients_refreshed < _CLIENT_CACHE_TTL:
             return
         try:
             r = requests.get(
-                f"{self._host}/control/clients",
-                headers=self._auth_header(),
+                f"{poll_host}/control/clients",
+                headers=poll_headers,
                 timeout=10,
             )
             r.raise_for_status()
@@ -190,7 +195,7 @@ class AdGuardHomePoller:
         if not all_entries:
             return
 
-        self._refresh_clients()
+        self._refresh_clients(poll_host, poll_headers)
         batch = [_parse_entry(e, self._clients) for e in all_entries]
 
         # Advance cursor to the newest timestamp seen.
@@ -202,7 +207,7 @@ class AdGuardHomePoller:
         inserted = self._db.insert_adguard_batch(batch, new_cursor=new_cursor)
 
         logger.debug("AdGuard: polled %d new entries, inserted %d, cursor=%s",
-                     len(all_entries), inserted, new_cursor[:30])
+                     len(all_entries), inserted, (new_cursor or '')[:30])
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
