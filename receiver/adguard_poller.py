@@ -290,7 +290,10 @@ class AdGuardHomePoller:
 
         # ── Deduplication: keep only entries strictly newer than the cursor ────
         # Entries equal to the cursor were already inserted in the previous cycle.
+        # Entries with unparseable timestamps fall back to datetime.min and are
+        # filtered out; a debug log is emitted so they are visible during troubleshooting.
         if cursor_dt:
+            pre_filter_count = len(all_entries)
             all_entries = [
                 e for e in all_entries
                 if (
@@ -298,6 +301,12 @@ class AdGuardHomePoller:
                     or datetime.min.replace(tzinfo=cursor_dt.tzinfo)
                 ) > cursor_dt
             ]
+            dropped = pre_filter_count - len(all_entries)
+            if dropped > 0:
+                logger.debug(
+                    "AdGuard: filtered %d entries (at/before cursor or unparseable timestamp)",
+                    dropped,
+                )
 
         if not all_entries:
             return  # nothing new since the last poll
