@@ -39,7 +39,7 @@ from datetime import datetime
 
 import requests
 
-from db import Database, decrypt_api_key, get_config
+from db import AdGuardHostMismatch, Database, decrypt_api_key, get_config
 
 logger = logging.getLogger('adguard_poller')
 
@@ -108,23 +108,26 @@ class AdGuardHomePoller:
 
     # ── Client name cache ─────────────────────────────────────────────────────
 
-    def _refresh_clients(self, poll_host: str, poll_headers: dict):
-        """Refresh the IP→name client cache from ``GET /control/clients``.
+    def _refresh_clients(self, poll_host: str, poll_headers: dict) -> dict[str, str] | None:
+        """Fetch a fresh IP→name client cache from ``GET /control/clients``.
 
-        The cache is TTL-gated (``_CLIENT_CACHE_TTL`` seconds) to avoid
-        hammering the AdGuard API on every poll cycle.
+        Returns the new cache dict when the TTL has expired and the fetch
+        succeeds, or ``None`` when the existing cache is still warm or the
+        fetch fails.  The caller is responsible for publishing the returned
+        dict to ``self._clients`` / ``self._clients_refreshed`` — this method
+        intentionally does **not** mutate shared state, so a discarded batch
+        cannot poison the cache with stale data from the old host.
 
         ``poll_host`` and ``poll_headers`` must be the snapshot values
         captured at the start of ``_poll()`` — **not** ``self._host`` — so
         that client names are always fetched from the same instance that
-        provided the query log entries.  This prevents a concurrent
-        ``reload_config()`` from causing client name mismatches.
+        provided the query log entries.
 
         Priority: configured clients (``clients``) override auto-detected ones
         (``auto_clients``) because auto-detected names are less reliable.
         """
         if time.time() - self._clients_refreshed < _CLIENT_CACHE_TTL:
-            return  # cache is still fresh
+            return None  # cache is still fresh — nothing to do
 
         try:
             r = requests.get(
@@ -150,13 +153,13 @@ class AdGuardHomePoller:
                     if name:
                         cache[cid] = name
 
-            self._clients = cache
-            self._clients_refreshed = time.time()
             logger.debug("AdGuard client cache refreshed: %d entries", len(cache))
+            return cache
 
         except (requests.RequestException, KeyError, ValueError) as e:
             # Non-fatal: log and continue with the existing cache.
             logger.warning("AdGuard: client cache refresh failed: %s", e)
+            return None
 
     # ── Poll ──────────────────────────────────────────────────────────────────
 
@@ -180,20 +183,25 @@ class AdGuardHomePoller:
         Concurrency safety
         ------------------
         Config is snapshotted into locals (``poll_host``, ``poll_headers``,
-        ``cursor_str``/``cursor_dt``) before the loop starts.  If
-        ``reload_config()`` fires mid-pagination and changes ``self._host``,
-        the host-change check inside the loop detects the mismatch and aborts
-        without writing anything to the DB.
+        ``cursor_str``/``cursor_dt``) before the loop starts.  Two guards
+        protect against a concurrent ``reload_config()`` changing the host:
+
+        1. **In-memory pre-poll check** — skips the cycle immediately if the
+           DB host already differs from the snapshot (fast path).
+        2. **In-loop check** — aborts without writing if ``self._host`` changes
+           mid-pagination (detects SIGUSR2 reload during page fetches).
+        3. **Transactional DB check** — ``insert_adguard_batch`` re-reads
+           ``adguard_host`` *inside* the commit transaction; if it differs,
+           ``AdGuardHostMismatch`` is raised and the transaction is rolled back,
+           closing the TOCTOU window between the poll snapshot and the DB write.
 
         Timestamp handling
         ------------------
-        Entry comparisons use timezone-aware ``datetime`` objects (via
-        ``_parse_ts``) to handle RFC3339Nano format variations (e.g. ``Z`` vs
-        ``+HH:MM`` suffix, differing fractional-second precision).  The cursor
-        is stored as the *original* RFC3339Nano string (not
-        ``datetime.isoformat()``) to preserve nanosecond precision — two entries
-        sharing the same microsecond but differing in later digits would
-        otherwise be incorrectly treated as equal.
+        ``_parse_ts`` returns ``(datetime, ns_int)`` tuples.  All ordering
+        comparisons (pagination stop, dedup filter, cursor selection) use these
+        tuples so entries differing only in sub-microsecond nanoseconds are
+        ordered correctly.  The cursor is persisted as the original RFC3339Nano
+        string to retain full precision across cycles.
         """
         # ── Snapshot config — isolates this poll from concurrent reload_config() calls
         poll_host    = self._host
@@ -294,11 +302,13 @@ class AdGuardHomePoller:
         # filtered out; a debug log is emitted so they are visible during troubleshooting.
         if cursor_dt:
             pre_filter_count = len(all_entries)
+            # _parse_ts returns (datetime, ns_int) tuples; the fallback sentinel
+            # uses cursor_dt[0].tzinfo so the tuple comparison is timezone-aware.
             all_entries = [
                 e for e in all_entries
                 if (
                     _parse_ts(e.get('time') or '')
-                    or datetime.min.replace(tzinfo=cursor_dt.tzinfo)
+                    or (datetime.min.replace(tzinfo=cursor_dt[0].tzinfo), 0)
                 ) > cursor_dt
             ]
             dropped = pre_filter_count - len(all_entries)
@@ -312,21 +322,19 @@ class AdGuardHomePoller:
             return  # nothing new since the last poll
 
         # ── Resolve client names then build the insert batch ──────────────────
-        # Uses poll_host/poll_headers (not self._host) to avoid the same
-        # reload_config() race for the /control/clients request.
-        self._refresh_clients(poll_host, poll_headers)
-        batch = [_parse_entry(e, self._clients) for e in all_entries]
+        # _refresh_clients returns a new cache dict (or None if still warm).
+        # We hold it locally and only publish to self._clients after the insert
+        # succeeds — this prevents a discarded batch from marking the cache as
+        # "fresh" with data fetched from the old host.
+        new_clients = self._refresh_clients(poll_host, poll_headers)
+        clients_to_use = new_clients if new_clients is not None else self._clients
+        batch = [_parse_entry(e, clients_to_use) for e in all_entries]
 
         # ── Advance the cursor to the newest timestamp in this batch ──────────
         # We store the *original* RFC3339Nano string (not datetime.isoformat())
-        # so nanosecond precision is preserved.  Two entries that differ only in
-        # sub-microsecond digits would otherwise appear equal after truncation,
-        # causing the next poll to skip entries that share the same microsecond
-        # as the cursor but have a later nanosecond value.
-        #
-        # valid_pairs: list of (parsed_datetime, raw_time_string) for entries
-        # where _parse_ts succeeds; the max is taken on the datetime component
-        # so that timezone-aware comparison works correctly.
+        # so nanosecond precision is preserved.  _parse_ts returns (datetime, ns_int)
+        # tuples; max() on the tuple correctly orders entries that share the same
+        # microsecond but differ in sub-microsecond nanoseconds.
         valid_pairs = [
             (t, raw)
             for e in all_entries
@@ -334,23 +342,25 @@ class AdGuardHomePoller:
         ]
         new_cursor = max(valid_pairs, key=lambda p: p[0])[1] if valid_pairs else cursor_str
 
-        # ── DB host guard (post-pagination) ───────────────────────────────────
-        # A config change that arrives after the pagination loop but before the
-        # DB write would persist a cursor belonging to the old host into the new
-        # host's config row — the next cycle would then skip entries that pre-
-        # date the cursor but were never actually fetched.  Re-check the DB host
-        # here and discard the batch if it has changed.
-        if (get_config(self._db, 'adguard_host', '') or '').strip().rstrip('/') != poll_host:
+        # ── Insert rows, advance cursor, and verify host — all in one transaction
+        # insert_adguard_batch re-reads adguard_host from the DB *inside* the
+        # transaction before inserting, closing the TOCTOU window between the
+        # poll snapshot and the DB write.  If the host changed, AdGuardHostMismatch
+        # is raised, the transaction is rolled back, and we discard this batch.
+        try:
+            inserted = self._db.insert_adguard_batch(
+                batch, new_cursor=new_cursor, expected_host=poll_host,
+            )
+        except AdGuardHostMismatch as e:
             logger.warning(
-                "AdGuard: host changed after pagination — discarding batch to avoid cursor corruption",
+                "AdGuard: host changed before commit — discarding batch (%s)", e,
             )
             return
 
-        # ── Insert rows and advance cursor atomically ─────────────────────────
-        # insert_adguard_batch wraps both the row inserts and the cursor update
-        # in a single get_conn() transaction, so partial application can only
-        # occur if the transaction commit itself fails — an extremely rare event.
-        inserted = self._db.insert_adguard_batch(batch, new_cursor=new_cursor)
+        # Host confirmed inside the transaction — safe to publish client cache.
+        if new_clients is not None:
+            self._clients = new_clients
+            self._clients_refreshed = time.time()
 
         logger.debug(
             "AdGuard: polled %d new entries, inserted %d, cursor=%s",
@@ -394,24 +404,39 @@ class AdGuardHomePoller:
 
 # ── Module-level helpers ──────────────────────────────────────────────────────
 
-def _parse_ts(ts: str) -> datetime | None:
-    """Parse an RFC3339/RFC3339Nano timestamp to a timezone-aware ``datetime``.
+def _parse_ts(ts: str) -> tuple[datetime, int] | None:
+    """Parse an RFC3339/RFC3339Nano timestamp to a ``(datetime, nanoseconds)`` pair.
 
     AdGuard Home emits nanosecond-precision timestamps, e.g.::
 
         2026-04-13T18:10:52.123456789+02:00
 
+    Returns a ``(aware_datetime, ns_int)`` tuple where ``ns_int`` is the full
+    fractional second expressed as nanoseconds (0–999 999 999).  Using the
+    tuple for all ordering comparisons preserves sub-microsecond precision —
+    two entries that share the same microsecond but differ only in later digits
+    are correctly ordered by the ``ns_int`` component.
+
     Python's ``datetime.fromisoformat()`` only handles up to microsecond
-    precision, so we truncate any digits beyond the sixth decimal place before
-    parsing.  Returns ``None`` for empty or unparseable strings rather than
-    raising, so callers can safely filter or fall back.
+    precision, so the fractional part is extracted separately for ``ns_int``
+    and truncated to 6 digits before parsing.
+
+    Returns ``None`` for empty or unparseable strings rather than raising, so
+    callers can safely filter or fall back.
     """
     if not ts:
         return None
-    # Truncate sub-microsecond digits: keep at most 6 fractional-second digits.
+    # Extract fractional-second digits (may be absent, 1–9 digits).
+    frac_match = re.search(r'\.(\d+)', ts)
+    ns_int = 0
+    if frac_match:
+        frac_digits = frac_match.group(1)
+        # Pad/truncate to exactly 9 digits for a nanosecond integer.
+        ns_int = int(frac_digits[:9].ljust(9, '0'))
+    # Truncate to 6 fractional digits for datetime parsing.
     ts_norm = re.sub(r'(\.\d{6})\d+', r'\1', ts)
     try:
-        return datetime.fromisoformat(ts_norm)
+        return (datetime.fromisoformat(ts_norm), ns_int)
     except ValueError:
         return None
 

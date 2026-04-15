@@ -22,6 +22,14 @@ from psycopg2.extras import Json
 logger = logging.getLogger(__name__)
 
 
+class AdGuardHostMismatch(Exception):
+    """Raised by insert_adguard_batch when the DB host differs from the expected host.
+
+    This indicates a config change landed between the start of _poll() and the
+    DB commit — the batch is discarded to prevent cursor corruption.
+    """
+
+
 # ── API Key Encryption ────────────────────────────────────────────────────────
 
 def _derive_fernet_key(postgres_password: str) -> bytes:
@@ -1027,12 +1035,24 @@ END $$;""",
                     logger.warning("Dropped bad log row: %s — raw: %.200s", row_err, row[-1] if row else '?')
             logger.info("Row-by-row fallback: %d inserted, %d dropped", inserted, dropped)
 
-    def insert_adguard_batch(self, entries: list[dict], new_cursor: str | None = None) -> int:
+    def insert_adguard_batch(
+        self,
+        entries: list[dict],
+        new_cursor: str | None = None,
+        expected_host: str | None = None,
+    ) -> int:
         """Insert a batch of AdGuard Home query log entries and advance the cursor atomically.
 
         The cursor update (adguard_cursor in system_config) is committed in the
-        same transaction as the row inserts. This prevents the classic
-        post-insert-pre-cursor crash from causing duplicate rows on the next poll.
+        same transaction as the row inserts, so only a transaction-commit failure
+        can cause partial application — an extremely rare event.
+
+        If ``expected_host`` is provided, the DB value of ``adguard_host`` is
+        re-read *inside* the transaction and compared before any inserts occur.
+        If they differ, ``AdGuardHostMismatch`` is raised and the transaction is
+        rolled back, preventing cursor corruption when the config changes
+        between the start of a poll cycle and the DB write.
+
         Returns the number of rows inserted.
         """
         if not entries:
@@ -1050,6 +1070,18 @@ END $$;""",
         """
         with self.get_conn() as conn:
             with conn.cursor() as cur:
+                if expected_host is not None:
+                    # Re-read the host inside this transaction to close the TOCTOU
+                    # window between the poll snapshot and the DB write.
+                    cur.execute(
+                        "SELECT value FROM system_config WHERE key = 'adguard_host'"
+                    )
+                    row = cur.fetchone()
+                    db_host = (row[0] or '').strip().rstrip('/') if row else ''
+                    if db_host != expected_host:
+                        raise AdGuardHostMismatch(
+                            f"expected {expected_host!r}, DB has {db_host!r}"
+                        )
                 extras.execute_batch(cur, sql, entries, page_size=100)
                 # execute_batch runs multiple internal rounds; cur.rowcount only
                 # reflects the last round. Use len(entries) — no ON CONFLICT clause
