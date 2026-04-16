@@ -679,9 +679,9 @@ END $$;""",
                   AND service_name IS NULL
                   AND dst_port IS NOT NULL""",
             # ── AdGuard Home integration ──────────────────────────────────────
-            # adguard_logs is always created empty (new table), so the index
-            # builds below are instantaneous — ACCESS EXCLUSIVE lock risk is zero.
-            # CONCURRENTLY cannot run inside a transaction; it is not needed here.
+            # adguard_logs is always a new table, so index builds are instantaneous
+            # — ACCESS EXCLUSIVE lock risk is zero. Non-concurrent CREATE INDEX is
+            # correct here because this block runs inside the advisory-lock transaction.
             """CREATE TABLE IF NOT EXISTS adguard_logs (
                 id             BIGSERIAL PRIMARY KEY,
                 timestamp      TIMESTAMPTZ NOT NULL,
