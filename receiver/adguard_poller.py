@@ -162,9 +162,9 @@ class AdGuardHomePoller:
                             networks.append((ipaddress.ip_network(cid, strict=False), name))
                         except ValueError:
                             pass
-                    elif (':' in cid or '-' in cid) and len(cid) in (17, 14):
+                    elif (':' in cid or '-' in cid) and len(cid) == 17:
                         # MAC address: colon (aa:bb:cc:dd:ee:ff) or
-                        # hyphen-delimited (aa-bb-cc-dd-ee-ff) — both length 17.
+                        # hyphen-delimited (aa-bb-cc-dd-ee-ff) — both exactly 17 chars.
                         macs[_norm_mac(cid)] = name
                     else:
                         # Plain IP
@@ -555,14 +555,15 @@ def _parse_entry(e: dict, clients: '_ClientCache') -> dict:
     q           = e.get('question') or {}
     rules       = e.get('rules') or []
     client_info = e.get('client_info') or {}
-    client_mac  = (client_info.get('whois_info') or {}).get('orgid') or ''
     return {
         'timestamp':      e.get('time'),
         'client_ip':      client_ip or None,
         # Prefer the configured-client name (exact IP, CIDR, or MAC match);
         # fall back to AdGuard's auto-resolved name from client_info.
+        # Note: the query log does not expose the client MAC — MAC resolution
+        # only applies to IDs configured in AdGuard's client list.
         'client_name':    (
-            clients.resolve(client_ip, client_mac)
+            clients.resolve(client_ip)
             or client_info.get('name')
             or None
         ),
