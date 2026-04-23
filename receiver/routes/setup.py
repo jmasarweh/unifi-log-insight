@@ -703,11 +703,19 @@ def update_retention(body: dict):
                 status_code=400,
                 detail="retention_hour must be an integer between 0 and 23"
             )
-        set_config(enricher_db, 'retention_hour', hour)
-        hour_changed = True
+        # Only signal if the value actually differs from what's stored. The UI
+        # sends retention_hour on every save (it's part of the combined dirty
+        # check), so without this comparison a days-only edit would still fire
+        # SIGUSR2 and force a scheduler rebuild.
+        existing = get_config(enricher_db, 'retention_hour')
+        if existing != hour:
+            set_config(enricher_db, 'retention_hour', hour)
+            hour_changed = True
 
-    # Only signal the receiver when the *hour* changes — days are re-resolved
-    # from the DB on every scheduled run, so they don't need a reload.
+    # Only signal the receiver when the *hour* actually changes — days are
+    # re-resolved from the DB on every scheduled run, so they don't need a
+    # reload. Scheduler rebuild is an OS-level signal + SIGUSR2 handler chain,
+    # so avoiding no-op reloads keeps the system quiet.
     if hour_changed:
         signal_receiver()
 

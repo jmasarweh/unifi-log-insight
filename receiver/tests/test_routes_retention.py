@@ -11,6 +11,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+# Import the real parser BEFORE any fixture runs. If we imported inside the
+# fixture, sys.modules['db'] would already be replaced with a MagicMock and
+# `parse_retention_hour` would be an auto-attr. Importing at module-top means
+# we hold a reference to the actual function object, immune to later mocking.
+from db import parse_retention_hour as _real_parse_retention_hour
+
 
 def _poll_until(test_client, expected_status, path='/api/config/retention/cleanup-status',
                 timeout=2.0, interval=0.05):
@@ -60,24 +66,15 @@ def client(monkeypatch):
 
     monkeypatch.setitem(sys.modules, 'deps', mock_deps)
 
-    # Real parse_retention_hour implementation — same reason as SimpleNamespace:
-    # sys.modules['db'] is being replaced, so setup.py's `from db import
-    # parse_retention_hour` would get a MagicMock auto-attr returning MagicMocks.
-    # This inline copy matches db.parse_retention_hour's contract.
-    def _parse_retention_hour(raw):
-        try:
-            h = int(raw)
-        except (ValueError, TypeError):
-            return None
-        return h if 0 <= h <= 23 else None
-
     mock_db_module = MagicMock()
     mock_db_module.Database = MagicMock()
     mock_db_module.Database.validate_retention_days = MagicMock()
     mock_db_module.Database.resolve_retention_days = MagicMock(return_value=default_days)
     mock_db_module.Database.resolve_retention_hour = MagicMock(return_value=default_hour)
     mock_db_module.Database.RETENTION_BATCH_SIZE = 5000
-    mock_db_module.parse_retention_hour = _parse_retention_hour
+    # Use the REAL parse_retention_hour (imported at module top) so test and
+    # production share one function — semantics can't drift.
+    mock_db_module.parse_retention_hour = _real_parse_retention_hour
     mock_db_module.get_config = MagicMock(return_value=None)
     mock_db_module.set_config = MagicMock()
     mock_db_module.count_logs = MagicMock(return_value=0)
@@ -293,6 +290,26 @@ class TestRetentionConfigPost:
         resp = test_client.post('/api/config/retention', json={'retention_days': 30})
         assert resp.status_code == 200
         mock_deps.signal_receiver.assert_not_called()
+
+    def test_post_with_unchanged_hour_does_not_signal(self, client):
+        """Saving the same retention_hour as already stored must not trigger
+        SIGUSR2. The UI sends retention_hour on every save (part of the
+        combined dirty check), so a days-only edit always arrives with a
+        retention_hour field."""
+        test_client, mock_deps, mock_db, _ = client
+
+        # get_config('retention_hour') returns 5 (current stored value)
+        def get_config(db, key, *a, **kw):
+            return 5 if key == 'retention_hour' else None
+        mock_db.get_config.side_effect = get_config
+
+        resp = test_client.post('/api/config/retention', json={'retention_hour': 5})
+        assert resp.status_code == 200
+        mock_deps.signal_receiver.assert_not_called()
+        # And set_config should NOT have been called for retention_hour
+        saved = [c for c in mock_db.set_config.call_args_list
+                 if c.args[1] == 'retention_hour']
+        assert saved == [], 'unchanged hour must not be re-written'
 
 
 class TestRetentionHourImport:
