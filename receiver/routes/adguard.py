@@ -104,8 +104,13 @@ def put_adguard_config(body: AdGuardConfig):
     if normalized_host != stored_host:
         set_config(enricher_db, 'adguard_cursor', None)
 
-    signal_receiver()
-    return {'ok': True}
+    reload_signaled = signal_receiver()
+    if not reload_signaled:
+        logger.warning(
+            "AdGuard config saved but receiver reload signal failed; "
+            "changes will take effect on next service restart",
+        )
+    return {'ok': True, 'reload_signaled': reload_signaled}
 
 
 @router.post("/api/config/adguard/test")
