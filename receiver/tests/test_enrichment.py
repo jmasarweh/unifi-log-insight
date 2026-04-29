@@ -578,9 +578,41 @@ class TestRDNSEnricherClassification:
         """The 2s contract: setdefaulttimeout(self.timeout) before gethostbyaddr."""
         e = RDNSEnricher(timeout=1.25, db=None)
         with patch('enrichment.socket.setdefaulttimeout') as mock_set, \
+             patch('enrichment.socket.getdefaulttimeout', return_value=None), \
              patch('enrichment.socket.gethostbyaddr', return_value=('h', [], [])):
             e.lookup('1.2.3.4')
-        mock_set.assert_called_with(1.25)
+        # First call applies our timeout; second restores prior default
+        calls = [c.args[0] for c in mock_set.call_args_list]
+        assert calls[0] == 1.25, f'expected first call to apply 1.25s, got {calls}'
+
+    def test_restores_prior_default_timeout(self):
+        """Save/restore: setdefaulttimeout must be reset to its prior value
+        after gethostbyaddr so unrelated threads don't inherit the PTR timeout.
+        """
+        e = RDNSEnricher(timeout=1.25, db=None)
+        prior = 5.0
+        with patch('enrichment.socket.setdefaulttimeout') as mock_set, \
+             patch('enrichment.socket.getdefaulttimeout', return_value=prior), \
+             patch('enrichment.socket.gethostbyaddr', return_value=('h', [], [])):
+            e.lookup('1.2.3.4')
+        calls = [c.args[0] for c in mock_set.call_args_list]
+        assert calls == [1.25, prior], (
+            f'expected [apply, restore] = [1.25, {prior}], got {calls}'
+        )
+
+    def test_restores_prior_default_timeout_on_exception(self):
+        """The restore must happen even when gethostbyaddr raises."""
+        e = RDNSEnricher(timeout=1.25, db=None)
+        prior = None
+        with patch('enrichment.socket.setdefaulttimeout') as mock_set, \
+             patch('enrichment.socket.getdefaulttimeout', return_value=prior), \
+             patch('enrichment.socket.gethostbyaddr',
+                   side_effect=socket.gaierror(socket.EAI_NONAME, 'no host')):
+            e.lookup('1.2.3.4')
+        calls = [c.args[0] for c in mock_set.call_args_list]
+        assert calls == [1.25, prior], (
+            f'expected restore even on failure, got {calls}'
+        )
 
 
 class TestRDNSEnricherHotTierPerStatusTTL:

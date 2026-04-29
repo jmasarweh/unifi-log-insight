@@ -728,21 +728,27 @@ class RDNSEnricher:
                 })
                 return {'rdns': hostname}
 
-        # Live PTR — preserve existing 2s contract via setdefaulttimeout.
+        # Live PTR — preserve existing 2s contract via setdefaulttimeout, but
+        # save/restore the prior default so unrelated threads don't inherit
+        # our PTR timeout on subsequent socket creation.
+        prior_timeout = socket.getdefaulttimeout()
         socket.setdefaulttimeout(self.timeout)
         try:
-            hostname, _, _ = socket.gethostbyaddr(ip_str)
-            status = 'success'
-            value_rdns = hostname
-        except socket.gaierror as e:
-            status = 'transient' if e.errno == socket.EAI_AGAIN else 'failure'
-            value_rdns = None
-        except socket.herror as e:
-            status = 'transient' if (e.args and e.args[0] == self._TRY_AGAIN_HERRNO) else 'failure'
-            value_rdns = None
-        except (socket.timeout, OSError):
-            status = 'transient'
-            value_rdns = None
+            try:
+                hostname, _, _ = socket.gethostbyaddr(ip_str)
+                status = 'success'
+                value_rdns = hostname
+            except socket.gaierror as e:
+                status = 'transient' if e.errno == socket.EAI_AGAIN else 'failure'
+                value_rdns = None
+            except socket.herror as e:
+                status = 'transient' if (e.args and e.args[0] == self._TRY_AGAIN_HERRNO) else 'failure'
+                value_rdns = None
+            except (socket.timeout, OSError):
+                status = 'transient'
+                value_rdns = None
+        finally:
+            socket.setdefaulttimeout(prior_timeout)
 
         # Write to BOTH tiers
         self._db_set(ip_str, value_rdns, status)
