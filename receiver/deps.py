@@ -160,12 +160,20 @@ def signal_receiver() -> bool:
     Callers should log a warning on False; the config is always committed
     to the DB before this call so a failed signal is not data loss.
     """
+    def _write_reload_marker() -> None:
+        marker_path = '/tmp/config_update_requested'
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if hasattr(os, 'O_NOFOLLOW'):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(marker_path, flags, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            f.write(str(time.time()))
+
     try:
         result = subprocess.run(['pkill', '-SIGUSR2', '-f', '/app/main.py'],
                                 check=False, timeout=2)
         signaled = result.returncode == 0
-        with open('/tmp/config_update_requested', 'w') as f:
-            f.write(str(time.time()))
+        _write_reload_marker()
         if signaled:
             logger.info("Signaled receiver process to reload config")
         else:

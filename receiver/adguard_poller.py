@@ -40,13 +40,15 @@ from datetime import datetime
 
 import requests
 
-from db import AdGuardHostMismatch, Database, decrypt_api_key, get_config
+from db import AdGuardHostMismatch, Database, decrypt_api_key, get_config, set_config
 
 logger = logging.getLogger('adguard_poller')
 
 _POLL_BATCH      = 500    # max entries requested per /control/querylog call
 _CLIENT_CACHE_TTL = 300   # seconds between /control/clients refreshes
 _MAX_POLL_PAGES  = 100    # safety cap: abort without advancing cursor if hit
+_BACKFILL_CHECKPOINT_KEY = 'adguard_backfill_older_than'
+_BACKFILL_HIGHWATER_KEY = 'adguard_backfill_highwater'
 
 
 class AdGuardHomePoller:
@@ -235,8 +237,10 @@ class AdGuardHomePoller:
                 f"{poll_username}:{poll_password}".encode()
             ).decode()
         }
-        cursor_str   = get_config(self._db, 'adguard_cursor', None)
-        cursor_dt    = _parse_ts(cursor_str)
+        cursor_str = get_config(self._db, 'adguard_cursor', None)
+        cursor_dt = _parse_ts(cursor_str)
+        backfill_checkpoint = get_config(self._db, _BACKFILL_CHECKPOINT_KEY, None)
+        backfill_highwater = get_config(self._db, _BACKFILL_HIGHWATER_KEY, None)
 
         # ── DB host guard (pre-poll) ───────────────────────────────────────────
         # The DB is the authoritative source of config.  If the stored host
@@ -252,8 +256,16 @@ class AdGuardHomePoller:
             return
 
         all_entries: list[dict] = []
-        older_than: str | None  = None   # walks backward through pages
+        older_than: str | None = backfill_checkpoint or None
         pages = 0
+        capped = False
+        checkpoint_after_cap: str | None = None
+
+        if backfill_checkpoint:
+            logger.info(
+                "AdGuard: resuming capped backlog from checkpoint older_than=%s",
+                backfill_checkpoint[:30],
+            )
 
         while True:
             # ── Mid-poll host-change guard ─────────────────────────────────────
@@ -315,10 +327,11 @@ class AdGuardHomePoller:
             # to be inserted and the cursor to advance, making forward progress
             # even when the backlog permanently exceeds MAX_POLL_PAGES * POLL_BATCH.
             if pages >= _MAX_POLL_PAGES:
+                capped = True
+                checkpoint_after_cap = oldest_on_page or older_than
                 logger.warning(
                     "AdGuard: reached %d-page safety cap — committing partial batch "
-                    "(%d entries so far) and advancing cursor; remaining entries will "
-                    "be fetched on the next poll cycle",
+                    "(%d entries so far) and storing resume checkpoint",
                     _MAX_POLL_PAGES, len(all_entries),
                 )
                 break
@@ -362,7 +375,7 @@ class AdGuardHomePoller:
         clients_to_use = new_clients if new_clients is not None else self._clients
         batch = [_parse_entry(e, clients_to_use) for e in all_entries]
 
-        # ── Advance the cursor to the newest timestamp in this batch ──────────
+        # ── Determine newest timestamp in this batch (full precision) ─────────
         # We store the *original* RFC3339Nano string (not datetime.isoformat())
         # so nanosecond precision is preserved.  _parse_ts returns (datetime, ns_int)
         # tuples; max() on the tuple correctly orders entries that share the same
@@ -372,7 +385,45 @@ class AdGuardHomePoller:
             for e in all_entries
             if (raw := e.get('time') or '') and (t := _parse_ts(raw)) is not None
         ]
-        new_cursor = max(valid_pairs, key=lambda p: p[0])[1] if valid_pairs else cursor_str
+        newest_in_batch = max(valid_pairs, key=lambda p: p[0])[1] if valid_pairs else cursor_str
+
+        if capped and checkpoint_after_cap:
+            # We hit the page cap before fully draining the backlog. Persist a
+            # resumable paging checkpoint and keep adguard_cursor unchanged until
+            # backlog completion, preventing cursor jumps over unfetched pages.
+            partial_highwater = _newest_cursor_string(backfill_highwater, newest_in_batch)
+            try:
+                inserted = self._db.insert_adguard_batch(
+                    batch, new_cursor=None, expected_host=poll_host,
+                )
+            except AdGuardHostMismatch as e:
+                logger.warning(
+                    "AdGuard: host changed before commit — discarding capped batch (%s)", e,
+                )
+                return
+
+            set_config(self._db, _BACKFILL_CHECKPOINT_KEY, checkpoint_after_cap)
+            if partial_highwater:
+                set_config(self._db, _BACKFILL_HIGHWATER_KEY, partial_highwater)
+
+            # Host confirmed inside transaction — safe to publish client cache.
+            if new_clients is not None:
+                self._clients = new_clients
+                self._clients_refreshed = time.time()
+
+            logger.info(
+                "AdGuard: partial backlog commit inserted=%d, checkpoint=%s, highwater=%s",
+                inserted,
+                (checkpoint_after_cap or '')[:30],
+                (partial_highwater or '')[:30],
+            )
+            return
+
+        # Full cycle complete (normal mode or final resumed page).
+        if backfill_checkpoint:
+            new_cursor = _newest_cursor_string(backfill_highwater, newest_in_batch)
+        else:
+            new_cursor = newest_in_batch
 
         # ── Insert rows, advance cursor, and verify host — all in one transaction
         # insert_adguard_batch re-reads adguard_host from the DB *inside* the
@@ -393,6 +444,12 @@ class AdGuardHomePoller:
         if new_clients is not None:
             self._clients = new_clients
             self._clients_refreshed = time.time()
+
+        if backfill_checkpoint:
+            # Backlog drained — clear checkpoint state now that cursor is advanced.
+            set_config(self._db, _BACKFILL_CHECKPOINT_KEY, None)
+            set_config(self._db, _BACKFILL_HIGHWATER_KEY, None)
+            logger.info("AdGuard: backlog drain complete, cleared paging checkpoint")
 
         logger.debug(
             "AdGuard: polled %d new entries, inserted %d, cursor=%s",
@@ -496,6 +553,24 @@ class _ClientCache:
                 return self._macs[normed]
 
         return None
+
+
+def _newest_cursor_string(*raw_values: str | None) -> str | None:
+    """Return the newest RFC3339/RFC3339Nano timestamp string from raw_values.
+
+    Uses _parse_ts() tuple ordering to preserve nanosecond precision when
+    comparing candidates. Returns None if no candidate parses successfully.
+    """
+    parsed: list[tuple[tuple[datetime, int], str]] = []
+    for raw in raw_values:
+        if not raw:
+            continue
+        t = _parse_ts(raw)
+        if t is not None:
+            parsed.append((t, raw))
+    if not parsed:
+        return None
+    return max(parsed, key=lambda p: p[0])[1]
 
 
 def _parse_ts(ts: str) -> tuple[datetime, int] | None:
